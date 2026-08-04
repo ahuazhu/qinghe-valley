@@ -21,6 +21,7 @@ type GameState = {
   energy: number;
   seeds: number;
   water: number;
+  bait: number;
   tiles: FarmTile[];
   planted: number;
   wateredCount: number;
@@ -62,6 +63,7 @@ const makeNewGame = (): GameState => ({
   energy: 100,
   seeds: 8,
   water: 12,
+  bait: 0,
   tiles: makeTiles(),
   planted: 0,
   wateredCount: 0,
@@ -106,6 +108,7 @@ export default function FarmGame() {
           setGame({
             ...defaults,
             ...parsed,
+            bait: parsed.bait ?? 0,
             fishCaught: parsed.fishCaught ?? 0,
             inventory: parsed.inventory ?? { radish: parsed.harvested ?? 0, fish: parsed.fishCaught ?? 0 },
             chestStorage: parsed.chestStorage ?? defaults.chestStorage,
@@ -131,7 +134,7 @@ export default function FarmGame() {
       setGame((current) => current.hour >= 23.5
         ? { ...current, day: current.day === 28 ? 1 : current.day + 1, hour: 0 }
         : { ...current, hour: current.hour + 0.5 });
-    }, 60_000);
+    }, 30_000);
     return () => window.clearInterval(clock);
   }, [ready]);
 
@@ -259,8 +262,9 @@ export default function FarmGame() {
     }
 
     setIsFishing(true);
+    const baitUsed = game.bait > 0;
     setMessage("浮标落入水中……耐心等鱼儿上钩。");
-    setGame((current) => ({ ...current, energy: current.energy - 5, hour: Math.min(24, current.hour + 1) }));
+    setGame((current) => ({ ...current, bait: baitUsed ? current.bait - 1 : current.bait, energy: current.energy - 5, hour: Math.min(24, current.hour + 1) }));
     playTone(390);
 
     window.setTimeout(() => {
@@ -271,13 +275,14 @@ export default function FarmGame() {
         { name: "小泥鳅", coins: 24 },
       ];
       const caught = catches[Math.floor(Math.random() * catches.length)];
+      const amount = baitUsed ? 2 : 1;
       setGame((current) => ({
         ...current,
-        coins: current.coins + caught.coins,
-        fishCaught: current.fishCaught + 1,
-        inventory: { ...current.inventory, fish: current.inventory.fish + 1 },
+        coins: current.coins + caught.coins * amount,
+        fishCaught: current.fishCaught + amount,
+        inventory: { ...current.inventory, fish: current.inventory.fish + amount },
       }));
-      setMessage(`钓到${caught.name}！鱼获 +1，点击左侧的鱼再点木箱可以存起来。`);
+      setMessage(`钓到${caught.name}！鱼获 +${amount}${baitUsed ? "，鱼饵让收获翻倍" : ""}。`);
       setIsFishing(false);
       playTone(780);
     }, 1100);
@@ -557,11 +562,14 @@ export default function FarmGame() {
     }, 0);
   };
 
-  const buyItem = (item: "seeds" | "water" | "snack") => {
+  const buyItem = (item: "seeds" | "water" | "snack" | "soup" | "bait" | "sapling") => {
     const details = {
       seeds: { price: 60, success: "买到 5 颗萝卜种子！", tone: 660 },
       water: { price: 25, success: "水壶重新装满了！", tone: 580 },
       snack: { price: 45, success: "吃下莓果面包，恢复 25 点体力！", tone: 720 },
+      soup: { price: 75, success: "喝下热腾腾的蔬菜汤，恢复 50 点体力！", tone: 760 },
+      bait: { price: 50, success: "买到 5 份幸运鱼饵，下次钓鱼收获翻倍！", tone: 700 },
+      sapling: { price: 80, success: "树苗种下了，农场里的树桩重新长成树！", tone: 620 },
     }[item];
 
     if (game.coins < details.price) {
@@ -575,7 +583,9 @@ export default function FarmGame() {
       coins: current.coins - details.price,
       seeds: item === "seeds" ? current.seeds + 5 : current.seeds,
       water: item === "water" ? 12 : current.water,
-      energy: item === "snack" ? Math.min(100, current.energy + 25) : current.energy,
+      bait: item === "bait" ? current.bait + 5 : current.bait,
+      treeStates: item === "sapling" ? current.treeStates.map(() => true) : current.treeStates,
+      energy: item === "snack" ? Math.min(100, current.energy + 25) : item === "soup" ? Math.min(100, current.energy + 50) : current.energy,
     }));
     setMessage(details.success);
     playTone(details.tone);
@@ -867,6 +877,9 @@ export default function FarmGame() {
                     <article className="product-card"><span className="product-icon seed-bag">种</span><div><strong>萝卜种子包</strong><small>内含 5 颗春季种子</small></div><button onClick={() => buyItem("seeds")}><span>●</span>60</button></article>
                     <article className="product-card"><span className="product-icon water-drop">水</span><div><strong>水壶补给</strong><small>立刻补满 12 格水</small></div><button onClick={() => buyItem("water")}><span>●</span>25</button></article>
                     <article className="product-card"><span className="product-icon berry-bread">食</span><div><strong>莓果面包</strong><small>恢复 25 点体力</small></div><button onClick={() => buyItem("snack")}><span>●</span>45</button></article>
+                    <article className="product-card"><span className="product-icon soup-bowl">汤</span><div><strong>农家蔬菜汤</strong><small>恢复 50 点体力</small></div><button onClick={() => buyItem("soup")}><span>●</span>75</button></article>
+                    <article className="product-card"><span className="product-icon bait-box">饵</span><div><strong>幸运鱼饵盒</strong><small>5 份鱼饵，钓鱼收获翻倍</small></div><button onClick={() => buyItem("bait")}><span>●</span>50</button></article>
+                    <article className="product-card"><span className="product-icon sapling-bag">苗</span><div><strong>青绿树苗包</strong><small>让所有树桩重新长成树</small></div><button onClick={() => buyItem("sapling")}><span>●</span>80</button></article>
                   </div>
                   <footer><span>{message}　按 Esc 也可以离开</span><button onClick={leaveBuilding}>从门口出去</button></footer>
                 </section>
@@ -910,7 +923,7 @@ export default function FarmGame() {
                 {tool === "axe" && <b>{game.wood}</b>}
               </button>
             ))}
-            <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? selectedResource === "radish" ? "拿着萝卜" : selectedResource === "fish" ? "拿着鱼" : TOOL_INFO[selected].name : "中心街"}</strong></div>
+            <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? selectedResource === "radish" ? "拿着萝卜" : selectedResource === "fish" ? "拿着鱼" : selected === "rod" ? `鱼竿 · 鱼饵 ${game.bait}` : TOOL_INFO[selected].name : "中心街"}</strong></div>
           </div>
         </section>
       </section>
