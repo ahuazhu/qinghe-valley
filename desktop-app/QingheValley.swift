@@ -4,7 +4,17 @@ import WebKit
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private var window: NSWindow!
     private var webView: WKWebView!
-    private let gameURL = URL(string: "https://qinghe-valley.ahuazhu.chatgpt.site")!
+    private let gameURL: URL = {
+        let baseURL = "https://qinghe-valley.ahuazhu.chatgpt.site"
+        let arguments = CommandLine.arguments
+        if let marker = arguments.firstIndex(of: "--save-token"), arguments.indices.contains(marker + 1) {
+            let token = arguments[marker + 1]
+            if token.range(of: "^[a-f0-9-]{36}$", options: .regularExpression) != nil {
+                return URL(string: "\(baseURL)/?save=\(token)")!
+            }
+        }
+        return URL(string: baseURL)!
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let configuration = WKWebViewConfiguration()

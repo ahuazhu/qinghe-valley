@@ -97,6 +97,10 @@ export async function POST(request: Request) {
   if (!roomCode || !deviceId) return Response.json({ error: "房间信息不正确" }, { status: 400 });
 
   await ensureSchema();
+  const now = Date.now();
+  await env.DB.prepare("DELETE FROM multiplayer_players WHERE room_code = ? AND updated_at < ?")
+    .bind(roomCode, now - 60_000)
+    .run();
   const existing = await env.DB.prepare("SELECT device_id, village FROM multiplayer_players WHERE room_code = ? ORDER BY id ASC LIMIT 2")
     .bind(roomCode).all<{ device_id: string; village: VillageId }>();
   const own = existing.results.find((player) => player.device_id === deviceId);
@@ -106,7 +110,6 @@ export async function POST(request: Request) {
   }
 
   const village = own?.village ?? requestedVillage;
-  const now = Date.now();
   await env.DB.prepare(`INSERT INTO multiplayer_players
     (room_code, device_id, player_name, village, x, y, day, hour, energy, sick, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -125,4 +128,17 @@ export async function POST(request: Request) {
   const result = await env.DB.prepare(`SELECT device_id, player_name, village, x, y, day, hour, energy, sick, updated_at
     FROM multiplayer_players WHERE room_code = ? ORDER BY id ASC LIMIT 2`).bind(roomCode).all<PlayerRow>();
   return Response.json({ roomCode, village, players: serializePlayers(result.results, now) });
+}
+
+export async function DELETE(request: Request) {
+  const payload = await request.json<MultiplayerPayload>();
+  const roomCode = cleanRoomCode(payload.roomCode);
+  const deviceId = cleanDeviceId(payload.deviceId);
+  if (!roomCode || !deviceId) return Response.json({ error: "房间信息不正确" }, { status: 400 });
+
+  await ensureSchema();
+  await env.DB.prepare("DELETE FROM multiplayer_players WHERE room_code = ? AND device_id = ?")
+    .bind(roomCode, deviceId)
+    .run();
+  return Response.json({ ok: true });
 }
