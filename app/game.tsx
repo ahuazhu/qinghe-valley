@@ -36,7 +36,9 @@ type GameState = {
   wood: number;
   treeStates: boolean[];
   crafted: { chest: number; fence: number; scarecrow: number };
-  daily: { day: number; planted: number; watered: number; harvested: number; fish: number; chopped: number; sold: number };
+  daily: { day: number; planted: number; watered: number; harvested: number; fish: number; chopped: number; sold: number; rewardClaimed: boolean };
+  sick: boolean;
+  lastIllnessDay: number;
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -71,12 +73,41 @@ const BUILDING_INFO: Record<BuildingId, { name: string; owner: string; greeting:
   library: { name: "山谷图书馆", owner: "叶老师", greeting: "这里收藏着作物、矿石和青禾谷的故事。", exit: { x: 8, y: 5 } },
 };
 
+const BUILDING_ITEMS: Record<BuildingId, string[]> = {
+  farmhouse: [],
+  supermarket: [],
+  townhall: ["居民委托板", "小镇地图", "节日公告"],
+  clinic: ["诊疗床", "药品柜", "健康档案"],
+  cafe: ["面包展示柜", "咖啡机", "靠窗小桌"],
+  workshop: ["木工台", "工具墙", "木料架"],
+  library: ["作物图鉴", "故事书架", "阅读桌"],
+};
+
+const ITEM_DESCRIPTIONS: Record<string, string> = {
+  居民委托板: "上面贴着浇水、钓鱼和收集木材的居民委托，每天都会换新纸条。",
+  小镇地图: "地图标出了农场、超市、诊所、咖啡馆、工坊和图书馆的位置。",
+  节日公告: "春日集市将在中心广场举行，居民会带来食物与手工作品。",
+  诊疗床: "铺着干净白床单的诊疗床，体力耗尽时白医生会让小禾先躺下休息。",
+  健康档案: "记录着小禾的体力与最近生病日期，白医生提醒她不要过度劳累。",
+  面包展示柜: "玻璃柜里有莓果面包、蜂蜜吐司和刚烤好的玉米小饼。",
+  咖啡机: "铜色咖啡机正在冒热气，空气里有温暖的烘焙香味。",
+  靠窗小桌: "桌上摆着小花瓶，可以坐下来看看青禾镇的街景。",
+  木工台: "台面有尺子、木锤和刨花，鲁师傅会在这里制作家具。",
+  工具墙: "墙上整齐挂着锯子、锤子与木工尺，每件工具都有固定位置。",
+  木料架: "架子上码着松木、橡木和几块等待加工的漂亮木板。",
+  作物图鉴: "图鉴记载：萝卜、草莓和玉米每天浇水，睡觉后就会成长。",
+  故事书架: "书架里收藏着青禾谷的传说、居民故事和山林探险笔记。",
+  阅读桌: "桌上有柔和的台灯和书签，可以安静地翻阅一本书。",
+};
+
+const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+
 const makeTiles = (): FarmTile[] =>
   Array.from({ length: 32 }, () => ({ state: "grass", stage: 0, watered: false }));
 
 const makeNewGame = (): GameState => ({
   day: 1,
-  hour: 6,
+  hour: 7,
   coins: 280,
   energy: 100,
   seeds: 8,
@@ -94,7 +125,9 @@ const makeNewGame = (): GameState => ({
   wood: 0,
   treeStates: [true, true, true, true],
   crafted: { chest: 0, fence: 0, scarecrow: 0 },
-  daily: { day: 1, planted: 0, watered: 0, harvested: 0, fish: 0, chopped: 0, sold: 0 },
+  daily: { day: 1, planted: 0, watered: 0, harvested: 0, fish: 0, chopped: 0, sold: 0, rewardClaimed: false },
+  sick: false,
+  lastIllnessDay: 0,
 });
 
 function PixelIcon({ type }: { type: Tool }) {
@@ -114,6 +147,7 @@ export default function FarmGame() {
   const [chestOpen, setChestOpen] = useState(false);
   const [stoveLit, setStoveLit] = useState(false);
   const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
+  const [inspectedItem, setInspectedItem] = useState<string | null>(null);
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
   const [soundOn, setSoundOn] = useState(true);
   const [ready, setReady] = useState(false);
@@ -139,7 +173,9 @@ export default function FarmGame() {
             wood: parsed.wood ?? 0,
             treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
             crafted: { ...defaults.crafted, ...(parsed.crafted ?? {}) },
-            daily: parsed.daily?.day === parsed.day ? parsed.daily : { ...defaults.daily, day: parsed.day ?? 1 },
+            daily: parsed.daily?.day === parsed.day ? { ...defaults.daily, ...parsed.daily } : { ...defaults.daily, day: parsed.day ?? 1 },
+            sick: parsed.sick ?? false,
+            lastIllnessDay: parsed.lastIllnessDay ?? 0,
           });
         }
       } catch {
@@ -154,11 +190,15 @@ export default function FarmGame() {
   }, [game, ready]);
 
   useEffect(() => {
+    if (!ready || game.energy > 0 || game.sick) return;
+    setGame((current) => ({ ...current, sick: true, lastIllnessDay: current.day }));
+    setMessage("体力耗尽让小禾病倒了。去青禾诊所找白医生开药吧。");
+  }, [game.energy, game.sick, ready]);
+
+  useEffect(() => {
     if (!ready) return;
     const clock = window.setInterval(() => {
-      setGame((current) => current.hour >= 23.5
-        ? { ...current, day: current.day === 28 ? 1 : current.day + 1, hour: 0, daily: { ...makeNewGame().daily, day: current.day === 28 ? 1 : current.day + 1 } }
-        : { ...current, hour: current.hour + 1 });
+      setGame((current) => current.hour >= 23 ? current : { ...current, hour: current.hour + 1 });
     }, 60_000);
     return () => window.clearInterval(clock);
   }, [ready]);
@@ -647,12 +687,14 @@ export default function FarmGame() {
     if (!activeBuilding) return;
     const building = BUILDING_INFO[activeBuilding];
     setActiveBuilding(null);
+    setInspectedItem(null);
     setPlayer(building.exit);
     setMessage(`离开${building.name}。沿着左边道路可以回农场。`);
   };
 
   const returnToFarm = () => {
     setActiveBuilding(null);
+    setInspectedItem(null);
     setCraftingOpen(false);
     setChestOpen(false);
     setScene("farm");
@@ -662,8 +704,18 @@ export default function FarmGame() {
 
   const useBuildingService = (building: Exclude<BuildingId, "supermarket" | "farmhouse">) => {
     if (building === "clinic") {
-      setGame((current) => ({ ...current, energy: 100 }));
-      setMessage("白医生帮你恢复了全部体力。今天也要量力而行！");
+      if (!game.sick) {
+        setMessage("白医生检查后说：身体很健康，不需要买药。记得不要把体力用光。");
+        playTone(680);
+        return;
+      }
+      if (game.coins < 50) {
+        setMessage("处方药需要 50 金币。先卖些作物或鱼获再来吧。");
+        playTone(220);
+        return;
+      }
+      setGame((current) => ({ ...current, coins: current.coins - 50, sick: false, energy: Math.max(80, current.energy) }));
+      setMessage("白医生开了处方药。支付 50 金币后服下药，小禾恢复健康了！");
       playTone(680);
     } else if (building === "cafe") {
       if (game.coins < 35) {
@@ -686,17 +738,40 @@ export default function FarmGame() {
     }
   };
 
+  const inspectBuildingItem = (item: string) => {
+    setInspectedItem(item);
+    if (item === "药品柜") {
+      setMessage(game.sick ? "药品柜里有白医生配好的处方药，需要支付 50 金币才能取药。" : "药品柜里都是处方药。身体健康时不能随便拿药。所有柜门都贴着清楚的标签。");
+    } else {
+      setMessage(`打开查看“${item}”：${ITEM_DESCRIPTIONS[item]}`);
+    }
+    playTone(560);
+  };
+
   const nextDay = () => {
+    const nextDayNumber = game.day === 28 ? 1 : game.day + 1;
+    const daysSinceIllness = game.lastIllnessDay === 0
+      ? nextDayNumber
+      : (nextDayNumber - game.lastIllnessDay + 28) % 28;
+    const becameSick = !game.sick && (game.energy <= 0 || (daysSinceIllness >= 6 && nextDayNumber % 6 === 0));
+    const remainsSick = game.sick || becameSick;
+    const morningMessage = becameSick
+      ? "早上七点醒来，小禾有些不舒服。今天去青禾诊所找白医生看看吧。"
+      : remainsSick
+        ? "早上七点了，但小禾还没有痊愈。去诊所购买处方药就能恢复健康。"
+        : "早上七点了！浇过水的作物长大了，也有一棵树重新长出。";
     setGame((current) => {
       const treeStates = [...current.treeStates];
       const emptySpot = treeStates.indexOf(false);
       if (emptySpot >= 0) treeStates[emptySpot] = true;
       return {
         ...current,
-        day: current.day === 28 ? 1 : current.day + 1,
-        hour: 6,
-        daily: { ...makeNewGame().daily, day: current.day === 28 ? 1 : current.day + 1 },
-        energy: 100,
+        day: nextDayNumber,
+        hour: 7,
+        daily: { ...makeNewGame().daily, day: nextDayNumber },
+        energy: remainsSick ? 65 : 100,
+        sick: remainsSick,
+        lastIllnessDay: becameSick ? nextDayNumber : current.lastIllnessDay,
         water: 12,
         treeStates,
         tiles: current.tiles.map((tile) =>
@@ -706,7 +781,7 @@ export default function FarmGame() {
         ),
       };
     });
-    setMessage("新的一天！浇过水的作物长大了，也有一棵树重新长出。");
+    setMessage(morningMessage);
     playTone(540);
   };
 
@@ -714,7 +789,6 @@ export default function FarmGame() {
     nextDay();
     setActiveBuilding(null);
     setPlayer(BUILDING_INFO.farmhouse.exit);
-    setMessage("在温暖的农舍睡了一觉。早安，新的一天开始啦！");
   };
 
   const resetGame = () => {
@@ -771,6 +845,16 @@ export default function FarmGame() {
   );
 
   const completed = tasks.filter((task) => task.done).length;
+
+  useEffect(() => {
+    if (!ready || completed < 3 || game.daily.rewardClaimed) return;
+    setGame((current) => current.daily.rewardClaimed
+      ? current
+      : { ...current, coins: current.coins + 100, daily: { ...current.daily, rewardClaimed: true } });
+    setMessage("今日三个小目标全部完成！奖励 100 金币已经放进钱包。");
+    playTone(880);
+  }, [completed, game.daily.rewardClaimed, ready]);
+
   const twilightLevel = game.hour >= 16
     ? Math.min(1, (game.hour - 16) / 4)
     : game.hour < 5
@@ -791,7 +875,7 @@ export default function FarmGame() {
         </div>
         <div className="day-card">
           <span className="season-dot">春</span>
-          <div><strong>第 {game.day} 天 · 周一</strong><span>{String(clockHour).padStart(2, "0")}:{String(clockMinute).padStart(2, "0")}</span></div>
+          <div><strong>第 {game.day} 天 · {WEEKDAYS[(game.day - 1) % 7]}</strong><span>{String(clockHour).padStart(2, "0")}:{String(clockMinute).padStart(2, "0")}</span></div>
         </div>
         <div className="top-stats">
           <div className={`weather ${isNight ? "night-weather" : ""}`}><span className={isNight ? "moon-icon" : "sun-icon"} />{isNight ? "月夜" : "晴朗"} <small>{isNight ? "12°C" : "18°C"}</small></div>
@@ -805,8 +889,8 @@ export default function FarmGame() {
       <section className="game-layout">
         <aside className="side-panel">
           <div className="portrait-card">
-            <div className="portrait"><img src="/xiaohe-sprite.png" alt="小禾" draggable={false} /></div>
-            <div><span>新手农夫</span><strong>小禾</strong></div>
+            <div className="portrait"><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="小禾" draggable={false} /></div>
+            <div><span>新手农夫</span><strong>小禾</strong><small className={game.sick ? "health-status sick" : "health-status"}>{game.sick ? "生病了 · 去诊所" : "身体健康"}</small></div>
           </div>
           <div className="meter-block">
             <div className="meter-label"><span>体力</span><b>{game.energy}/100</b></div>
@@ -823,7 +907,7 @@ export default function FarmGame() {
             </div>
           </div>
           <div className="task-card">
-            <div className="section-title"><span>今日小目标</span><b>{completed}/3</b></div>
+            <div className="section-title"><span>今日小目标</span><b>{game.daily.rewardClaimed ? "已奖 100" : `${completed}/3`}</b></div>
             <div className="task-list">
               {tasks.map((task) => (
                 <div className={task.done ? "task done" : "task"} key={task.label}>
@@ -900,7 +984,7 @@ export default function FarmGame() {
             )}
 
             <div className="player" style={{ left: `${4 + player.x * 7.7}%`, top: `${8 + player.y * 10.5}%` }} aria-label="玩家角色">
-              <span className="player-shadow" /><img src="/xiaohe-sprite.png" alt="" draggable={false} />
+              <span className="player-shadow" /><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} />
             </div>
 
             <div className="speech-bubble"><span>{scene === "farm" ? "☀" : "◆"}</span>{message}</div>
@@ -948,7 +1032,7 @@ export default function FarmGame() {
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
-                    <div className="player indoor-player" style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里"><span className="player-shadow" /><img src="/xiaohe-sprite.png" alt="" draggable={false} /></div>
+                    <div className="player indoor-player" style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里"><span className="player-shadow" /><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>
                   </div>
                   <div className="service-dialogue"><strong>回到家啦</strong><p>床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。</p></div>
                   <div className="service-actions">
@@ -994,10 +1078,16 @@ export default function FarmGame() {
                     <div className="npc-character"><span className="npc-hair" /><span className="npc-face" /><span className="npc-body" /></div>
                     <div className="interior-counter" />
                     <div className="interior-sign">{activeBuilding === "townhall" ? "公告" : activeBuilding === "clinic" ? "健康" : activeBuilding === "cafe" ? "今日菜单" : activeBuilding === "workshop" ? "制作台" : "农事图鉴"}</div>
+                    <div className={`room-specials special-${activeBuilding}`}>
+                      {BUILDING_ITEMS[activeBuilding].map((item) => <button type="button" key={item} onClick={() => inspectBuildingItem(item)}>{item}</button>)}
+                    </div>
                   </div>
                   <div className="service-dialogue"><strong>{BUILDING_INFO[activeBuilding].owner}</strong><p>{BUILDING_INFO[activeBuilding].greeting}</p></div>
+                  {inspectedItem && (
+                    <div className="inspection-card"><div><strong>{inspectedItem}</strong><p>{inspectedItem === "药品柜" ? (game.sick ? "里面放着白医生刚配好的处方药，价格 50 金币。" : "柜子里是分类整齐的处方药，身体健康时不能随意服用。") : ITEM_DESCRIPTIONS[inspectedItem]}</p></div><button onClick={() => setInspectedItem(null)}>收起</button></div>
+                  )}
                   <div className="service-actions">
-                    <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? "接受健康检查" : activeBuilding === "cafe" ? "购买咖啡套餐 · 35 金币" : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "询问扩建计划" : "翻阅农事图鉴"}</button>
+                    <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? (game.sick ? "购买处方药 · 50 金币" : "接受免费健康检查") : activeBuilding === "cafe" ? "购买咖啡套餐 · 35 金币" : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "询问扩建计划" : "翻阅农事图鉴"}</button>
                     <button className="exit-action" onClick={leaveBuilding}>从门口出去</button>
                   </div>
                   <footer><span>{message}</span><small>按 Esc 也可以离开</small></footer>
