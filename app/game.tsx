@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 type Tool = "hoe" | "seed" | "water" | "hand";
 type TileState = "grass" | "soil" | "crop";
 type Scene = "farm" | "town";
+type BuildingId = "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library";
 
 type FarmTile = {
   state: TileState;
@@ -32,6 +33,15 @@ const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
   hand: { icon: "✦", name: "收获", key: "4" },
 };
 
+const BUILDING_INFO: Record<BuildingId, { name: string; owner: string; greeting: string; exit: { x: number; y: number } }> = {
+  supermarket: { name: "青禾超市", owner: "林婶", greeting: "种子、食品和日用品都在这里。", exit: { x: 3, y: 4 } },
+  townhall: { name: "镇公所", owner: "周镇长", greeting: "镇上的公告、活动和居民委托都记在这里。", exit: { x: 6, y: 4 } },
+  clinic: { name: "青禾诊所", owner: "白医生", greeting: "别让自己太累，健康也是农场生活的一部分。", exit: { x: 9, y: 4 } },
+  cafe: { name: "麦香咖啡", owner: "阿麦", greeting: "刚出炉的面包和热咖啡最能恢复精神。", exit: { x: 10, y: 5 } },
+  workshop: { name: "木匠工坊", owner: "鲁师傅", greeting: "等你攒够材料，我可以帮你扩建农舍。", exit: { x: 3, y: 5 } },
+  library: { name: "山谷图书馆", owner: "叶老师", greeting: "这里收藏着作物、矿石和青禾谷的故事。", exit: { x: 8, y: 5 } },
+};
+
 const makeTiles = (): FarmTile[] =>
   Array.from({ length: 32 }, () => ({ state: "grass", stage: 0, watered: false }));
 
@@ -57,7 +67,7 @@ export default function FarmGame() {
   const [selected, setSelected] = useState<Tool>("hoe");
   const [player, setPlayer] = useState({ x: 6, y: 5 });
   const [scene, setScene] = useState<Scene>("farm");
-  const [shopOpen, setShopOpen] = useState(false);
+  const [activeBuilding, setActiveBuilding] = useState<BuildingId | null>(null);
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
   const [soundOn, setSoundOn] = useState(true);
   const [ready, setReady] = useState(false);
@@ -80,7 +90,7 @@ export default function FarmGame() {
   }, [game, ready]);
 
   const move = useCallback((dx: number, dy: number) => {
-    if (shopOpen) return;
+    if (activeBuilding) return;
 
     if (scene === "farm" && dx > 0 && player.x === 11) {
       setScene("town");
@@ -102,19 +112,30 @@ export default function FarmGame() {
     };
     setPlayer(next);
 
-    if (scene === "town" && next.x >= 2 && next.x <= 4 && next.y <= 3) {
-      setShopOpen(true);
-      setMessage("欢迎光临青禾超市！");
+    if (scene === "town") {
+      let entrance: BuildingId | null = null;
+      if (next.x >= 2 && next.x <= 4 && next.y <= 3) entrance = "supermarket";
+      else if (next.x >= 5 && next.x <= 7 && next.y <= 3) entrance = "townhall";
+      else if (next.x >= 9 && next.y <= 3) entrance = "clinic";
+      else if (next.x >= 2 && next.x <= 4 && next.y >= 6) entrance = "workshop";
+      else if (next.x >= 7 && next.x <= 9 && next.y >= 6) entrance = "library";
+      else if (next.x >= 10 && next.y >= 6) entrance = "cafe";
+
+      if (entrance) {
+        setActiveBuilding(entrance);
+        setMessage(`进入${BUILDING_INFO[entrance].name}。`);
+      }
     }
-  }, [player, scene, shopOpen]);
+  }, [activeBuilding, player, scene]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
-      if (key === "escape" && shopOpen) {
-        setShopOpen(false);
-        setPlayer({ x: 3, y: 4 });
-        setMessage("欢迎下次再来！");
+      if (key === "escape" && activeBuilding) {
+        const building = BUILDING_INFO[activeBuilding];
+        setActiveBuilding(null);
+        setPlayer(building.exit);
+        setMessage(`离开${building.name}，回到中心街。`);
         return;
       }
       if (["arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
@@ -131,7 +152,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [move, shopOpen]);
+  }, [activeBuilding, move]);
 
   const playTone = (frequency = 420) => {
     if (!soundOn) return;
@@ -259,10 +280,45 @@ export default function FarmGame() {
     playTone(details.tone);
   };
 
-  const leaveShop = () => {
-    setShopOpen(false);
-    setPlayer({ x: 3, y: 4 });
-    setMessage("欢迎下次再来！沿着左边道路可以回农场。");
+  const leaveBuilding = () => {
+    if (!activeBuilding) return;
+    const building = BUILDING_INFO[activeBuilding];
+    setActiveBuilding(null);
+    setPlayer(building.exit);
+    setMessage(`离开${building.name}。沿着左边道路可以回农场。`);
+  };
+
+  const returnToFarm = () => {
+    setActiveBuilding(null);
+    setScene("farm");
+    setPlayer({ x: 10, y: 5 });
+    setMessage("已经安全回到农场，原来的进度都还在。");
+  };
+
+  const useBuildingService = (building: Exclude<BuildingId, "supermarket">) => {
+    if (building === "clinic") {
+      setGame((current) => ({ ...current, energy: 100 }));
+      setMessage("白医生帮你恢复了全部体力。今天也要量力而行！");
+      playTone(680);
+    } else if (building === "cafe") {
+      if (game.coins < 35) {
+        setMessage("一份咖啡套餐需要 35 金币。");
+        playTone(220);
+        return;
+      }
+      setGame((current) => ({ ...current, coins: current.coins - 35, energy: Math.min(100, current.energy + 25) }));
+      setMessage("享用麦香咖啡套餐，恢复 25 点体力！");
+      playTone(720);
+    } else if (building === "townhall") {
+      setMessage("公告栏：本周六将在中心广场举办春日集市。");
+      playTone(520);
+    } else if (building === "workshop") {
+      setMessage("鲁师傅：以后带来木材和石头，就能扩建农舍与仓库。");
+      playTone(440);
+    } else {
+      setMessage("农事图鉴：萝卜连续浇水三天即可成熟，晴天也不能偷懒哦。");
+      playTone(600);
+    }
   };
 
   const nextDay = () => {
@@ -289,7 +345,7 @@ export default function FarmGame() {
     setSelected("hoe");
     setPlayer({ x: 6, y: 5 });
     setScene("farm");
-    setShopOpen(false);
+    setActiveBuilding(null);
     setMessage("新的农场生活开始了！");
     localStorage.setItem("qinghe-farm-save", JSON.stringify(fresh));
   };
@@ -319,6 +375,7 @@ export default function FarmGame() {
         <div className="top-stats">
           <div className="weather"><span className="sun-icon" />晴朗 <small>18°C</small></div>
           <div className="coins"><span>●</span>{game.coins.toLocaleString()}</div>
+          <button className="round-button home-button" onClick={returnToFarm} aria-label="回到农场" title="回到农场">⌂</button>
           <button className="round-button" onClick={() => setSoundOn((value) => !value)} aria-label={soundOn ? "关闭音效" : "打开音效"}>{soundOn ? "♪" : "×"}</button>
           <button className="round-button" onClick={resetGame} aria-label="重新开始">↻</button>
         </div>
@@ -385,19 +442,19 @@ export default function FarmGame() {
                 <div className="town-square"><span>✦</span><i /><i /><i /></div>
                 <div className="street-lamp lamp-one" /><div className="street-lamp lamp-two" /><div className="street-lamp lamp-three" />
 
-                <button className="town-building supermarket" onClick={() => setShopOpen(true)} aria-label="进入青禾超市">
+                <button className="town-building supermarket" onClick={() => setActiveBuilding("supermarket")} aria-label="进入青禾超市">
                   <span className="building-roof" /><span className="building-body" /><span className="shop-awning" /><span className="building-door" /><span className="building-windows" /><strong>青禾超市</strong><small>种子 · 食品 · 日用品</small>
                 </button>
-                <div className="town-building townhall"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>镇公所</strong></div>
-                <div className="town-building clinic"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>青禾诊所</strong><b>＋</b></div>
-                <div className="town-building cafe"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>麦香咖啡</strong></div>
-                <div className="town-building workshop"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>木匠工坊</strong></div>
-                <div className="town-building library"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>山谷图书馆</strong></div>
+                <button className="town-building townhall" onClick={() => setActiveBuilding("townhall")} aria-label="进入镇公所"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>镇公所</strong></button>
+                <button className="town-building clinic" onClick={() => setActiveBuilding("clinic")} aria-label="进入青禾诊所"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>青禾诊所</strong><b>＋</b></button>
+                <button className="town-building cafe" onClick={() => setActiveBuilding("cafe")} aria-label="进入麦香咖啡"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>麦香咖啡</strong></button>
+                <button className="town-building workshop" onClick={() => setActiveBuilding("workshop")} aria-label="进入木匠工坊"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>木匠工坊</strong></button>
+                <button className="town-building library" onClick={() => setActiveBuilding("library")} aria-label="进入山谷图书馆"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>山谷图书馆</strong></button>
 
                 <button className="edge-gate town-exit" onClick={() => { setScene("farm"); setPlayer({ x: 11, y: 5 }); setMessage("回到农场啦。"); }} aria-label="返回农场">
                   <b>←</b><span>青禾农场</span><small>继续向左走</small>
                 </button>
-                <div className="door-prompt"><span>↑</span>走到超市门口即可进入</div>
+                <div className="door-prompt"><span>↑</span>走到任意建筑门口即可进入</div>
               </>
             )}
 
@@ -408,17 +465,42 @@ export default function FarmGame() {
             <div className="speech-bubble"><span>{scene === "farm" ? "☀" : "◆"}</span>{message}</div>
             <div className="movement-help"><span>WASD / 方向键</span>移动</div>
 
-            {shopOpen && (
+            {activeBuilding === "supermarket" && (
               <div className="shop-overlay" role="presentation">
                 <section className="shop-panel" role="dialog" aria-modal="true" aria-labelledby="shop-title">
-                  <header><div><span>青禾镇杂货</span><h2 id="shop-title">青禾超市</h2></div><div className="shop-wallet"><small>你的金币</small><strong>● {game.coins}</strong></div><button onClick={leaveShop} aria-label="离开商店">×</button></header>
+                  <header><div><span>青禾镇杂货</span><h2 id="shop-title">青禾超市</h2></div><div className="shop-wallet"><small>你的金币</small><strong>● {game.coins}</strong></div><button onClick={leaveBuilding} aria-label="离开商店">×</button></header>
                   <div className="shopkeeper"><div className="shopkeeper-face"><i /><b /></div><p><strong>林婶</strong>欢迎呀，小禾！今天想带点什么回农场？</p></div>
                   <div className="product-grid">
                     <article className="product-card"><span className="product-icon seed-bag">种</span><div><strong>萝卜种子包</strong><small>内含 5 颗春季种子</small></div><button onClick={() => buyItem("seeds")}><span>●</span>60</button></article>
                     <article className="product-card"><span className="product-icon water-drop">水</span><div><strong>水壶补给</strong><small>立刻补满 12 格水</small></div><button onClick={() => buyItem("water")}><span>●</span>25</button></article>
                     <article className="product-card"><span className="product-icon berry-bread">食</span><div><strong>莓果面包</strong><small>恢复 25 点体力</small></div><button onClick={() => buyItem("snack")}><span>●</span>45</button></article>
                   </div>
-                  <footer><span>{message}　按 Esc 也可以离开</span><button onClick={leaveShop}>从门口出去</button></footer>
+                  <footer><span>{message}　按 Esc 也可以离开</span><button onClick={leaveBuilding}>从门口出去</button></footer>
+                </section>
+              </div>
+            )}
+
+            {activeBuilding && activeBuilding !== "supermarket" && (
+              <div className={`shop-overlay interior-${activeBuilding}`} role="presentation">
+                <section className="service-panel" role="dialog" aria-modal="true" aria-labelledby="building-title">
+                  <header>
+                    <div><span>青禾镇室内</span><h2 id="building-title">{BUILDING_INFO[activeBuilding].name}</h2></div>
+                    <button onClick={leaveBuilding} aria-label={`离开${BUILDING_INFO[activeBuilding].name}`}>×</button>
+                  </header>
+                  <div className="interior-room">
+                    <div className="room-window"><i /><i /></div>
+                    <div className="room-rug" />
+                    <div className="room-furniture"><i /><i /><i /></div>
+                    <div className="npc-character"><span className="npc-hair" /><span className="npc-face" /><span className="npc-body" /></div>
+                    <div className="interior-counter" />
+                    <div className="interior-sign">{activeBuilding === "townhall" ? "公告" : activeBuilding === "clinic" ? "健康" : activeBuilding === "cafe" ? "今日菜单" : activeBuilding === "workshop" ? "制作台" : "农事图鉴"}</div>
+                  </div>
+                  <div className="service-dialogue"><strong>{BUILDING_INFO[activeBuilding].owner}</strong><p>{BUILDING_INFO[activeBuilding].greeting}</p></div>
+                  <div className="service-actions">
+                    <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? "接受健康检查" : activeBuilding === "cafe" ? "购买咖啡套餐 · 35 金币" : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "询问扩建计划" : "翻阅农事图鉴"}</button>
+                    <button className="exit-action" onClick={leaveBuilding}>从门口出去</button>
+                  </div>
+                  <footer><span>{message}</span><small>按 Esc 也可以离开</small></footer>
                 </section>
               </div>
             )}
