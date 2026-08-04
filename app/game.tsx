@@ -10,6 +10,7 @@ type BuildingId = "farmhouse" | "supermarket" | "townhall" | "clinic" | "cafe" |
 type CropType = "radish" | "strawberry" | "corn";
 type StorableResource = CropType | "fish";
 type VillageId = "qinghe" | "maple";
+type FestivalId = "fishing" | "spring" | "coffee" | "craft";
 
 type OnlinePlayer = {
   deviceId: string;
@@ -113,7 +114,7 @@ const BUILDING_ITEMS: Record<BuildingId, string[]> = {
 const ITEM_DESCRIPTIONS: Record<string, string> = {
   居民委托板: "上面贴着浇水、钓鱼和收集木材的居民委托，每天都会换新纸条。",
   小镇地图: "地图标出了农场、超市、诊所、咖啡馆、工坊和图书馆的位置。",
-  节日公告: "春日集市将在中心广场举行，居民会带来食物与手工作品。",
+  节日公告: "本季有钓鱼节、春日集市、咖啡日和山谷手作日，日期与地点都写在公告栏上。",
   诊疗床: "铺着干净白床单的诊疗床，体力耗尽时白医生会让小禾先躺下休息。",
   健康档案: "记录着小禾的体力与最近生病日期，白医生提醒她不要过度劳累。",
   面包展示柜: "玻璃柜里有莓果面包、蜂蜜吐司和刚烤好的玉米小饼。",
@@ -133,6 +134,13 @@ const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description:
   qinghe: { name: "青禾村", farm: "青禾农场", description: "绿野、溪流与温暖的木屋" },
   maple: { name: "枫叶村", farm: "枫叶农场", description: "红枫、山路与安静的坡地" },
 };
+
+const FESTIVAL_SCHEDULE: { day: number; id: FestivalId; name: string; place: string; description: string }[] = [
+  { day: 6, id: "fishing", name: "钓鱼节", place: "农场钓鱼池", description: "带上鱼竿参加山谷钓鱼比赛" },
+  { day: 13, id: "spring", name: "春日集市", place: "中心广场", description: "果酱、木工作品和山谷音乐" },
+  { day: 20, id: "coffee", name: "咖啡日", place: "麦香咖啡", description: "品尝咖啡和刚出炉的点心" },
+  { day: 27, id: "craft", name: "山谷手作日", place: "木匠工坊", description: "居民一起展示亲手制作的作品" },
+];
 
 const makeTiles = (count = 32): FarmTile[] =>
   Array.from({ length: count }, () => ({ state: "grass", stage: 0, watered: false }));
@@ -559,14 +567,15 @@ export default function FarmGame() {
         { name: "小泥鳅", coins: 24 },
       ];
       const caught = catches[Math.floor(Math.random() * catches.length)];
-      const amount = baitUsed ? 2 : 1;
+      const fishingFestivalBonus = currentFestival?.id === "fishing" ? 2 : 0;
+      const amount = (baitUsed ? 2 : 1) + fishingFestivalBonus;
       setGame((current) => ({
         ...current,
         fishCaught: current.fishCaught + amount,
         inventory: { ...current.inventory, fish: current.inventory.fish + amount },
         daily: { ...current.daily, fish: current.daily.fish + amount },
       }));
-      setMessage(`钓到${caught.name}！鱼获 +${amount}${baitUsed ? "，鱼饵让收获翻倍" : ""}，已经放进背包。`);
+      setMessage(`钓到${caught.name}！鱼获 +${amount}${fishingFestivalBonus ? "，钓鱼节额外奖励 2 条" : baitUsed ? "，鱼饵让收获翻倍" : ""}，已经放进背包。`);
       setIsFishing(false);
       playTone(780);
     }, 1100);
@@ -1024,6 +1033,12 @@ export default function FarmGame() {
       setMessage("白医生开了处方药。支付 50 金币后服下药，小禾恢复健康了！");
       playTone(680);
     } else if (building === "cafe") {
+      if (game.day === 20) {
+        setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 35) }));
+        setMessage("咖啡日特别招待！免费品尝山谷咖啡和点心，恢复 35 点体力。 ");
+        playTone(780);
+        return;
+      }
       if (game.coins < 35) {
         setMessage("一份咖啡套餐需要 35 金币。");
         playTone(220);
@@ -1033,10 +1048,10 @@ export default function FarmGame() {
       setMessage("享用麦香咖啡套餐，恢复 25 点体力！");
       playTone(720);
     } else if (building === "townhall") {
-      setMessage("公告栏：本周六将在中心广场举办春日集市。");
+      setMessage("本季公告：第 6 天钓鱼节在农场鱼塘；第 13 天春日集市在中心广场；第 20 天咖啡日在麦香咖啡；第 27 天山谷手作日在木匠工坊。活动都在周六。 ");
       playTone(520);
     } else if (building === "workshop") {
-      setMessage("鲁师傅：以后带来木材和石头，就能扩建农舍与仓库。");
+      setMessage(game.day === 27 ? "山谷手作日正在举行！鲁师傅展示了鸟屋、小木马和山谷木雕。" : "鲁师傅：以后带来木材和石头，就能扩建农舍与仓库。");
       playTone(440);
     } else {
       setMessage("农事图鉴：萝卜连续浇水三天即可成熟，晴天也不能偷懒哦。");
@@ -1313,10 +1328,25 @@ export default function FarmGame() {
   const activeVillage = embeddedMode ? embeddedVillage : (multiplayerSession?.village ?? "qinghe");
   const activeVillageInfo = VILLAGE_INFO[activeVillage];
   const partner = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId);
-  const isSaturday = (game.day - 1) % 7 === 5;
-  const daysUntilSaturday = (5 - ((game.day - 1) % 7) + 7) % 7;
+  const currentFestival = FESTIVAL_SCHEDULE.find((festival) => festival.day === game.day) ?? null;
+  const nextFestival = FESTIVAL_SCHEDULE.find((festival) => festival.day >= game.day) ?? FESTIVAL_SCHEDULE[0];
+  const daysUntilFestival = nextFestival.day >= game.day ? nextFestival.day - game.day : 28 - game.day + nextFestival.day;
   const displayName = multiplayerSession?.playerName ?? "小禾";
   const sceneLabel = scene === "farm" ? activeVillageInfo.farm : scene === "town" ? `${activeVillageInfo.name} · 中心街` : scene === "eastNeighbor" ? "东郊 · 林婶的果园小屋" : scene === "southNeighbor" ? "南坡 · 鲁师傅的院子" : "北林 · 叶老师的书屋";
+
+  const goToFestival = () => {
+    const festival = currentFestival ?? nextFestival;
+    setActiveBuilding(null);
+    if (festival.id === "fishing") {
+      setScene("farm"); setPlayer({ x: 1, y: 3 }); setMessage("来到钓鱼节会场！选择鱼竿并点击钓鱼池参加比赛。 ");
+    } else if (festival.id === "spring") {
+      setScene("town"); setPlayer({ x: 5, y: 5 }); setMessage("春日集市开场啦！点击广场上的摊位参加活动。 ");
+    } else if (festival.id === "coffee") {
+      setScene("town"); setPlayer({ x: 10, y: 6 }); setActiveBuilding("cafe"); setMessage("咖啡日开始啦！阿麦准备了咖啡和新鲜点心。 ");
+    } else {
+      setScene("town"); setPlayer({ x: 3, y: 6 }); setActiveBuilding("workshop"); setMessage("山谷手作日开始啦！居民们正在展示亲手制作的作品。 ");
+    }
+  };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
     if (activeBuilding || neighborInterior || craftingOpen || chestOpen || multiplayerOpen || builderOpen || festivalDisplay) return;
@@ -1377,7 +1407,7 @@ export default function FarmGame() {
             <div><span>新手农夫</span><strong>{displayName}</strong><small className={game.sick ? "health-status sick" : "health-status"}>{game.sick ? "生病了 · 去诊所" : "身体健康"}</small></div>
           </div>
           {multiplayerSession && <div className="multiplayer-status-card"><div><span>双人村庄</span><button onClick={() => setMultiplayerOpen(true)}>查看</button></div><strong>{activeVillageInfo.name} · {multiplayerSession.roomCode}</strong><small>{partner ? `${partner.online ? "● 在线" : "○ 离线"} ${partner.playerName}住在${VILLAGE_INFO[partner.village].name}` : "等待另一位玩家加入"}</small></div>}
-          <button className={`festival-card ${isSaturday ? "festival-open" : ""}`} onClick={() => { if (isSaturday) { setActiveBuilding(null); setScene("town"); setPlayer({ x: 5, y: 5 }); setMessage("春日集市开场啦！点击广场上的摊位参加活动。"); } else { setMessage(`春日集市将在 ${daysUntilSaturday} 天后的周六举行。`); } }}><span>{isSaturday ? "今日活动" : "活动预告"}</span><strong>春日集市</strong><small>{isSaturday ? "正在中心广场举行 · 点击前往" : `还有 ${daysUntilSaturday} 天 · 周六开场`}</small></button>
+          <button className={`festival-card ${currentFestival ? "festival-open" : ""}`} onClick={() => { if (currentFestival) goToFestival(); else setMessage(`下一场是${nextFestival.name}，第 ${nextFestival.day} 天周六在${nextFestival.place}举行，还有 ${daysUntilFestival} 天。`); }}><span>{currentFestival ? "今日活动" : "下一场活动"}</span><strong>{(currentFestival ?? nextFestival).name}</strong><small>{currentFestival ? `正在${currentFestival.place}举行 · 点击前往` : `第 ${nextFestival.day} 天周六 · 还有 ${daysUntilFestival} 天`}</small></button>
           <div className="meter-block">
             <div className="meter-label"><span>体力</span><b>{game.energy}/100</b></div>
             <div className="meter"><i style={{ width: `${game.energy}%` }} /></div>
@@ -1419,8 +1449,8 @@ export default function FarmGame() {
             {scene === "farm" ? (
               <>
                 <div className="path path-one" /><div className="path path-two" />
-                <button className={`pond ${isFishing ? "fishing" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
-                  <i /><i /><i /><b className="fishing-float" /><span className="pond-label">钓鱼池</span>
+                <button className={`pond ${isFishing ? "fishing" : ""} ${currentFestival?.id === "fishing" ? "fishing-festival-pond" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
+                  <i /><i /><i /><b className="fishing-float" /><span className="pond-label">{currentFestival?.id === "fishing" ? "钓鱼节会场 · 鱼获 +2" : "钓鱼池"}</span>
                 </button>
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" /><span className="sign">{displayName}的农舍{game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
                 {game.rockStates.map((standing, index) => <button key={`rock-${index}`} className={`farm-rock rock-${index + 1} ${standing ? "" : "broken"}`} onClick={() => breakRock(index)} aria-label={standing ? `敲碎第 ${index + 1} 块石头` : `第 ${index + 1} 处碎石`} />)}
@@ -1453,7 +1483,7 @@ export default function FarmGame() {
               <>
                 <div className="town-road road-horizontal" /><div className="town-road road-vertical" />
                 <div className="town-square"><span>✦</span><i /><i /><i /></div>
-                {isSaturday && <><div className="saturday-market" aria-label="周六春日集市"><strong>春日集市</strong><button onClick={tasteFestivalJam}>草莓果酱<small>恢复 25 体力</small></button><button onClick={() => { setFestivalDisplay("wood"); setMessage("鲁师傅把精雕细刻的木工作品摆到了展示台上。 "); }}>木工作品<small>点击看展品</small></button><button className={festivalMusicPlaying ? "music-playing" : ""} onClick={playValleyMusic}>山谷音乐<small>{festivalMusicPlaying ? "正在演奏♪" : "点击播放"}</small></button></div><div className="festival-crowd" aria-label="参加春日集市的居民">{["林婶", "鲁师傅", "叶老师", "白医生", "阿麦", "周镇长"].map((name, index) => <button key={name} className={`crowd-person crowd-${index + 1}`} onClick={() => setMessage(`${name}：春日集市真热闹，大家都来到中心广场啦！`)}><i /><b /><span>{name}</span></button>)}</div></>}
+                {currentFestival?.id === "spring" && <><div className="saturday-market" aria-label="周六春日集市"><strong>春日集市</strong><button onClick={tasteFestivalJam}>草莓果酱<small>恢复 25 体力</small></button><button onClick={() => { setFestivalDisplay("wood"); setMessage("鲁师傅把精雕细刻的木工作品摆到了展示台上。 "); }}>木工作品<small>点击看展品</small></button><button className={festivalMusicPlaying ? "music-playing" : ""} onClick={playValleyMusic}>山谷音乐<small>{festivalMusicPlaying ? "正在演奏♪" : "点击播放"}</small></button></div><div className="festival-crowd" aria-label="参加春日集市的居民">{["林婶", "鲁师傅", "叶老师", "白医生", "阿麦", "周镇长"].map((name, index) => <button key={name} className={`crowd-person crowd-${index + 1}`} onClick={() => setMessage(`${name}：春日集市真热闹，大家都来到中心广场啦！`)}><i /><b /><span>{name}</span></button>)}</div></>}
                 <div className="street-lamp lamp-one" /><div className="street-lamp lamp-two" /><div className="street-lamp lamp-three" />
 
                 <button className="town-building supermarket" onClick={() => setActiveBuilding("supermarket")} aria-label="进入青禾超市">
