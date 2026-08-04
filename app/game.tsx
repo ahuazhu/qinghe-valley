@@ -159,7 +159,7 @@ export default function FarmGame() {
       setGame((current) => current.hour >= 23.5
         ? { ...current, day: current.day === 28 ? 1 : current.day + 1, hour: 0, daily: { ...makeNewGame().daily, day: current.day === 28 ? 1 : current.day + 1 } }
         : { ...current, hour: current.hour + 1 });
-    }, 30_000);
+    }, 60_000);
     return () => window.clearInterval(clock);
   }, [ready]);
 
@@ -289,7 +289,7 @@ export default function FarmGame() {
     setIsFishing(true);
     const baitUsed = game.bait > 0;
     setMessage("浮标落入水中……耐心等鱼儿上钩。");
-    setGame((current) => ({ ...current, bait: baitUsed ? current.bait - 1 : current.bait, energy: current.energy - 5, hour: Math.min(24, current.hour + 1) }));
+    setGame((current) => ({ ...current, bait: baitUsed ? current.bait - 1 : current.bait, energy: current.energy - 5 }));
     playTone(390);
 
     window.setTimeout(() => {
@@ -332,7 +332,6 @@ export default function FarmGame() {
     setGame((current) => ({
       ...current,
       energy: current.energy - 4,
-      hour: Math.min(24, current.hour + 1),
       wood: current.wood + 4,
       treeStates: current.treeStates.map((tree, treeIndex) => treeIndex === index ? false : tree),
       daily: { ...current.daily, chopped: current.daily.chopped + 1 },
