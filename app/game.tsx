@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Tool = "hoe" | "seed" | "water" | "hand" | "rod" | "axe";
 type TileState = "grass" | "soil" | "crop";
@@ -90,6 +90,8 @@ export default function FarmGame() {
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
   const [soundOn, setSoundOn] = useState(true);
   const [ready, setReady] = useState(false);
+  const eatTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("qinghe-farm-save");
@@ -119,6 +121,10 @@ export default function FarmGame() {
   useEffect(() => {
     if (ready) localStorage.setItem("qinghe-farm-save", JSON.stringify(game));
   }, [game, ready]);
+
+  useEffect(() => () => {
+    if (eatTimerRef.current) window.clearTimeout(eatTimerRef.current);
+  }, []);
 
   const move = useCallback((dx: number, dy: number) => {
     if (activeBuilding || craftingOpen || chestOpen) return;
@@ -347,6 +353,55 @@ export default function FarmGame() {
     setSelectedResource(resource);
     setMessage(`已拿起${details.name}，现在点击农场里的木箱放进去。`);
     playTone(560);
+  };
+
+  const eatResource = (resource: StorableResource) => {
+    const details = resource === "radish"
+      ? { name: "萝卜", energy: 8 }
+      : { name: "鱼", energy: 15 };
+    if (game.inventory[resource] <= 0) {
+      setMessage(`背包里没有${details.name}可以吃。`);
+      playTone(220);
+      return;
+    }
+    if (game.energy >= 100) {
+      setMessage("体力已经满满的，先把食物留着吧！");
+      playTone(520);
+      return;
+    }
+    setGame((current) => ({
+      ...current,
+      energy: Math.min(100, current.energy + details.energy),
+      inventory: { ...current.inventory, [resource]: current.inventory[resource] - 1 },
+    }));
+    setSelectedResource(null);
+    setMessage(`吃掉 1 个${details.name}，恢复 ${details.energy} 点体力！`);
+    playTone(740);
+  };
+
+  const startEating = (resource: StorableResource) => {
+    if (eatTimerRef.current) window.clearTimeout(eatTimerRef.current);
+    longPressTriggeredRef.current = false;
+    eatTimerRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      eatResource(resource);
+      eatTimerRef.current = null;
+    }, 600);
+  };
+
+  const stopEating = () => {
+    if (eatTimerRef.current) {
+      window.clearTimeout(eatTimerRef.current);
+      eatTimerRef.current = null;
+    }
+  };
+
+  const clickResource = (resource: StorableResource) => {
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
+    selectResource(resource);
   };
 
   const useChest = () => {
@@ -630,8 +685,8 @@ export default function FarmGame() {
           <div className="harvest-log">
             <div className="section-title"><span>资源记录</span><b>自动保存</b></div>
             <div className="harvest-items">
-              <button className={selectedResource === "radish" ? "resource-item selected" : "resource-item"} onClick={() => selectResource("radish")} aria-pressed={selectedResource === "radish"}><span className="harvest-icon radish-icon">萝</span><p>萝卜<strong>{game.inventory.radish}</strong></p></button>
-              <button className={selectedResource === "fish" ? "resource-item selected" : "resource-item"} onClick={() => selectResource("fish")} aria-pressed={selectedResource === "fish"}><span className="harvest-icon fish-icon">鱼</span><p>鱼获<strong>{game.inventory.fish}</strong></p></button>
+              <button className={selectedResource === "radish" ? "resource-item selected" : "resource-item"} onClick={() => clickResource("radish")} onPointerDown={() => startEating("radish")} onPointerUp={stopEating} onPointerCancel={stopEating} onPointerLeave={stopEating} onContextMenu={(event) => event.preventDefault()} aria-pressed={selectedResource === "radish"} aria-label={`萝卜 ${game.inventory.radish} 个，轻点拿起，长按食用`} title="轻点拿起，长按吃掉"><span className="harvest-icon radish-icon">萝</span><p>萝卜<strong>{game.inventory.radish}</strong><small>长按吃</small></p></button>
+              <button className={selectedResource === "fish" ? "resource-item selected" : "resource-item"} onClick={() => clickResource("fish")} onPointerDown={() => startEating("fish")} onPointerUp={stopEating} onPointerCancel={stopEating} onPointerLeave={stopEating} onContextMenu={(event) => event.preventDefault()} aria-pressed={selectedResource === "fish"} aria-label={`鱼 ${game.inventory.fish} 条，轻点拿起，长按食用`} title="轻点拿起，长按吃掉"><span className="harvest-icon fish-icon">鱼</span><p>鱼获<strong>{game.inventory.fish}</strong><small>长按吃</small></p></button>
               <div><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong></p></div>
             </div>
           </div>
