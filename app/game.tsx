@@ -284,6 +284,33 @@ export default function FarmGame() {
     playTone(700);
   };
 
+  const dismantleItem = (item: "chest" | "fence" | "scarecrow") => {
+    const items = {
+      chest: { name: "木箱", refund: 4, use: "木箱用来收纳农具和收获。" },
+      fence: { name: "木栅栏", refund: 2, use: "木栅栏可以整理农场边界。" },
+      scarecrow: { name: "稻草人", refund: 6, use: "稻草人会守护田里的作物。" },
+    };
+    const details = items[item];
+    if (selected !== "axe") {
+      setMessage(`${details.use}选择斧头后点击可拆除。`);
+      return;
+    }
+    if (game.energy < 2) {
+      setMessage("体力不够，明天再来拆木制品吧。");
+      playTone(220);
+      return;
+    }
+
+    setGame((current) => ({
+      ...current,
+      energy: current.energy - 2,
+      wood: current.wood + details.refund,
+      crafted: { ...current.crafted, [item]: Math.max(0, current.crafted[item] - 1) },
+    }));
+    setMessage(`拆除一个${details.name}，回收 ${details.refund} 块木头。`);
+    playTone(360);
+  };
+
   const actOnTile = (index: number) => {
     let feedback = "";
     let tone = 360;
@@ -554,9 +581,9 @@ export default function FarmGame() {
                   <button key={index} className={`tree tree-${["a", "b", "c", "d"][index]} ${standing ? "" : "stump"}`} onClick={() => chopTree(index)} aria-label={standing ? `砍伐第 ${index + 1} 棵树` : `第 ${index + 1} 个树桩`} />
                 ))}
                 <div className="flowers flowers-a">✿ · ✿</div><div className="flowers flowers-b">· ✿ ·</div>
-                {game.crafted.chest > 0 && <div className="crafted-object crafted-chest" aria-label={`木箱 ${game.crafted.chest} 个`}><i /><b>{game.crafted.chest}</b></div>}
-                {game.crafted.fence > 0 && <div className="crafted-object crafted-fence" aria-label={`木栅栏 ${game.crafted.fence} 个`}><i /><i /><i /><b>{game.crafted.fence}</b></div>}
-                {game.crafted.scarecrow > 0 && <div className="crafted-object crafted-scarecrow" aria-label={`稻草人 ${game.crafted.scarecrow} 个`}><i /><span /><b>{game.crafted.scarecrow}</b></div>}
+                {game.crafted.chest > 0 && <button className="crafted-object crafted-chest" onClick={() => dismantleItem("chest")} aria-label={`木箱 ${game.crafted.chest} 个，使用斧头可拆除`}><i /><b>{game.crafted.chest}</b></button>}
+                {game.crafted.fence > 0 && <button className="crafted-object crafted-fence" onClick={() => dismantleItem("fence")} aria-label={`木栅栏 ${game.crafted.fence} 个，使用斧头可拆除`}><i /><i /><i /><b>{game.crafted.fence}</b></button>}
+                {game.crafted.scarecrow > 0 && <button className="crafted-object crafted-scarecrow" onClick={() => dismantleItem("scarecrow")} aria-label={`稻草人 ${game.crafted.scarecrow} 个，使用斧头可拆除`}><i /><span /><b>{game.crafted.scarecrow}</b></button>}
 
                 <div className="field" aria-label="32 格农田">
                   {game.tiles.map((tile, index) => (
