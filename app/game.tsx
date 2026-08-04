@@ -788,7 +788,7 @@ export default function FarmGame() {
             )}
 
             <div className="player" style={{ left: `${4 + player.x * 7.7}%`, top: `${8 + player.y * 10.5}%` }} aria-label="玩家角色">
-              <span className="player-shadow" /><span className="player-hair" /><span className="player-head" /><span className="player-body" /><span className="player-legs" />
+              <span className="player-shadow" /><span className="player-hair" /><span className="player-head" /><span className="player-arms" /><span className="player-body" /><span className="player-legs" />
             </div>
 
             <div className="speech-bubble"><span>{scene === "farm" ? "☀" : "◆"}</span>{message}</div>
@@ -834,7 +834,7 @@ export default function FarmGame() {
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
-                    <div className="player indoor-player" style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里"><span className="player-shadow" /><span className="player-hair" /><span className="player-head" /><span className="player-body" /><span className="player-legs" /></div>
+                    <div className="player indoor-player" style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里"><span className="player-shadow" /><span className="player-hair" /><span className="player-head" /><span className="player-arms" /><span className="player-body" /><span className="player-legs" /></div>
                   </div>
                   <div className="service-dialogue"><strong>回到家啦</strong><p>床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。</p></div>
                   <div className="service-actions">
