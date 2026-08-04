@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type Tool = "hoe" | "seed" | "water" | "hand";
+type Tool = "hoe" | "seed" | "water" | "hand" | "rod";
 type TileState = "grass" | "soil" | "crop";
 type Scene = "farm" | "town";
 type BuildingId = "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library";
@@ -24,6 +24,7 @@ type GameState = {
   planted: number;
   wateredCount: number;
   harvested: number;
+  fishCaught: number;
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -31,6 +32,7 @@ const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
   seed: { icon: "●", name: "萝卜种子", key: "2" },
   water: { icon: "◒", name: "洒水壶", key: "3" },
   hand: { icon: "✦", name: "收获", key: "4" },
+  rod: { icon: "⌁", name: "鱼竿", key: "5" },
 };
 
 const BUILDING_INFO: Record<BuildingId, { name: string; owner: string; greeting: string; exit: { x: number; y: number } }> = {
@@ -56,6 +58,7 @@ const makeNewGame = (): GameState => ({
   planted: 0,
   wateredCount: 0,
   harvested: 0,
+  fishCaught: 0,
 });
 
 function PixelIcon({ type }: { type: Tool }) {
@@ -68,6 +71,7 @@ export default function FarmGame() {
   const [player, setPlayer] = useState({ x: 6, y: 5 });
   const [scene, setScene] = useState<Scene>("farm");
   const [activeBuilding, setActiveBuilding] = useState<BuildingId | null>(null);
+  const [isFishing, setIsFishing] = useState(false);
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
   const [soundOn, setSoundOn] = useState(true);
   const [ready, setReady] = useState(false);
@@ -77,7 +81,9 @@ export default function FarmGame() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as GameState;
-        if (parsed.tiles?.length === 32) setGame(parsed);
+        if (parsed.tiles?.length === 32) {
+          setGame({ ...makeNewGame(), ...parsed, fishCaught: parsed.fishCaught ?? 0 });
+        }
       } catch {
         localStorage.removeItem("qinghe-farm-save");
       }
@@ -149,6 +155,7 @@ export default function FarmGame() {
       if (key === "2") setSelected("seed");
       if (key === "3") setSelected("water");
       if (key === "4") setSelected("hand");
+      if (key === "5") setSelected("rod");
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
@@ -171,6 +178,39 @@ export default function FarmGame() {
     } catch {
       // Sound is an optional enhancement.
     }
+  };
+
+  const castLine = () => {
+    if (selected !== "rod") {
+      setMessage("先在工具栏选择鱼竿，再点击钓鱼池。");
+      playTone(260);
+      return;
+    }
+    if (isFishing) return;
+    if (game.energy < 5) {
+      setMessage("体力不够了，明天再来钓鱼吧。");
+      playTone(220);
+      return;
+    }
+
+    setIsFishing(true);
+    setMessage("浮标落入水中……耐心等鱼儿上钩。");
+    setGame((current) => ({ ...current, energy: current.energy - 5, hour: Math.min(24, current.hour + 1) }));
+    playTone(390);
+
+    window.setTimeout(() => {
+      const catches = [
+        { name: "银鳞鲫", coins: 32 },
+        { name: "春溪鳟", coins: 48 },
+        { name: "花尾鲤", coins: 40 },
+        { name: "小泥鳅", coins: 24 },
+      ];
+      const caught = catches[Math.floor(Math.random() * catches.length)];
+      setGame((current) => ({ ...current, coins: current.coins + caught.coins, fishCaught: current.fishCaught + 1 }));
+      setMessage(`钓到${caught.name}！鱼获 +1，卖出获得 ${caught.coins} 金币。`);
+      setIsFishing(false);
+      playTone(780);
+    }, 1100);
   };
 
   const actOnTile = (index: number) => {
@@ -231,7 +271,7 @@ export default function FarmGame() {
         next.wateredCount += 1;
         feedback = "水珠闪闪，明早它会长大一点。";
         tone = 620;
-      } else {
+      } else if (selected === "hand") {
         if (tile.state !== "crop" || tile.stage < 3) {
           feedback = "还没成熟，再耐心照料几天吧。";
           return current;
@@ -245,6 +285,9 @@ export default function FarmGame() {
         next.harvested += 1;
         feedback = "收获一颗脆甜萝卜！+65 金币、+2 种子";
         tone = 760;
+      } else {
+        feedback = "鱼竿要在左侧的钓鱼池使用。";
+        return current;
       }
       next.hour = Math.min(24, current.hour + 1);
       return next;
@@ -346,6 +389,7 @@ export default function FarmGame() {
     setPlayer({ x: 6, y: 5 });
     setScene("farm");
     setActiveBuilding(null);
+    setIsFishing(false);
     setMessage("新的农场生活开始了！");
     localStorage.setItem("qinghe-farm-save", JSON.stringify(fresh));
   };
@@ -391,6 +435,13 @@ export default function FarmGame() {
             <div className="meter-label"><span>体力</span><b>{game.energy}/100</b></div>
             <div className="meter"><i style={{ width: `${game.energy}%` }} /></div>
           </div>
+          <div className="harvest-log">
+            <div className="section-title"><span>收获记录</span><b>自动出售</b></div>
+            <div className="harvest-items">
+              <div><span className="harvest-icon radish-icon">萝</span><p>萝卜<strong>{game.harvested}</strong></p></div>
+              <div><span className="harvest-icon fish-icon">鱼</span><p>鱼获<strong>{game.fishCaught}</strong></p></div>
+            </div>
+          </div>
           <div className="task-card">
             <div className="section-title"><span>今日小目标</span><b>{completed}/3</b></div>
             <div className="task-list">
@@ -401,7 +452,7 @@ export default function FarmGame() {
               ))}
             </div>
           </div>
-          <div className="tip-card"><span>?</span><p><strong>{scene === "farm" ? "农场小贴士" : "小镇指南"}</strong>{scene === "farm" ? "浇水后的作物会在第二天长大。走到最右边可以前往小镇。" : "青禾超市位于小镇左上方，走到门口会自动进入。"}</p></div>
+          <div className="tip-card"><span>?</span><p><strong>{scene === "farm" ? "农场小贴士" : "小镇指南"}</strong>{scene === "farm" ? "选择鱼竿后点击左侧钓鱼池即可钓鱼。走到最右边可以前往小镇。" : "每栋建筑都能进入；走到门口或直接点击建筑。"}</p></div>
           <button className="sleep-button" onClick={nextDay}><span>☾</span><div><strong>结束今天</strong><small>回家睡一觉</small></div><b>›</b></button>
         </aside>
 
@@ -414,7 +465,9 @@ export default function FarmGame() {
             {scene === "farm" ? (
               <>
                 <div className="path path-one" /><div className="path path-two" />
-                <div className="pond"><i /><i /><i /></div>
+                <button className={`pond ${isFishing ? "fishing" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
+                  <i /><i /><i /><b className="fishing-float" /><span className="pond-label">钓鱼池</span>
+                </button>
                 <div className="house"><span className="roof" /><span className="chimney" /><span className="wall" /><span className="door" /><span className="window" /><span className="sign">小禾农舍</span></div>
                 <div className="tree tree-a" /><div className="tree tree-b" /><div className="tree tree-c" /><div className="tree tree-d" />
                 <div className="flowers flowers-a">✿ · ✿</div><div className="flowers flowers-b">· ✿ ·</div>
@@ -513,6 +566,7 @@ export default function FarmGame() {
                 <kbd>{TOOL_INFO[tool].key}</kbd><PixelIcon type={tool} /><span>{TOOL_INFO[tool].name}</span>
                 {tool === "seed" && <b>{game.seeds}</b>}
                 {tool === "water" && <b>{game.water}</b>}
+                {tool === "rod" && <b>{game.fishCaught}</b>}
               </button>
             ))}
             <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? TOOL_INFO[selected].name : "中心街"}</strong></div>

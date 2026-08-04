@@ -82,7 +82,7 @@ button { font: inherit; }
 }
 
 .side-panel { display: flex; flex-direction: column; gap: 14px; }
-.portrait-card, .task-card, .tip-card, .sleep-button, .meter-block { border: 1px solid rgba(57,94,62,.15); box-shadow: 0 7px 18px rgba(50,77,48,.08); }
+.portrait-card, .task-card, .tip-card, .sleep-button, .meter-block, .harvest-log { border: 1px solid rgba(57,94,62,.15); box-shadow: 0 7px 18px rgba(50,77,48,.08); }
 .portrait-card { display: flex; align-items: center; gap: 13px; padding: 14px; border-radius: 18px; background: rgba(255,252,239,.94); }
 .portrait { width: 54px; height: 54px; border-radius: 17px; position: relative; overflow: hidden; background: #cfe5a8; border: 2px solid white; box-shadow: 0 2px 8px #a9b896; }
 .portrait .face { position: absolute; width: 29px; height: 25px; border-radius: 45% 45% 42% 42%; background: #f2b88f; left: 13px; top: 14px; }
@@ -95,6 +95,9 @@ button { font: inherit; }
 .meter-label b { color: #4e7657; }
 .meter { height: 9px; border-radius: 9px; background: #dbe3ca; overflow: hidden; box-shadow: inset 0 1px 2px #c5cfb6; }
 .meter i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #75b964, #b3d766); transition: width .3s ease; }
+.harvest-log { overflow: hidden; border-radius: 16px; background: rgba(255,252,239,.9); }
+.harvest-log .section-title { height: 38px; font-size: 11px; }.harvest-log .section-title b { font-size: 7px; }
+.harvest-items { padding: 9px 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }.harvest-items > div { min-width: 0; display: flex; align-items: center; gap: 6px; padding: 7px; border-radius: 10px; background: #f1ead4; }.harvest-icon { width: 25px; height: 25px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 8px; color: white; font-size: 9px; font-weight: 900; box-shadow: inset 0 -3px rgba(61,44,35,.16); }.radish-icon { background: #d86f5d; }.fish-icon { background: #5f9eaa; }.harvest-items p { margin: 0; color: #7a806f; font-size: 7px; }.harvest-items p strong { display: block; color: #4a5d4b; font-size: 11px; }
 .task-card { background: rgba(255,252,239,.94); border-radius: 18px; overflow: hidden; }
 .section-title { height: 47px; padding: 0 15px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px dashed #d8dfc9; font-size: 13px; font-weight: 900; }
 .section-title b { font-size: 10px; padding: 4px 8px; border-radius: 8px; background: #e5edd3; color: #5d775e; }
@@ -128,8 +131,13 @@ button { font: inherit; }
 .mountain-one { left: -5%; }.mountain-two { left: 18%; top: 17%; transform: scale(.78); opacity: .72; }
 .path { position: absolute; z-index: -1; background: #dec88c; box-shadow: inset 0 4px rgba(255,245,189,.25); }
 .path-one { width: 56%; height: 12%; left: 57%; top: 55%; transform: rotate(21deg); border-radius: 50%; }.path-two { width: 13%; height: 40%; right: 15%; top: 37%; transform: rotate(2deg); border-radius: 48%; }
-.pond { position: absolute; width: 17%; height: 16%; left: 4%; top: 36%; border-radius: 50% 42% 49% 45%; background: #67b6c9; border: 6px solid #91c176; box-shadow: inset 0 -10px #4aa0ba, 0 3px #78a963; transform: rotate(-4deg); }
+.pond { position: absolute; width: 17%; height: 16%; left: 4%; top: 36%; padding: 0; border-radius: 50% 42% 49% 45%; background: #67b6c9; border: 6px solid #91c176; box-shadow: inset 0 -10px #4aa0ba, 0 3px #78a963; transform: rotate(-4deg); cursor: pointer; transition: filter .15s, box-shadow .15s; }
+.pond:hover, .pond:focus-visible { filter: brightness(1.08); box-shadow: inset 0 -10px #4aa0ba, 0 0 0 4px rgba(255,242,153,.72), 0 5px #78a963; outline: none; }
 .pond i { position: absolute; width: 26%; height: 4px; border-radius: 5px; background: rgba(213,245,229,.7); left: 23%; top: 35%; }.pond i:nth-child(2) { left: 57%; top: 56%; width: 18%; }.pond i:nth-child(3) { width: 14px; height: 10px; background: #5fa65c; border-radius: 50%; left: 18%; top: 65%; }
+.pond-label { position: absolute; z-index: 4; left: 50%; bottom: -21px; transform: translateX(-50%) rotate(4deg); width: max-content; padding: 3px 8px; border-radius: 6px; color: #3e654e; background: #f5e4af; border: 2px solid #846043; box-shadow: 0 2px 5px rgba(53,72,43,.16); font-size: 7px; font-weight: 900; }
+.fishing-float { position: absolute; z-index: 5; left: 52%; top: 38%; width: 8px; height: 13px; border-radius: 50% 50% 45% 45%; background: linear-gradient(#e85e4f 0 48%, #f8eed0 48%); border: 2px solid #75483c; opacity: 0; }
+.pond.fishing .fishing-float { opacity: 1; animation: floatBite .55s ease-in-out infinite; }.pond.fishing::after { content: ""; position: absolute; left: 50%; top: 42%; width: 24px; height: 11px; border: 2px solid rgba(225,249,229,.78); border-radius: 50%; animation: waterRipple 1s ease-out infinite; }
+@keyframes floatBite { 50% { transform: translateY(6px) rotate(8deg); } } @keyframes waterRipple { to { transform: scale(2); opacity: 0; } }
 
 .house { position: absolute; width: 19%; height: 25%; right: 8%; top: 18%; z-index: 3; filter: drop-shadow(0 8px 2px rgba(68,87,49,.18)); }
 .house .wall { position: absolute; width: 75%; height: 57%; left: 12%; bottom: 0; background: #e8bd74; border: 5px solid #9b673e; box-shadow: inset 0 -12px #d49a57; }
@@ -172,7 +180,7 @@ button { font: inherit; }
 .tool-button { width: 80px; height: 64px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 1px solid #d9cdb2; border-radius: 13px; color: #536153; background: #eee5ce; cursor: pointer; box-shadow: inset 0 -3px #ded1b6; transition: transform .15s, background .15s; }
 .tool-button:hover { transform: translateY(-2px); background: #fff8e9; }.tool-button.selected { background: #fff9e5; border: 3px solid #6e9b5c; box-shadow: 0 5px 10px rgba(65,91,57,.17), inset 0 -3px #ede2c5; transform: translateY(-4px); }
 .tool-button kbd { position: absolute; top: 4px; left: 5px; width: 15px; height: 15px; display: grid; place-items: center; border-radius: 5px; background: rgba(74,91,70,.12); font: 8px monospace; }.tool-button > span:last-of-type { font-size: 8px; font-weight: 700; }.tool-button > b { position: absolute; right: 5px; top: 4px; min-width: 17px; height: 17px; border-radius: 6px; display: grid; place-items: center; background: #4c714e; color: white; font-size: 8px; }
-.tool-symbol { width: 27px; height: 27px; display: grid; place-items: center; font-family: Georgia, serif; font-size: 23px; font-weight: 900; color: #7b593b; transform: rotate(-15deg); }.tool-seed { color: #ad6441; font-size: 19px; }.tool-water { color: #5892a0; transform: rotate(30deg); }.tool-hand { color: #dd9d35; transform: none; }
+.tool-symbol { width: 27px; height: 27px; display: grid; place-items: center; font-family: Georgia, serif; font-size: 23px; font-weight: 900; color: #7b593b; transform: rotate(-15deg); }.tool-seed { color: #ad6441; font-size: 19px; }.tool-water { color: #5892a0; transform: rotate(30deg); }.tool-hand { color: #dd9d35; transform: none; }.tool-rod { color: #4f735d; transform: rotate(-45deg); font-size: 27px; }
 .selected-hint { min-width: 74px; margin-left: 2px; }.selected-hint span, .selected-hint strong { display: block; }.selected-hint span { color: #9a9d8e; font-size: 8px; }.selected-hint strong { font-size: 10px; margin-top: 2px; color: #61705e; }
 .mobile-controls { display: none; }
 
