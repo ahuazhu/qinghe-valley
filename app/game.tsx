@@ -66,6 +66,7 @@ type GameState = {
   equipment: { lampOn: boolean };
   daily: { day: number; planted: number; watered: number; harvested: number; fish: number; chopped: number; sold: number; rewardClaimed: boolean };
   sick: boolean;
+  diagnosed: boolean;
   lastIllnessDay: number;
 };
 
@@ -172,6 +173,7 @@ const makeNewGame = (): GameState => ({
   equipment: { lampOn: false },
   daily: { day: 1, planted: 0, watered: 0, harvested: 0, fish: 0, chopped: 0, sold: 0, rewardClaimed: false },
   sick: false,
+  diagnosed: false,
   lastIllnessDay: 0,
 });
 
@@ -253,6 +255,7 @@ export default function FarmGame() {
             equipment: { ...defaults.equipment, ...(parsed.equipment ?? {}) },
             daily: parsed.daily?.day === parsed.day ? { ...defaults.daily, ...parsed.daily } : { ...defaults.daily, day: parsed.day ?? 1 },
             sick: parsed.sick ?? false,
+            diagnosed: parsed.diagnosed ?? false,
             lastIllnessDay: parsed.lastIllnessDay ?? 0,
           });
         }
@@ -305,6 +308,7 @@ export default function FarmGame() {
           upgrades: { ...defaults.upgrades, ...(data.save.upgrades ?? {}) },
           builderSupplies: { ...defaults.builderSupplies, ...(data.save.builderSupplies ?? {}) },
           equipment: { ...defaults.equipment, ...(data.save.equipment ?? {}) },
+          diagnosed: data.save.diagnosed ?? false,
           daily: { ...defaults.daily, ...(data.save.daily ?? {}) },
         });
         setMessage("旧游戏的农田、金币、种子和物品已经全部转入网页版！");
@@ -318,8 +322,8 @@ export default function FarmGame() {
 
   useEffect(() => {
     if (!ready || game.energy > 0 || game.sick) return;
-    setGame((current) => ({ ...current, sick: true, lastIllnessDay: current.day }));
-    setMessage("体力耗尽让小禾病倒了。去青禾诊所找白医生开药吧。");
+    setGame((current) => ({ ...current, sick: true, diagnosed: false, lastIllnessDay: current.day }));
+    setMessage("小禾累得没有精神，嘴角悄悄垂了下来。 ");
   }, [game.energy, game.sick, ready]);
 
   useEffect(() => {
@@ -1019,9 +1023,14 @@ export default function FarmGame() {
 
   const useBuildingService = (building: Exclude<BuildingId, "supermarket" | "farmhouse">) => {
     if (building === "clinic") {
-      if (!game.sick) {
-        setMessage("白医生检查后说：身体很健康，不需要买药。记得不要把体力用光。");
+      if (!game.diagnosed) {
+        setGame((current) => ({ ...current, diagnosed: true }));
+        setMessage(game.sick ? "白医生完成检查：小禾确实生病了，我来开一份处方药。" : "白医生完成检查：没有生病，不需要开药。 ");
         playTone(680);
+        return;
+      }
+      if (!game.sick) {
+        setMessage("检查已经完成，没有需要服用的药。 ");
         return;
       }
       if (game.coins < 50) {
@@ -1029,7 +1038,7 @@ export default function FarmGame() {
         playTone(220);
         return;
       }
-      setGame((current) => ({ ...current, coins: current.coins - 50, sick: false, energy: Math.max(80, current.energy) }));
+      setGame((current) => ({ ...current, coins: current.coins - 50, sick: false, diagnosed: false, energy: Math.max(80, current.energy) }));
       setMessage("白医生开了处方药。支付 50 金币后服下药，小禾恢复健康了！");
       playTone(680);
     } else if (building === "cafe") {
@@ -1062,7 +1071,9 @@ export default function FarmGame() {
   const inspectBuildingItem = (item: string) => {
     setInspectedItem(item);
     if (item === "药品柜") {
-      setMessage(game.sick ? "药品柜里有白医生配好的处方药，需要支付 50 金币才能取药。" : "药品柜里都是处方药。身体健康时不能随便拿药。所有柜门都贴着清楚的标签。");
+      setMessage(!game.diagnosed ? "白医生：要先接受免费检查，检查以后才能查看处方药。" : game.sick ? "药品柜里有白医生刚配好的处方药，需要支付 50 金币。" : "检查结果不需要用药，药品柜暂时不能打开。 ");
+    } else if (item === "健康档案" && !game.diagnosed) {
+      setMessage("健康档案还是空白的，要先让白医生做免费检查。 ");
     } else {
       setMessage(`打开查看“${item}”：${ITEM_DESCRIPTIONS[item]}`);
     }
@@ -1077,9 +1088,9 @@ export default function FarmGame() {
     const becameSick = !game.sick && (game.energy <= 0 || (daysSinceIllness >= 6 && nextDayNumber % 6 === 0));
     const remainsSick = game.sick || becameSick;
     const morningMessage = becameSick
-      ? "早上七点醒来，小禾有些不舒服。今天去青禾诊所找白医生看看吧。"
+      ? "早上七点醒来，小禾看起来没什么精神，嘴角变成了伤心的样子。"
       : remainsSick
-        ? "早上七点了，但小禾还没有痊愈。去诊所购买处方药就能恢复健康。"
+        ? "早上七点了，小禾的表情仍然有些伤心。"
         : "早上七点了！浇过水的作物长大了，也有一棵树重新长出。";
     setGame((current) => {
       const treeStates = [...current.treeStates];
@@ -1095,6 +1106,7 @@ export default function FarmGame() {
         daily: { ...makeNewGame().daily, day: nextDayNumber },
         energy: remainsSick ? 65 : 100,
         sick: remainsSick,
+        diagnosed: false,
         lastIllnessDay: becameSick ? nextDayNumber : current.lastIllnessDay,
         water: 12,
         treeStates,
@@ -1404,7 +1416,7 @@ export default function FarmGame() {
         <aside className="side-panel">
           <div className="portrait-card">
             <div className="portrait"><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="小禾" draggable={false} /></div>
-            <div><span>新手农夫</span><strong>{displayName}</strong><small className={game.sick ? "health-status sick" : "health-status"}>{game.sick ? "生病了 · 去诊所" : "身体健康"}</small></div>
+            <div><span>新手农夫</span><strong>{displayName}</strong></div>
           </div>
           {multiplayerSession && <div className="multiplayer-status-card"><div><span>双人村庄</span><button onClick={() => setMultiplayerOpen(true)}>查看</button></div><strong>{activeVillageInfo.name} · {multiplayerSession.roomCode}</strong><small>{partner ? `${partner.online ? "● 在线" : "○ 离线"} ${partner.playerName}住在${VILLAGE_INFO[partner.village].name}` : "等待另一位玩家加入"}</small></div>}
           <button className={`festival-card ${currentFestival ? "festival-open" : ""}`} onClick={() => { if (currentFestival) goToFestival(); else setMessage(`下一场是${nextFestival.name}，第 ${nextFestival.day} 天周六在${nextFestival.place}举行，还有 ${daysUntilFestival} 天。`); }}><span>{currentFestival ? "今日活动" : "下一场活动"}</span><strong>{(currentFestival ?? nextFestival).name}</strong><small>{currentFestival ? `正在${currentFestival.place}举行 · 点击前往` : `第 ${nextFestival.day} 天周六 · 还有 ${daysUntilFestival} 天`}</small></button>
@@ -1676,10 +1688,10 @@ export default function FarmGame() {
                   </div>
                   <div className="service-dialogue"><strong>{BUILDING_INFO[activeBuilding].owner}</strong><p>{BUILDING_INFO[activeBuilding].greeting}</p></div>
                   {inspectedItem && (
-                    <div className="inspection-card"><div><strong>{inspectedItem}</strong><p>{inspectedItem === "药品柜" ? (game.sick ? "里面放着白医生刚配好的处方药，价格 50 金币。" : "柜子里是分类整齐的处方药，身体健康时不能随意服用。") : ITEM_DESCRIPTIONS[inspectedItem]}</p></div><button onClick={() => setInspectedItem(null)}>收起</button></div>
+                    <div className="inspection-card"><div><strong>{inspectedItem}</strong><p>{inspectedItem === "药品柜" ? (!game.diagnosed ? "要先接受白医生的免费检查，才能查看药品。" : game.sick ? "里面放着白医生刚配好的处方药，价格 50 金币。" : "检查结果不需要用药。") : inspectedItem === "健康档案" && !game.diagnosed ? "还没有检查结果，档案暂时是空白的。" : ITEM_DESCRIPTIONS[inspectedItem]}</p></div><button onClick={() => setInspectedItem(null)}>收起</button></div>
                   )}
                   <div className="service-actions">
-                    <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? (game.sick ? "购买处方药 · 50 金币" : "接受免费健康检查") : activeBuilding === "cafe" ? "购买咖啡套餐 · 35 金币" : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "询问扩建计划" : "翻阅农事图鉴"}</button>
+                    <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? (!game.diagnosed ? "接受免费检查" : game.sick ? "购买白医生开的药 · 50 金币" : "检查结果：没有生病") : activeBuilding === "cafe" ? "购买咖啡套餐 · 35 金币" : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "询问扩建计划" : "翻阅农事图鉴"}</button>
                     <button className="exit-action" onClick={leaveBuilding}>从门口出去</button>
                   </div>
                   <footer><span>{message}</span><small>按 Esc 也可以离开</small></footer>
