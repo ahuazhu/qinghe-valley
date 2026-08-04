@@ -210,6 +210,13 @@ function PixelIcon({ type }: { type: Tool }) {
   return <span className={`tool-symbol tool-${type}`}>{TOOL_INFO[type].icon}</span>;
 }
 
+function PlayerSprite({ facing, sick }: { facing: Facing; sick: boolean }) {
+  if (facing === "left" || facing === "right") {
+    return <><img className="side-sprite side-upper" src="/xiaohe-side-right.png" alt="" draggable={false} /><img className="side-sprite side-legs side-step-one" src="/xiaohe-side-right.png" alt="" draggable={false} /><img className="side-sprite side-legs side-step-two" src="/xiaohe-side-right.png" alt="" draggable={false} /></>;
+  }
+  return <img className="front-sprite" src={sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} />;
+}
+
 export default function FarmGame() {
   const [game, setGame] = useState<GameState>(makeNewGame);
   const [selected, setSelected] = useState<Tool>("hoe");
@@ -1610,7 +1617,7 @@ export default function FarmGame() {
             )}
 
             <div className={`player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${4 + player.x * 7.7}%`, top: `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
-              {heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} />
+              {heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
             </div>
             {partner?.online && partner.currentVillage === activeVillage && partner.scene === scene && <div className="online-partner" style={{ left: `${4 + partner.x * 7.7}%`, top: `${8 + partner.y * 10.5}%` }} aria-label={`${partner.playerName}也在这里`}><span>{partner.playerName}<small>朋友</small></span><i className="player-shadow" /><img src={partner.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>}
 
@@ -1636,7 +1643,7 @@ export default function FarmGame() {
                     </div>
                     <button className="neighbor-indoor-npc" onClick={() => talkToNeighbor(neighborInterior)}><i className="npc-hair" /><i className="npc-face" /><i className="npc-body" /><span>{neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师"}</span></button>
                     <button className="house-door neighbor-home-door" onClick={() => { setNeighborInterior(null); setBuilderOpen(false); setMessage("从居民家的门口出来了。 "); }}><span>出口</span></button>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师"}</strong><p>{neighborInterior === "eastNeighbor" ? "欢迎来我家！桌上放着果酱和刚摘下来的草莓。" : neighborInterior === "southNeighbor" ? "把木头和石材交给我，我能帮你制作东西、扩建农舍和地盘。" : "欢迎来到林间书屋，书架上的故事都可以慢慢看。"}</p></div>
                   <div className="service-actions"><button onClick={() => talkToNeighbor(neighborInterior)}>{neighborInterior === "southNeighbor" ? (heldMaterial ? "把手里的材料交给鲁师傅" : "打开鲁师傅的委托单") : "和主人聊天"}</button><button className="exit-action" onClick={() => { setNeighborInterior(null); setBuilderOpen(false); setMessage("从居民家的门口出来了。 "); }}>从门口出去</button></div>
@@ -1721,7 +1728,7 @@ export default function FarmGame() {
                     {game.upgrades.house >= 3 && <button className="house-equipment house-kitchen" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 20) })); setMessage("在料理台吃了一份热饭，恢复 20 点体力！"); playTone(740); }}><i />料理台</button>}
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>回到家啦</strong><p>床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。</p></div>
                   <div className="service-actions">
