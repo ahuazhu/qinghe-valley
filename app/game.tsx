@@ -158,7 +158,7 @@ export default function FarmGame() {
     const clock = window.setInterval(() => {
       setGame((current) => current.hour >= 23.5
         ? { ...current, day: current.day === 28 ? 1 : current.day + 1, hour: 0, daily: { ...makeNewGame().daily, day: current.day === 28 ? 1 : current.day + 1 } }
-        : { ...current, hour: current.hour + 0.5 });
+        : { ...current, hour: current.hour + 1 });
     }, 30_000);
     return () => window.clearInterval(clock);
   }, [ready]);
