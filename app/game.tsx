@@ -8,6 +8,27 @@ type Scene = "farm" | "town";
 type BuildingId = "farmhouse" | "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library";
 type CropType = "radish" | "strawberry" | "corn";
 type StorableResource = CropType | "fish";
+type VillageId = "qinghe" | "maple";
+
+type OnlinePlayer = {
+  deviceId: string;
+  playerName: string;
+  village: VillageId;
+  x: number;
+  y: number;
+  day: number;
+  hour: number;
+  energy: number;
+  sick: boolean;
+  online: boolean;
+};
+
+type MultiplayerSession = {
+  roomCode: string;
+  deviceId: string;
+  playerName: string;
+  village: VillageId;
+};
 
 type FarmTile = {
   state: TileState;
@@ -102,6 +123,11 @@ const ITEM_DESCRIPTIONS: Record<string, string> = {
 
 const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
+const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description: string }> = {
+  qinghe: { name: "青禾村", farm: "青禾农场", description: "绿野、溪流与温暖的木屋" },
+  maple: { name: "枫叶村", farm: "枫叶农场", description: "红枫、山路与安静的坡地" },
+};
+
 const makeTiles = (): FarmTile[] =>
   Array.from({ length: 32 }, () => ({ state: "grass", stage: 0, watered: false }));
 
@@ -151,6 +177,7 @@ export default function FarmGame() {
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
   const [soundOn, setSoundOn] = useState(true);
   const [ready, setReady] = useState(false);
+  const [transferringSave, setTransferringSave] = useState(false);
   const eatTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
 
@@ -188,6 +215,34 @@ export default function FarmGame() {
   useEffect(() => {
     if (ready) localStorage.setItem("qinghe-farm-save", JSON.stringify(game));
   }, [game, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const token = new URLSearchParams(window.location.search).get("save");
+    if (!token) return;
+    let cancelled = false;
+    void fetch(`/api/cloud-save?token=${encodeURIComponent(token)}`)
+      .then(async (response) => {
+        const data = await response.json() as { save?: GameState; error?: string };
+        if (!response.ok || !data.save) throw new Error(data.error || "存档读取失败");
+        if (cancelled || data.save.tiles?.length !== 32) return;
+        const defaults = makeNewGame();
+        setGame({
+          ...defaults,
+          ...data.save,
+          inventory: { ...defaults.inventory, ...(data.save.inventory ?? {}) },
+          chestStorage: { ...defaults.chestStorage, ...(data.save.chestStorage ?? {}) },
+          crafted: { ...defaults.crafted, ...(data.save.crafted ?? {}) },
+          daily: { ...defaults.daily, ...(data.save.daily ?? {}) },
+        });
+        setMessage("旧游戏的农田、金币、种子和物品已经全部转入网页版！");
+        window.history.replaceState({}, "", window.location.pathname);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setMessage(error instanceof Error ? error.message : "存档读取失败");
+      });
+    return () => { cancelled = true; };
+  }, [ready]);
 
   useEffect(() => {
     if (!ready || game.energy > 0 || game.sick) return;
@@ -822,6 +877,29 @@ export default function FarmGame() {
     setSelected(tool);
   };
 
+  const transferSaveToWeb = async () => {
+    if (transferringSave) return;
+    setTransferringSave(true);
+    setMessage("正在把当前游戏进度转移到正式网页……");
+    try {
+      const endpoint = window.location.hostname === "localhost"
+        ? "https://qinghe-valley.ahuazhu.chatgpt.site/api/cloud-save"
+        : "/api/cloud-save";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ save: game }),
+      });
+      const result = await response.json() as { transferUrl?: string; error?: string };
+      if (!response.ok || !result.transferUrl) throw new Error(result.error || "存档转移失败");
+      setMessage("存档上传成功，正在打开正式网页版……");
+      window.location.href = result.transferUrl;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "存档转移失败，请稍后再试。");
+      setTransferringSave(false);
+    }
+  };
+
   const tasks = useMemo(
     () => {
       const goalSet = (game.day - 1) % 3;
@@ -880,6 +958,7 @@ export default function FarmGame() {
         <div className="top-stats">
           <div className={`weather ${isNight ? "night-weather" : ""}`}><span className={isNight ? "moon-icon" : "sun-icon"} />{isNight ? "月夜" : "晴朗"} <small>{isNight ? "12°C" : "18°C"}</small></div>
           <div className="coins"><span>●</span>{game.coins.toLocaleString()}</div>
+          <button className="cloud-transfer-button" onClick={transferSaveToWeb} disabled={transferringSave}>{transferringSave ? "转移中…" : "转移到网页版"}</button>
           <button className="round-button home-button" onClick={returnToFarm} aria-label="回到农场" title="回到农场">⌂</button>
           <button className="round-button" onClick={() => setSoundOn((value) => !value)} aria-label={soundOn ? "关闭音效" : "打开音效"}>{soundOn ? "♪" : "×"}</button>
           <button className="round-button" onClick={resetGame} aria-label="重新开始">↻</button>
