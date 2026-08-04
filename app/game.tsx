@@ -82,6 +82,7 @@ export default function FarmGame() {
   const [game, setGame] = useState<GameState>(makeNewGame);
   const [selected, setSelected] = useState<Tool>("hoe");
   const [player, setPlayer] = useState({ x: 6, y: 5 });
+  const [indoorPlayer, setIndoorPlayer] = useState({ x: 34, y: 69 });
   const [scene, setScene] = useState<Scene>("farm");
   const [activeBuilding, setActiveBuilding] = useState<BuildingId | null>(null);
   const [isFishing, setIsFishing] = useState(false);
@@ -129,7 +130,16 @@ export default function FarmGame() {
   }, []);
 
   const move = useCallback((dx: number, dy: number) => {
-    if (activeBuilding || craftingOpen || chestOpen) return;
+    if (craftingOpen || chestOpen) return;
+    if (activeBuilding === "farmhouse") {
+      setIndoorPlayer((current) => ({
+        x: Math.max(26, Math.min(76, current.x + dx * 5)),
+        y: Math.max(65, Math.min(74, current.y + dy * 4)),
+      }));
+      setMessage("小禾在屋里的木地板上走动。");
+      return;
+    }
+    if (activeBuilding) return;
 
     if (scene === "farm" && dx > 0 && player.x === 11) {
       setScene("town");
@@ -640,6 +650,7 @@ export default function FarmGame() {
     setGame(fresh);
     setSelected("hoe");
     setPlayer({ x: 6, y: 5 });
+    setIndoorPlayer({ x: 34, y: 69 });
     setScene("farm");
     setActiveBuilding(null);
     setIsFishing(false);
@@ -728,7 +739,7 @@ export default function FarmGame() {
                 <button className={`pond ${isFishing ? "fishing" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
                   <i /><i /><i /><b className="fishing-float" /><span className="pond-label">钓鱼池</span>
                 </button>
-                <button className="house" onClick={() => { setActiveBuilding("farmhouse"); setMessage("走进小禾农舍，屋里暖洋洋的。"); }} aria-label="进入小禾农舍"><span className="roof" /><span className="chimney" /><span className="wall" /><span className="door" /><span className="window" /><span className="sign">小禾农舍 · 点击进入</span></button>
+                <button className="house" onClick={() => { setActiveBuilding("farmhouse"); setMessage("走进小禾农舍，屋里暖洋洋的。"); }} aria-label="进入小禾农舍"><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" /><span className="sign">小禾农舍 · 点击进入</span></button>
                 {game.treeStates.map((standing, index) => (
                   <button key={index} className={`tree tree-${["a", "b", "c", "d"][index]} ${standing ? "" : "stump"}`} onClick={() => chopTree(index)} aria-label={standing ? `砍伐第 ${index + 1} 棵树` : `第 ${index + 1} 个树桩`} />
                 ))}
@@ -818,11 +829,12 @@ export default function FarmGame() {
                   <header><div><span>青禾农场室内</span><h2 id="farmhouse-title">小禾农舍</h2></div><button onClick={leaveBuilding} aria-label="离开小禾农舍">×</button></header>
                   <div className="interior-room farmhouse-room">
                     <div className="room-window"><i /><i /></div>
-                    <div className="house-bed"><i /><b /></div>
+                    <button className="house-bed" onClick={sleepAtHome} aria-label="点击床睡到第二天"><i /><b /><span>点击睡觉</span></button>
                     <div className="house-table"><i /><i /></div>
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     <div className="house-rug" />
-                    <div className="house-door"><span>出口</span></div>
+                    <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
+                    <div className="player indoor-player" style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里"><span className="player-shadow" /><span className="player-hat" /><span className="player-head" /><span className="player-body" /><span className="player-legs" /></div>
                   </div>
                   <div className="service-dialogue"><strong>回到家啦</strong><p>床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。</p></div>
                   <div className="service-actions">
