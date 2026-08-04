@@ -1,12 +1,15 @@
 import { env } from "cloudflare:workers";
 
 type VillageId = "qinghe" | "maple";
+type Scene = "farm" | "town" | "eastNeighbor" | "southNeighbor" | "northNeighbor";
 
 type MultiplayerPayload = {
   roomCode?: string;
   deviceId?: string;
   playerName?: string;
   village?: VillageId;
+  currentVillage?: VillageId;
+  scene?: Scene;
   x?: number;
   y?: number;
   day?: number;
@@ -19,6 +22,8 @@ type PlayerRow = {
   device_id: string;
   player_name: string;
   village: VillageId;
+  current_village: VillageId | null;
+  scene: Scene | null;
   x: number;
   y: number;
   day: number;
@@ -38,6 +43,8 @@ async function ensureSchema() {
       device_id TEXT NOT NULL,
       player_name TEXT NOT NULL,
       village TEXT NOT NULL,
+      current_village TEXT,
+      scene TEXT,
       x INTEGER NOT NULL DEFAULT 6,
       y INTEGER NOT NULL DEFAULT 5,
       day INTEGER NOT NULL DEFAULT 1,
@@ -49,6 +56,8 @@ async function ensureSchema() {
     env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_multiplayer_room_device ON multiplayer_players(room_code, device_id)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_multiplayer_room_updated ON multiplayer_players(room_code, updated_at)"),
   ]);
+  try { await env.DB.prepare("ALTER TABLE multiplayer_players ADD COLUMN current_village TEXT").run(); } catch { /* column already exists */ }
+  try { await env.DB.prepare("ALTER TABLE multiplayer_players ADD COLUMN scene TEXT").run(); } catch { /* column already exists */ }
 }
 
 function cleanRoomCode(value?: string) {
@@ -66,6 +75,8 @@ function serializePlayers(rows: PlayerRow[], now: number) {
     deviceId: row.device_id,
     playerName: row.player_name,
     village: row.village,
+    currentVillage: row.current_village === "maple" ? "maple" : row.current_village === "qinghe" ? "qinghe" : row.village,
+    scene: ["farm", "town", "eastNeighbor", "southNeighbor", "northNeighbor"].includes(row.scene ?? "") ? row.scene : "farm",
     x: row.x,
     y: row.y,
     day: row.day,
@@ -83,7 +94,7 @@ export async function GET(request: Request) {
 
   await ensureSchema();
   const now = Date.now();
-  const result = await env.DB.prepare(`SELECT device_id, player_name, village, x, y, day, hour, energy, sick, updated_at
+  const result = await env.DB.prepare(`SELECT device_id, player_name, village, current_village, scene, x, y, day, hour, energy, sick, updated_at
     FROM multiplayer_players WHERE room_code = ? ORDER BY id ASC LIMIT 2`).bind(roomCode).all<PlayerRow>();
   return Response.json({ roomCode, players: serializePlayers(result.results, now) });
 }
@@ -94,6 +105,8 @@ export async function POST(request: Request) {
   const deviceId = cleanDeviceId(payload.deviceId);
   const playerName = payload.playerName?.trim().slice(0, 12) || "小禾";
   const requestedVillage = payload.village === "maple" ? "maple" : "qinghe";
+  const currentVillage = payload.currentVillage === "maple" ? "maple" : payload.currentVillage === "qinghe" ? "qinghe" : requestedVillage;
+  const currentScene: Scene = ["farm", "town", "eastNeighbor", "southNeighbor", "northNeighbor"].includes(payload.scene ?? "") ? payload.scene as Scene : "farm";
   if (!roomCode || !deviceId) return Response.json({ error: "房间信息不正确" }, { status: 400 });
 
   await ensureSchema();
@@ -111,10 +124,12 @@ export async function POST(request: Request) {
 
   const village = own?.village ?? requestedVillage;
   await env.DB.prepare(`INSERT INTO multiplayer_players
-    (room_code, device_id, player_name, village, x, y, day, hour, energy, sick, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (room_code, device_id, player_name, village, current_village, scene, x, y, day, hour, energy, sick, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(room_code, device_id) DO UPDATE SET
       player_name = excluded.player_name,
+      current_village = excluded.current_village,
+      scene = excluded.scene,
       x = excluded.x,
       y = excluded.y,
       day = excluded.day,
@@ -122,10 +137,10 @@ export async function POST(request: Request) {
       energy = excluded.energy,
       sick = excluded.sick,
       updated_at = excluded.updated_at`)
-    .bind(roomCode, deviceId, playerName, village, payload.x ?? 6, payload.y ?? 5, payload.day ?? 1, payload.hour ?? 7, payload.energy ?? 100, payload.sick ? 1 : 0, now)
+    .bind(roomCode, deviceId, playerName, village, currentVillage, currentScene, payload.x ?? 6, payload.y ?? 5, payload.day ?? 1, payload.hour ?? 7, payload.energy ?? 100, payload.sick ? 1 : 0, now)
     .run();
 
-  const result = await env.DB.prepare(`SELECT device_id, player_name, village, x, y, day, hour, energy, sick, updated_at
+  const result = await env.DB.prepare(`SELECT device_id, player_name, village, current_village, scene, x, y, day, hour, energy, sick, updated_at
     FROM multiplayer_players WHERE room_code = ? ORDER BY id ASC LIMIT 2`).bind(roomCode).all<PlayerRow>();
   return Response.json({ roomCode, village, players: serializePlayers(result.results, now) });
 }
