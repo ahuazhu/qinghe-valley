@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type Tool = "hoe" | "seed" | "water" | "hand" | "rod";
+type Tool = "hoe" | "seed" | "water" | "hand" | "rod" | "axe";
 type TileState = "grass" | "soil" | "crop";
 type Scene = "farm" | "town";
 type BuildingId = "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library";
@@ -25,6 +25,9 @@ type GameState = {
   wateredCount: number;
   harvested: number;
   fishCaught: number;
+  wood: number;
+  treeStates: boolean[];
+  crafted: { chest: number; fence: number; scarecrow: number };
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -33,6 +36,7 @@ const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
   water: { icon: "◒", name: "洒水壶", key: "3" },
   hand: { icon: "✦", name: "收获", key: "4" },
   rod: { icon: "⌁", name: "鱼竿", key: "5" },
+  axe: { icon: "⌂", name: "斧头", key: "6" },
 };
 
 const BUILDING_INFO: Record<BuildingId, { name: string; owner: string; greeting: string; exit: { x: number; y: number } }> = {
@@ -59,6 +63,9 @@ const makeNewGame = (): GameState => ({
   wateredCount: 0,
   harvested: 0,
   fishCaught: 0,
+  wood: 0,
+  treeStates: [true, true, true, true],
+  crafted: { chest: 0, fence: 0, scarecrow: 0 },
 });
 
 function PixelIcon({ type }: { type: Tool }) {
@@ -72,6 +79,7 @@ export default function FarmGame() {
   const [scene, setScene] = useState<Scene>("farm");
   const [activeBuilding, setActiveBuilding] = useState<BuildingId | null>(null);
   const [isFishing, setIsFishing] = useState(false);
+  const [craftingOpen, setCraftingOpen] = useState(false);
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
   const [soundOn, setSoundOn] = useState(true);
   const [ready, setReady] = useState(false);
@@ -82,7 +90,15 @@ export default function FarmGame() {
       try {
         const parsed = JSON.parse(saved) as GameState;
         if (parsed.tiles?.length === 32) {
-          setGame({ ...makeNewGame(), ...parsed, fishCaught: parsed.fishCaught ?? 0 });
+          const defaults = makeNewGame();
+          setGame({
+            ...defaults,
+            ...parsed,
+            fishCaught: parsed.fishCaught ?? 0,
+            wood: parsed.wood ?? 0,
+            treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
+            crafted: { ...defaults.crafted, ...(parsed.crafted ?? {}) },
+          });
         }
       } catch {
         localStorage.removeItem("qinghe-farm-save");
@@ -96,7 +112,7 @@ export default function FarmGame() {
   }, [game, ready]);
 
   const move = useCallback((dx: number, dy: number) => {
-    if (activeBuilding) return;
+    if (activeBuilding || craftingOpen) return;
 
     if (scene === "farm" && dx > 0 && player.x === 11) {
       setScene("town");
@@ -132,11 +148,16 @@ export default function FarmGame() {
         setMessage(`进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, player, scene]);
+  }, [activeBuilding, craftingOpen, player, scene]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      if (key === "escape" && craftingOpen) {
+        setCraftingOpen(false);
+        setMessage("收起制作手册。");
+        return;
+      }
       if (key === "escape" && activeBuilding) {
         const building = BUILDING_INFO[activeBuilding];
         setActiveBuilding(null);
@@ -156,10 +177,11 @@ export default function FarmGame() {
       if (key === "3") setSelected("water");
       if (key === "4") setSelected("hand");
       if (key === "5") setSelected("rod");
+      if (key === "6") setSelected("axe");
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, move]);
+  }, [activeBuilding, craftingOpen, move]);
 
   const playTone = (frequency = 420) => {
     if (!soundOn) return;
@@ -211,6 +233,55 @@ export default function FarmGame() {
       setIsFishing(false);
       playTone(780);
     }, 1100);
+  };
+
+  const chopTree = (index: number) => {
+    if (selected !== "axe") {
+      setMessage("先选择斧头，再点击树木砍伐。");
+      playTone(250);
+      return;
+    }
+    if (!game.treeStates[index]) {
+      setMessage("这里只剩树桩了，过一天会有树重新长出来。");
+      return;
+    }
+    if (game.energy < 4) {
+      setMessage("体力不够，明天再来砍树吧。");
+      playTone(220);
+      return;
+    }
+
+    setGame((current) => ({
+      ...current,
+      energy: current.energy - 4,
+      hour: Math.min(24, current.hour + 1),
+      wood: current.wood + 4,
+      treeStates: current.treeStates.map((tree, treeIndex) => treeIndex === index ? false : tree),
+    }));
+    setMessage("砍下树木，获得 4 块木头！点击左上角“制作”使用木头。");
+    playTone(330);
+  };
+
+  const craftItem = (item: "chest" | "fence" | "scarecrow") => {
+    const recipes = {
+      chest: { name: "木箱", cost: 8 },
+      fence: { name: "木栅栏", cost: 4 },
+      scarecrow: { name: "稻草人", cost: 12 },
+    };
+    const recipe = recipes[item];
+    if (game.wood < recipe.cost) {
+      setMessage(`制作${recipe.name}还差 ${recipe.cost - game.wood} 块木头。`);
+      playTone(220);
+      return;
+    }
+
+    setGame((current) => ({
+      ...current,
+      wood: current.wood - recipe.cost,
+      crafted: { ...current.crafted, [item]: current.crafted[item] + 1 },
+    }));
+    setMessage(`制作完成：${recipe.name}！它已经放到农场里。`);
+    playTone(700);
   };
 
   const actOnTile = (index: number) => {
@@ -286,7 +357,7 @@ export default function FarmGame() {
         feedback = "收获一颗脆甜萝卜！+65 金币、+2 种子";
         tone = 760;
       } else {
-        feedback = "鱼竿要在左侧的钓鱼池使用。";
+        feedback = selected === "rod" ? "鱼竿要在左侧的钓鱼池使用。" : "斧头要对着农场里的树木使用。";
         return current;
       }
       next.hour = Math.min(24, current.hour + 1);
@@ -333,6 +404,7 @@ export default function FarmGame() {
 
   const returnToFarm = () => {
     setActiveBuilding(null);
+    setCraftingOpen(false);
     setScene("farm");
     setPlayer({ x: 10, y: 5 });
     setMessage("已经安全回到农场，原来的进度都还在。");
@@ -365,19 +437,25 @@ export default function FarmGame() {
   };
 
   const nextDay = () => {
-    setGame((current) => ({
-      ...current,
-      day: current.day === 28 ? 1 : current.day + 1,
-      hour: 6,
-      energy: 100,
-      water: 12,
-      tiles: current.tiles.map((tile) =>
-        tile.state === "crop"
-          ? { ...tile, stage: tile.watered ? Math.min(3, tile.stage + 1) : tile.stage, watered: false }
-          : tile,
-      ),
-    }));
-    setMessage("新的一天！浇过水的作物长大了。");
+    setGame((current) => {
+      const treeStates = [...current.treeStates];
+      const emptySpot = treeStates.indexOf(false);
+      if (emptySpot >= 0) treeStates[emptySpot] = true;
+      return {
+        ...current,
+        day: current.day === 28 ? 1 : current.day + 1,
+        hour: 6,
+        energy: 100,
+        water: 12,
+        treeStates,
+        tiles: current.tiles.map((tile) =>
+          tile.state === "crop"
+            ? { ...tile, stage: tile.watered ? Math.min(3, tile.stage + 1) : tile.stage, watered: false }
+            : tile,
+        ),
+      };
+    });
+    setMessage("新的一天！浇过水的作物长大了，也有一棵树重新长出。");
     playTone(540);
   };
 
@@ -390,6 +468,7 @@ export default function FarmGame() {
     setScene("farm");
     setActiveBuilding(null);
     setIsFishing(false);
+    setCraftingOpen(false);
     setMessage("新的农场生活开始了！");
     localStorage.setItem("qinghe-farm-save", JSON.stringify(fresh));
   };
@@ -436,10 +515,11 @@ export default function FarmGame() {
             <div className="meter"><i style={{ width: `${game.energy}%` }} /></div>
           </div>
           <div className="harvest-log">
-            <div className="section-title"><span>收获记录</span><b>自动出售</b></div>
+            <div className="section-title"><span>资源记录</span><b>自动保存</b></div>
             <div className="harvest-items">
               <div><span className="harvest-icon radish-icon">萝</span><p>萝卜<strong>{game.harvested}</strong></p></div>
               <div><span className="harvest-icon fish-icon">鱼</span><p>鱼获<strong>{game.fishCaught}</strong></p></div>
+              <div><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong></p></div>
             </div>
           </div>
           <div className="task-card">
@@ -452,13 +532,14 @@ export default function FarmGame() {
               ))}
             </div>
           </div>
-          <div className="tip-card"><span>?</span><p><strong>{scene === "farm" ? "农场小贴士" : "小镇指南"}</strong>{scene === "farm" ? "选择鱼竿后点击左侧钓鱼池即可钓鱼。走到最右边可以前往小镇。" : "每栋建筑都能进入；走到门口或直接点击建筑。"}</p></div>
+          <div className="tip-card"><span>?</span><p><strong>{scene === "farm" ? "农场小贴士" : "小镇指南"}</strong>{scene === "farm" ? "用斧头砍树获得木头，再点左上角“制作”。鱼竿可以在钓鱼池使用。" : "每栋建筑都能进入；走到门口或直接点击建筑。"}</p></div>
           <button className="sleep-button" onClick={nextDay}><span>☾</span><div><strong>结束今天</strong><small>回家睡一觉</small></div><b>›</b></button>
         </aside>
 
         <section className="world-card" aria-label={scene === "farm" ? "青禾谷农场游戏区域" : "青禾镇游戏区域"}>
           <div className={`world ${scene === "town" ? "town-world" : "farm-world"}`}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : "◆"}</span>{scene === "farm" ? "青禾农场" : "青禾镇 · 中心街"}</div>
+            <button className="craft-button" onClick={() => { setCraftingOpen(true); setMessage("打开制作手册，选择想做的东西。"); }} aria-label="打开制作菜单"><span>⚒</span><strong>制作</strong><b>{game.wood} 木</b></button>
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
 
@@ -469,8 +550,13 @@ export default function FarmGame() {
                   <i /><i /><i /><b className="fishing-float" /><span className="pond-label">钓鱼池</span>
                 </button>
                 <div className="house"><span className="roof" /><span className="chimney" /><span className="wall" /><span className="door" /><span className="window" /><span className="sign">小禾农舍</span></div>
-                <div className="tree tree-a" /><div className="tree tree-b" /><div className="tree tree-c" /><div className="tree tree-d" />
+                {game.treeStates.map((standing, index) => (
+                  <button key={index} className={`tree tree-${["a", "b", "c", "d"][index]} ${standing ? "" : "stump"}`} onClick={() => chopTree(index)} aria-label={standing ? `砍伐第 ${index + 1} 棵树` : `第 ${index + 1} 个树桩`} />
+                ))}
                 <div className="flowers flowers-a">✿ · ✿</div><div className="flowers flowers-b">· ✿ ·</div>
+                {game.crafted.chest > 0 && <div className="crafted-object crafted-chest" aria-label={`木箱 ${game.crafted.chest} 个`}><i /><b>{game.crafted.chest}</b></div>}
+                {game.crafted.fence > 0 && <div className="crafted-object crafted-fence" aria-label={`木栅栏 ${game.crafted.fence} 个`}><i /><i /><i /><b>{game.crafted.fence}</b></div>}
+                {game.crafted.scarecrow > 0 && <div className="crafted-object crafted-scarecrow" aria-label={`稻草人 ${game.crafted.scarecrow} 个`}><i /><span /><b>{game.crafted.scarecrow}</b></div>}
 
                 <div className="field" aria-label="32 格农田">
                   {game.tiles.map((tile, index) => (
@@ -517,6 +603,21 @@ export default function FarmGame() {
 
             <div className="speech-bubble"><span>{scene === "farm" ? "☀" : "◆"}</span>{message}</div>
             <div className="movement-help"><span>WASD / 方向键</span>移动</div>
+
+            {craftingOpen && (
+              <div className="shop-overlay" role="presentation">
+                <section className="craft-panel" role="dialog" aria-modal="true" aria-labelledby="craft-title">
+                  <header><div><span>农场手作</span><h2 id="craft-title">制作手册</h2></div><div className="wood-wallet"><small>现有木头</small><strong>{game.wood} 块</strong></div><button onClick={() => setCraftingOpen(false)} aria-label="关闭制作菜单">×</button></header>
+                  <div className="craft-intro"><span>⚒</span><p><strong>把木头变成有用的农场设施</strong>选择配方即可制作，成品会放在农场里。</p></div>
+                  <div className="recipe-grid">
+                    <article className="recipe-card"><span className="recipe-icon chest-recipe">箱</span><div><strong>木箱</strong><small>存放农具和收获</small><em>已有 {game.crafted.chest}</em></div><button onClick={() => craftItem("chest")}><span>木</span>8</button></article>
+                    <article className="recipe-card"><span className="recipe-icon fence-recipe">栏</span><div><strong>木栅栏</strong><small>围出整齐的农场</small><em>已有 {game.crafted.fence}</em></div><button onClick={() => craftItem("fence")}><span>木</span>4</button></article>
+                    <article className="recipe-card"><span className="recipe-icon scarecrow-recipe">田</span><div><strong>稻草人</strong><small>守护正在成长的作物</small><em>已有 {game.crafted.scarecrow}</em></div><button onClick={() => craftItem("scarecrow")}><span>木</span>12</button></article>
+                  </div>
+                  <footer><span>{message}</span><button onClick={() => setCraftingOpen(false)}>收起手册</button></footer>
+                </section>
+              </div>
+            )}
 
             {activeBuilding === "supermarket" && (
               <div className="shop-overlay" role="presentation">
@@ -567,6 +668,7 @@ export default function FarmGame() {
                 {tool === "seed" && <b>{game.seeds}</b>}
                 {tool === "water" && <b>{game.water}</b>}
                 {tool === "rod" && <b>{game.fishCaught}</b>}
+                {tool === "axe" && <b>{game.wood}</b>}
               </button>
             ))}
             <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? TOOL_INFO[selected].name : "中心街"}</strong></div>
