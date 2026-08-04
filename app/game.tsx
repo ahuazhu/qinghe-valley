@@ -125,6 +125,16 @@ export default function FarmGame() {
     if (ready) localStorage.setItem("qinghe-farm-save", JSON.stringify(game));
   }, [game, ready]);
 
+  useEffect(() => {
+    if (!ready) return;
+    const clock = window.setInterval(() => {
+      setGame((current) => current.hour >= 23.5
+        ? { ...current, day: current.day === 28 ? 1 : current.day + 1, hour: 0 }
+        : { ...current, hour: current.hour + 0.5 });
+    }, 60_000);
+    return () => window.clearInterval(clock);
+  }, [ready]);
+
   useEffect(() => () => {
     if (eatTimerRef.current) window.clearTimeout(eatTimerRef.current);
   }, []);
@@ -672,6 +682,8 @@ export default function FarmGame() {
 
   const completed = tasks.filter((task) => task.done).length;
   const isNight = game.hour >= 18 || game.hour < 6;
+  const clockHour = Math.floor(game.hour) % 24;
+  const clockMinute = Math.round((game.hour - Math.floor(game.hour)) * 60) % 60;
 
   return (
     <main className="game-shell">
@@ -682,7 +694,7 @@ export default function FarmGame() {
         </div>
         <div className="day-card">
           <span className="season-dot">春</span>
-          <div><strong>第 {game.day} 天 · 周一</strong><span>{String(game.hour).padStart(2, "0")}:00</span></div>
+          <div><strong>第 {game.day} 天 · 周一</strong><span>{String(clockHour).padStart(2, "0")}:{String(clockMinute).padStart(2, "0")}</span></div>
         </div>
         <div className="top-stats">
           <div className={`weather ${isNight ? "night-weather" : ""}`}><span className={isNight ? "moon-icon" : "sun-icon"} />{isNight ? "月夜" : "晴朗"} <small>{isNight ? "12°C" : "18°C"}</small></div>
@@ -696,7 +708,7 @@ export default function FarmGame() {
       <section className="game-layout">
         <aside className="side-panel">
           <div className="portrait-card">
-            <div className="portrait"><span className="hair" /><span className="face" /><span className="shirt" /></div>
+            <div className="portrait"><img src="/xiaohe-sprite.png" alt="小禾" draggable={false} /></div>
             <div><span>新手农夫</span><strong>小禾</strong></div>
           </div>
           <div className="meter-block">
@@ -788,7 +800,7 @@ export default function FarmGame() {
             )}
 
             <div className="player" style={{ left: `${4 + player.x * 7.7}%`, top: `${8 + player.y * 10.5}%` }} aria-label="玩家角色">
-              <span className="player-shadow" /><span className="player-hair" /><span className="player-head" /><span className="player-arms" /><span className="player-body" /><span className="player-legs" />
+              <span className="player-shadow" /><img src="/xiaohe-sprite.png" alt="" draggable={false} />
             </div>
 
             <div className="speech-bubble"><span>{scene === "farm" ? "☀" : "◆"}</span>{message}</div>
@@ -834,7 +846,7 @@ export default function FarmGame() {
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
-                    <div className="player indoor-player" style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里"><span className="player-shadow" /><span className="player-hair" /><span className="player-head" /><span className="player-arms" /><span className="player-body" /><span className="player-legs" /></div>
+                    <div className="player indoor-player" style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里"><span className="player-shadow" /><img src="/xiaohe-sprite.png" alt="" draggable={false} /></div>
                   </div>
                   <div className="service-dialogue"><strong>回到家啦</strong><p>床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。</p></div>
                   <div className="service-actions">
