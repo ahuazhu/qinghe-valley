@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 type Tool = "hoe" | "seed" | "water" | "hand" | "rod" | "axe";
 type TileState = "grass" | "soil" | "crop";
 type Scene = "farm" | "town";
-type BuildingId = "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library";
+type BuildingId = "farmhouse" | "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library";
 type StorableResource = "radish" | "fish";
 
 type FarmTile = {
@@ -43,6 +43,7 @@ const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
 };
 
 const BUILDING_INFO: Record<BuildingId, { name: string; owner: string; greeting: string; exit: { x: number; y: number } }> = {
+  farmhouse: { name: "小禾农舍", owner: "温暖的家", greeting: "这里可以休息、整理一天的收获，再从门口回到农场。", exit: { x: 9, y: 3 } },
   supermarket: { name: "青禾超市", owner: "林婶", greeting: "种子、食品和日用品都在这里。", exit: { x: 3, y: 4 } },
   townhall: { name: "镇公所", owner: "周镇长", greeting: "镇上的公告、活动和居民委托都记在这里。", exit: { x: 6, y: 4 } },
   clinic: { name: "青禾诊所", owner: "白医生", greeting: "别让自己太累，健康也是农场生活的一部分。", exit: { x: 9, y: 4 } },
@@ -576,7 +577,7 @@ export default function FarmGame() {
     setMessage("已经安全回到农场，原来的进度都还在。");
   };
 
-  const useBuildingService = (building: Exclude<BuildingId, "supermarket">) => {
+  const useBuildingService = (building: Exclude<BuildingId, "supermarket" | "farmhouse">) => {
     if (building === "clinic") {
       setGame((current) => ({ ...current, energy: 100 }));
       setMessage("白医生帮你恢复了全部体力。今天也要量力而行！");
@@ -625,6 +626,13 @@ export default function FarmGame() {
     playTone(540);
   };
 
+  const sleepAtHome = () => {
+    nextDay();
+    setActiveBuilding(null);
+    setPlayer(BUILDING_INFO.farmhouse.exit);
+    setMessage("在温暖的农舍睡了一觉。早安，新的一天开始啦！");
+  };
+
   const resetGame = () => {
     if (!window.confirm("要清空当前进度，重新开始吗？")) return;
     const fresh = makeNewGame();
@@ -651,6 +659,7 @@ export default function FarmGame() {
   );
 
   const completed = tasks.filter((task) => task.done).length;
+  const isNight = game.hour >= 18 || game.hour < 6;
 
   return (
     <main className="game-shell">
@@ -664,7 +673,7 @@ export default function FarmGame() {
           <div><strong>第 {game.day} 天 · 周一</strong><span>{String(game.hour).padStart(2, "0")}:00</span></div>
         </div>
         <div className="top-stats">
-          <div className="weather"><span className="sun-icon" />晴朗 <small>18°C</small></div>
+          <div className={`weather ${isNight ? "night-weather" : ""}`}><span className={isNight ? "moon-icon" : "sun-icon"} />{isNight ? "月夜" : "晴朗"} <small>{isNight ? "12°C" : "18°C"}</small></div>
           <div className="coins"><span>●</span>{game.coins.toLocaleString()}</div>
           <button className="round-button home-button" onClick={returnToFarm} aria-label="回到农场" title="回到农场">⌂</button>
           <button className="round-button" onClick={() => setSoundOn((value) => !value)} aria-label={soundOn ? "关闭音效" : "打开音效"}>{soundOn ? "♪" : "×"}</button>
@@ -705,11 +714,12 @@ export default function FarmGame() {
         </aside>
 
         <section className="world-card" aria-label={scene === "farm" ? "青禾谷农场游戏区域" : "青禾镇游戏区域"}>
-          <div className={`world ${scene === "town" ? "town-world" : "farm-world"}`}>
+          <div className={`world ${scene === "town" ? "town-world" : "farm-world"} ${isNight ? "night-world" : ""}`}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : "◆"}</span>{scene === "farm" ? "青禾农场" : "青禾镇 · 中心街"}</div>
             <button className="craft-button" onClick={() => { setCraftingOpen(true); setMessage("打开制作手册，选择想做的东西。"); }} aria-label="打开制作菜单"><span>⚒</span><strong>制作</strong><b>{game.wood} 木</b></button>
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
+            {isNight && <div className="night-sky" aria-hidden="true"><span className="moon" /><i /><i /><i /><i /><i /><i /></div>}
 
             {scene === "farm" ? (
               <>
@@ -717,7 +727,7 @@ export default function FarmGame() {
                 <button className={`pond ${isFishing ? "fishing" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
                   <i /><i /><i /><b className="fishing-float" /><span className="pond-label">钓鱼池</span>
                 </button>
-                <div className="house"><span className="roof" /><span className="chimney" /><span className="wall" /><span className="door" /><span className="window" /><span className="sign">小禾农舍</span></div>
+                <button className="house" onClick={() => { setActiveBuilding("farmhouse"); setMessage("走进小禾农舍，屋里暖洋洋的。"); }} aria-label="进入小禾农舍"><span className="roof" /><span className="chimney" /><span className="wall" /><span className="door" /><span className="window" /><span className="sign">小禾农舍 · 点击进入</span></button>
                 {game.treeStates.map((standing, index) => (
                   <button key={index} className={`tree tree-${["a", "b", "c", "d"][index]} ${standing ? "" : "stump"}`} onClick={() => chopTree(index)} aria-label={standing ? `砍伐第 ${index + 1} 棵树` : `第 ${index + 1} 个树桩`} />
                 ))}
@@ -801,6 +811,28 @@ export default function FarmGame() {
               </div>
             )}
 
+            {activeBuilding === "farmhouse" && (
+              <div className="shop-overlay interior-farmhouse" role="presentation">
+                <section className="service-panel farmhouse-panel" role="dialog" aria-modal="true" aria-labelledby="farmhouse-title">
+                  <header><div><span>青禾农场室内</span><h2 id="farmhouse-title">小禾农舍</h2></div><button onClick={leaveBuilding} aria-label="离开小禾农舍">×</button></header>
+                  <div className="interior-room farmhouse-room">
+                    <div className="room-window"><i /><i /></div>
+                    <div className="house-bed"><i /><b /></div>
+                    <div className="house-table"><i /><i /></div>
+                    <div className="house-stove"><i /><b /></div>
+                    <div className="house-rug" />
+                    <div className="house-door"><span>出口</span></div>
+                  </div>
+                  <div className="service-dialogue"><strong>回到家啦</strong><p>床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。</p></div>
+                  <div className="service-actions">
+                    <button onClick={sleepAtHome}>在床上睡到明天</button>
+                    <button className="exit-action" onClick={leaveBuilding}>从门口出去</button>
+                  </div>
+                  <footer><span>{message}</span><small>按 Esc 也可以出去</small></footer>
+                </section>
+              </div>
+            )}
+
             {activeBuilding === "supermarket" && (
               <div className="shop-overlay" role="presentation">
                 <section className="shop-panel" role="dialog" aria-modal="true" aria-labelledby="shop-title">
@@ -816,7 +848,7 @@ export default function FarmGame() {
               </div>
             )}
 
-            {activeBuilding && activeBuilding !== "supermarket" && (
+            {activeBuilding && activeBuilding !== "supermarket" && activeBuilding !== "farmhouse" && (
               <div className={`shop-overlay interior-${activeBuilding}`} role="presentation">
                 <section className="service-panel" role="dialog" aria-modal="true" aria-labelledby="building-title">
                   <header>
