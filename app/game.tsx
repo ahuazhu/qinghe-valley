@@ -6,6 +6,7 @@ type Tool = "hoe" | "seed" | "water" | "hand" | "rod" | "axe";
 type TileState = "grass" | "soil" | "crop";
 type Scene = "farm" | "town";
 type BuildingId = "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library";
+type StorableResource = "radish" | "fish";
 
 type FarmTile = {
   state: TileState;
@@ -25,6 +26,8 @@ type GameState = {
   wateredCount: number;
   harvested: number;
   fishCaught: number;
+  inventory: { radish: number; fish: number };
+  chestStorage: { radish: number; fish: number };
   wood: number;
   treeStates: boolean[];
   crafted: { chest: number; fence: number; scarecrow: number };
@@ -63,6 +66,8 @@ const makeNewGame = (): GameState => ({
   wateredCount: 0,
   harvested: 0,
   fishCaught: 0,
+  inventory: { radish: 0, fish: 0 },
+  chestStorage: { radish: 0, fish: 0 },
   wood: 0,
   treeStates: [true, true, true, true],
   crafted: { chest: 0, fence: 0, scarecrow: 0 },
@@ -80,6 +85,8 @@ export default function FarmGame() {
   const [activeBuilding, setActiveBuilding] = useState<BuildingId | null>(null);
   const [isFishing, setIsFishing] = useState(false);
   const [craftingOpen, setCraftingOpen] = useState(false);
+  const [chestOpen, setChestOpen] = useState(false);
+  const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
   const [soundOn, setSoundOn] = useState(true);
   const [ready, setReady] = useState(false);
@@ -95,6 +102,8 @@ export default function FarmGame() {
             ...defaults,
             ...parsed,
             fishCaught: parsed.fishCaught ?? 0,
+            inventory: parsed.inventory ?? { radish: parsed.harvested ?? 0, fish: parsed.fishCaught ?? 0 },
+            chestStorage: parsed.chestStorage ?? defaults.chestStorage,
             wood: parsed.wood ?? 0,
             treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
             crafted: { ...defaults.crafted, ...(parsed.crafted ?? {}) },
@@ -112,7 +121,7 @@ export default function FarmGame() {
   }, [game, ready]);
 
   const move = useCallback((dx: number, dy: number) => {
-    if (activeBuilding || craftingOpen) return;
+    if (activeBuilding || craftingOpen || chestOpen) return;
 
     if (scene === "farm" && dx > 0 && player.x === 11) {
       setScene("town");
@@ -148,11 +157,16 @@ export default function FarmGame() {
         setMessage(`进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, craftingOpen, player, scene]);
+  }, [activeBuilding, chestOpen, craftingOpen, player, scene]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      if (key === "escape" && chestOpen) {
+        setChestOpen(false);
+        setMessage("关上木箱。");
+        return;
+      }
       if (key === "escape" && craftingOpen) {
         setCraftingOpen(false);
         setMessage("收起制作手册。");
@@ -172,6 +186,7 @@ export default function FarmGame() {
       if (key === "s" || key === "arrowdown") move(0, 1);
       if (key === "a" || key === "arrowleft") move(-1, 0);
       if (key === "d" || key === "arrowright") move(1, 0);
+      if (["1", "2", "3", "4", "5", "6"].includes(key)) setSelectedResource(null);
       if (key === "1") setSelected("hoe");
       if (key === "2") setSelected("seed");
       if (key === "3") setSelected("water");
@@ -181,7 +196,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, craftingOpen, move]);
+  }, [activeBuilding, chestOpen, craftingOpen, move]);
 
   const playTone = (frequency = 420) => {
     if (!soundOn) return;
@@ -228,8 +243,13 @@ export default function FarmGame() {
         { name: "小泥鳅", coins: 24 },
       ];
       const caught = catches[Math.floor(Math.random() * catches.length)];
-      setGame((current) => ({ ...current, coins: current.coins + caught.coins, fishCaught: current.fishCaught + 1 }));
-      setMessage(`钓到${caught.name}！鱼获 +1，卖出获得 ${caught.coins} 金币。`);
+      setGame((current) => ({
+        ...current,
+        coins: current.coins + caught.coins,
+        fishCaught: current.fishCaught + 1,
+        inventory: { ...current.inventory, fish: current.inventory.fish + 1 },
+      }));
+      setMessage(`钓到${caught.name}！鱼获 +1，点击左侧的鱼再点木箱可以存起来。`);
       setIsFishing(false);
       playTone(780);
     }, 1100);
@@ -291,6 +311,10 @@ export default function FarmGame() {
       scarecrow: { name: "稻草人", refund: 6, use: "稻草人会守护田里的作物。" },
     };
     const details = items[item];
+    if (item === "chest" && game.chestStorage.radish + game.chestStorage.fish > 0) {
+      setMessage("木箱里还有东西，要先取空才能拆除。");
+      return;
+    }
     if (selected !== "axe") {
       setMessage(`${details.use}选择斧头后点击可拆除。`);
       return;
@@ -309,6 +333,64 @@ export default function FarmGame() {
     }));
     setMessage(`拆除一个${details.name}，回收 ${details.refund} 块木头。`);
     playTone(360);
+  };
+
+  const selectResource = (resource: StorableResource) => {
+    const details = resource === "radish"
+      ? { name: "萝卜", count: game.inventory.radish }
+      : { name: "鱼", count: game.inventory.fish };
+    if (details.count <= 0) {
+      setMessage(`背包里还没有${details.name}。`);
+      playTone(220);
+      return;
+    }
+    setSelectedResource(resource);
+    setMessage(`已拿起${details.name}，现在点击农场里的木箱放进去。`);
+    playTone(560);
+  };
+
+  const useChest = () => {
+    if (selectedResource) {
+      const name = selectedResource === "radish" ? "萝卜" : "鱼";
+      const count = game.inventory[selectedResource];
+      if (count <= 0) {
+        setSelectedResource(null);
+        setMessage(`背包里没有更多${name}了。`);
+        return;
+      }
+      setGame((current) => ({
+        ...current,
+        inventory: { ...current.inventory, [selectedResource]: current.inventory[selectedResource] - 1 },
+        chestStorage: { ...current.chestStorage, [selectedResource]: current.chestStorage[selectedResource] + 1 },
+      }));
+      if (count === 1) setSelectedResource(null);
+      setMessage(`把 1 个${name}放进木箱。箱内：萝卜 ${game.chestStorage.radish + (selectedResource === "radish" ? 1 : 0)}、鱼 ${game.chestStorage.fish + (selectedResource === "fish" ? 1 : 0)}。`);
+      playTone(680);
+      return;
+    }
+    if (selected === "axe") {
+      dismantleItem("chest");
+      return;
+    }
+    setChestOpen(true);
+    setMessage(`打开木箱：里面有萝卜 ${game.chestStorage.radish} 个、鱼 ${game.chestStorage.fish} 条。`);
+    playTone(500);
+  };
+
+  const takeFromChest = (resource: StorableResource) => {
+    const name = resource === "radish" ? "萝卜" : "鱼";
+    if (game.chestStorage[resource] <= 0) {
+      setMessage(`木箱里没有${name}。`);
+      playTone(220);
+      return;
+    }
+    setGame((current) => ({
+      ...current,
+      inventory: { ...current.inventory, [resource]: current.inventory[resource] + 1 },
+      chestStorage: { ...current.chestStorage, [resource]: current.chestStorage[resource] - 1 },
+    }));
+    setMessage(`从木箱取出 1 个${name}。`);
+    playTone(620);
   };
 
   const actOnTile = (index: number) => {
@@ -381,6 +463,7 @@ export default function FarmGame() {
         next.seeds += 2;
         next.energy = Math.max(0, current.energy - 1);
         next.harvested += 1;
+        next.inventory = { ...current.inventory, radish: current.inventory.radish + 1 };
         feedback = "收获一颗脆甜萝卜！+65 金币、+2 种子";
         tone = 760;
       } else {
@@ -432,6 +515,7 @@ export default function FarmGame() {
   const returnToFarm = () => {
     setActiveBuilding(null);
     setCraftingOpen(false);
+    setChestOpen(false);
     setScene("farm");
     setPlayer({ x: 10, y: 5 });
     setMessage("已经安全回到农场，原来的进度都还在。");
@@ -496,6 +580,8 @@ export default function FarmGame() {
     setActiveBuilding(null);
     setIsFishing(false);
     setCraftingOpen(false);
+    setChestOpen(false);
+    setSelectedResource(null);
     setMessage("新的农场生活开始了！");
     localStorage.setItem("qinghe-farm-save", JSON.stringify(fresh));
   };
@@ -544,8 +630,8 @@ export default function FarmGame() {
           <div className="harvest-log">
             <div className="section-title"><span>资源记录</span><b>自动保存</b></div>
             <div className="harvest-items">
-              <div><span className="harvest-icon radish-icon">萝</span><p>萝卜<strong>{game.harvested}</strong></p></div>
-              <div><span className="harvest-icon fish-icon">鱼</span><p>鱼获<strong>{game.fishCaught}</strong></p></div>
+              <button className={selectedResource === "radish" ? "resource-item selected" : "resource-item"} onClick={() => selectResource("radish")} aria-pressed={selectedResource === "radish"}><span className="harvest-icon radish-icon">萝</span><p>萝卜<strong>{game.inventory.radish}</strong></p></button>
+              <button className={selectedResource === "fish" ? "resource-item selected" : "resource-item"} onClick={() => selectResource("fish")} aria-pressed={selectedResource === "fish"}><span className="harvest-icon fish-icon">鱼</span><p>鱼获<strong>{game.inventory.fish}</strong></p></button>
               <div><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong></p></div>
             </div>
           </div>
@@ -581,7 +667,7 @@ export default function FarmGame() {
                   <button key={index} className={`tree tree-${["a", "b", "c", "d"][index]} ${standing ? "" : "stump"}`} onClick={() => chopTree(index)} aria-label={standing ? `砍伐第 ${index + 1} 棵树` : `第 ${index + 1} 个树桩`} />
                 ))}
                 <div className="flowers flowers-a">✿ · ✿</div><div className="flowers flowers-b">· ✿ ·</div>
-                {game.crafted.chest > 0 && <button className="crafted-object crafted-chest" onClick={() => dismantleItem("chest")} aria-label={`木箱 ${game.crafted.chest} 个，使用斧头可拆除`}><i /><b>{game.crafted.chest}</b></button>}
+                {game.crafted.chest > 0 && <button className={`crafted-object crafted-chest ${selectedResource ? "ready-to-store" : ""}`} onClick={useChest} aria-label={`木箱 ${game.crafted.chest} 个，内有萝卜 ${game.chestStorage.radish} 个、鱼 ${game.chestStorage.fish} 条`}><i /><b>{game.chestStorage.radish + game.chestStorage.fish}</b></button>}
                 {game.crafted.fence > 0 && <button className="crafted-object crafted-fence" onClick={() => dismantleItem("fence")} aria-label={`木栅栏 ${game.crafted.fence} 个，使用斧头可拆除`}><i /><i /><i /><b>{game.crafted.fence}</b></button>}
                 {game.crafted.scarecrow > 0 && <button className="crafted-object crafted-scarecrow" onClick={() => dismantleItem("scarecrow")} aria-label={`稻草人 ${game.crafted.scarecrow} 个，使用斧头可拆除`}><i /><span /><b>{game.crafted.scarecrow}</b></button>}
 
@@ -646,6 +732,20 @@ export default function FarmGame() {
               </div>
             )}
 
+            {chestOpen && (
+              <div className="shop-overlay" role="presentation">
+                <section className="shop-panel chest-storage-panel" role="dialog" aria-modal="true" aria-labelledby="chest-title">
+                  <header><div><span>农场收纳</span><h2 id="chest-title">木箱</h2></div><div className="shop-wallet"><small>箱内物品</small><strong>{game.chestStorage.radish + game.chestStorage.fish} 个</strong></div><button onClick={() => setChestOpen(false)} aria-label="关上木箱">×</button></header>
+                  <div className="shopkeeper chest-intro"><span className="chest-mini">箱</span><p><strong>小禾的木箱</strong>存进去的鱼和萝卜会一直保存在这里，想用时可以再取出来。</p></div>
+                  <div className="product-grid chest-grid">
+                    <article className="product-card"><span className="product-icon radish-icon">萝</span><div><strong>萝卜</strong><small>箱内有 {game.chestStorage.radish} 个</small></div><button disabled={game.chestStorage.radish <= 0} onClick={() => takeFromChest("radish")}>取出 1 个</button></article>
+                    <article className="product-card"><span className="product-icon fish-icon">鱼</span><div><strong>鱼获</strong><small>箱内有 {game.chestStorage.fish} 条</small></div><button disabled={game.chestStorage.fish <= 0} onClick={() => takeFromChest("fish")}>取出 1 条</button></article>
+                  </div>
+                  <footer><span>{message}</span><button onClick={() => setChestOpen(false)}>关上木箱</button></footer>
+                </section>
+              </div>
+            )}
+
             {activeBuilding === "supermarket" && (
               <div className="shop-overlay" role="presentation">
                 <section className="shop-panel" role="dialog" aria-modal="true" aria-labelledby="shop-title">
@@ -690,15 +790,15 @@ export default function FarmGame() {
           <div className="toolbar" aria-label="农具栏">
             <div className="inventory-note"><strong>{scene === "farm" ? "背包" : "小镇背包"}</strong><span>{scene === "farm" ? "选择工具，再点击田地" : "超市可以买到农场补给"}</span></div>
             {(Object.keys(TOOL_INFO) as Tool[]).map((tool) => (
-              <button key={tool} className={selected === tool ? "tool-button selected" : "tool-button"} onClick={() => setSelected(tool)} aria-pressed={selected === tool}>
+              <button key={tool} className={selected === tool && !selectedResource ? "tool-button selected" : "tool-button"} onClick={() => { setSelected(tool); setSelectedResource(null); }} aria-pressed={selected === tool && !selectedResource}>
                 <kbd>{TOOL_INFO[tool].key}</kbd><PixelIcon type={tool} /><span>{TOOL_INFO[tool].name}</span>
                 {tool === "seed" && <b>{game.seeds}</b>}
                 {tool === "water" && <b>{game.water}</b>}
-                {tool === "rod" && <b>{game.fishCaught}</b>}
+                {tool === "rod" && <b>{game.inventory.fish}</b>}
                 {tool === "axe" && <b>{game.wood}</b>}
               </button>
             ))}
-            <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? TOOL_INFO[selected].name : "中心街"}</strong></div>
+            <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? selectedResource === "radish" ? "拿着萝卜" : selectedResource === "fish" ? "拿着鱼" : TOOL_INFO[selected].name : "中心街"}</strong></div>
           </div>
         </section>
       </section>
