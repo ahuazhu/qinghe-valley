@@ -87,6 +87,7 @@ export default function FarmGame() {
   const [isFishing, setIsFishing] = useState(false);
   const [craftingOpen, setCraftingOpen] = useState(false);
   const [chestOpen, setChestOpen] = useState(false);
+  const [stoveLit, setStoveLit] = useState(false);
   const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
   const [soundOn, setSoundOn] = useState(true);
@@ -819,7 +820,7 @@ export default function FarmGame() {
                     <div className="room-window"><i /><i /></div>
                     <div className="house-bed"><i /><b /></div>
                     <div className="house-table"><i /><i /></div>
-                    <div className="house-stove"><i /><b /></div>
+                    <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     <div className="house-rug" />
                     <div className="house-door"><span>出口</span></div>
                   </div>
