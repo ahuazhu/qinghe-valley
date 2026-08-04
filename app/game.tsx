@@ -10,6 +10,7 @@ type BuildingId = "farmhouse" | "supermarket" | "townhall" | "clinic" | "cafe" |
 type CropType = "radish" | "strawberry" | "corn" | "watermelon" | "tomato" | "potato" | "pumpkin" | "blueberry";
 type StorableResource = CropType | "fish";
 type VillageId = "qinghe" | "maple";
+type Facing = "down" | "up" | "left" | "right";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft";
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
 
@@ -215,6 +216,8 @@ export default function FarmGame() {
   const [selectedCrop, setSelectedCrop] = useState<CropType>("radish");
   const [player, setPlayer] = useState({ x: 6, y: 5 });
   const [indoorPlayer, setIndoorPlayer] = useState({ x: 34, y: 69 });
+  const [facing, setFacing] = useState<Facing>("down");
+  const [isWalking, setIsWalking] = useState(false);
   const [scene, setScene] = useState<Scene>("farm");
   const [activeBuilding, setActiveBuilding] = useState<BuildingId | null>(null);
   const [isFishing, setIsFishing] = useState(false);
@@ -245,6 +248,7 @@ export default function FarmGame() {
   const [multiplayerError, setMultiplayerError] = useState("");
   const [joiningMultiplayer, setJoiningMultiplayer] = useState(false);
   const eatTimerRef = useRef<number | null>(null);
+  const walkTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const multiplayerStatusRef = useRef({ player, game });
   const splitLeftRef = useRef<HTMLIFrameElement | null>(null);
@@ -370,10 +374,20 @@ export default function FarmGame() {
 
   useEffect(() => () => {
     if (eatTimerRef.current) window.clearTimeout(eatTimerRef.current);
+    if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
+  }, []);
+
+  const showWalking = useCallback((dx: number, dy: number) => {
+    if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) setFacing(dx < 0 ? "left" : "right");
+    else if (dy !== 0) setFacing(dy < 0 ? "up" : "down");
+    setIsWalking(true);
+    if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
+    walkTimerRef.current = window.setTimeout(() => setIsWalking(false), 360);
   }, []);
 
   const move = useCallback((dx: number, dy: number) => {
     if (craftingOpen || chestOpen) return;
+    showWalking(dx, dy);
     if (neighborInterior) {
       setIndoorPlayer((current) => ({
         x: Math.max(20, Math.min(80, current.x + dx * 5)),
@@ -460,7 +474,7 @@ export default function FarmGame() {
         setMessage(`进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, chestOpen, craftingOpen, neighborInterior, player, scene, worldVillage]);
+  }, [activeBuilding, chestOpen, craftingOpen, neighborInterior, player, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1428,14 +1442,18 @@ export default function FarmGame() {
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
     const percentY = ((event.clientY - bounds.top) / bounds.height) * 100;
-    setPlayer({ x: Math.max(0, Math.min(11, Math.round((percentX - 4) / 7.7))), y: Math.max(0, Math.min(7, Math.round((percentY - 8) / 10.5))) });
+    const destination = { x: Math.max(0, Math.min(11, Math.round((percentX - 4) / 7.7))), y: Math.max(0, Math.min(7, Math.round((percentY - 8) / 10.5))) };
+    showWalking(destination.x - player.x, destination.y - player.y);
+    setPlayer(destination);
     setMessage("小禾走到了你点击的位置。 ");
   };
 
   const walkInsidePointer = (event: MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    setIndoorPlayer({ x: Math.max(20, Math.min(80, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(62, Math.min(76, ((event.clientY - bounds.top) / bounds.height) * 100)) });
+    const destination = { x: Math.max(20, Math.min(80, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(62, Math.min(76, ((event.clientY - bounds.top) / bounds.height) * 100)) };
+    showWalking(destination.x - indoorPlayer.x, destination.y - indoorPlayer.y);
+    setIndoorPlayer(destination);
     setMessage("小禾走到了屋里点击的位置。 ");
   };
 
@@ -1591,8 +1609,8 @@ export default function FarmGame() {
               </>
             )}
 
-            <div className="player" style={{ left: `${4 + player.x * 7.7}%`, top: `${8 + player.y * 10.5}%` }} aria-label="玩家角色">
-              {heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} />
+            <div className={`player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${4 + player.x * 7.7}%`, top: `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
+              {heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} />
             </div>
             {partner?.online && partner.currentVillage === activeVillage && partner.scene === scene && <div className="online-partner" style={{ left: `${4 + partner.x * 7.7}%`, top: `${8 + partner.y * 10.5}%` }} aria-label={`${partner.playerName}也在这里`}><span>{partner.playerName}<small>朋友</small></span><i className="player-shadow" /><img src={partner.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>}
 
@@ -1618,7 +1636,7 @@ export default function FarmGame() {
                     </div>
                     <button className="neighbor-indoor-npc" onClick={() => talkToNeighbor(neighborInterior)}><i className="npc-hair" /><i className="npc-face" /><i className="npc-body" /><span>{neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师"}</span></button>
                     <button className="house-door neighbor-home-door" onClick={() => { setNeighborInterior(null); setBuilderOpen(false); setMessage("从居民家的门口出来了。 "); }}><span>出口</span></button>
-                    <div className="player indoor-player" style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师"}</strong><p>{neighborInterior === "eastNeighbor" ? "欢迎来我家！桌上放着果酱和刚摘下来的草莓。" : neighborInterior === "southNeighbor" ? "把木头和石材交给我，我能帮你制作东西、扩建农舍和地盘。" : "欢迎来到林间书屋，书架上的故事都可以慢慢看。"}</p></div>
                   <div className="service-actions"><button onClick={() => talkToNeighbor(neighborInterior)}>{neighborInterior === "southNeighbor" ? (heldMaterial ? "把手里的材料交给鲁师傅" : "打开鲁师傅的委托单") : "和主人聊天"}</button><button className="exit-action" onClick={() => { setNeighborInterior(null); setBuilderOpen(false); setMessage("从居民家的门口出来了。 "); }}>从门口出去</button></div>
@@ -1703,7 +1721,7 @@ export default function FarmGame() {
                     {game.upgrades.house >= 3 && <button className="house-equipment house-kitchen" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 20) })); setMessage("在料理台吃了一份热饭，恢复 20 点体力！"); playTone(740); }}><i />料理台</button>}
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
-                    <div className="player indoor-player" style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>
                   </div>
                   <div className="service-dialogue"><strong>回到家啦</strong><p>床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。</p></div>
                   <div className="service-actions">
