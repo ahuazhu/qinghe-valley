@@ -13,7 +13,7 @@ type VillageId = "qinghe" | "maple";
 type Facing = "down" | "up" | "left" | "right";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft";
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
-type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "seed"; id: CropType } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
+type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
 
 type OnlinePlayer = {
   deviceId: string;
@@ -330,6 +330,7 @@ export default function FarmGame() {
   const [multiplayerError, setMultiplayerError] = useState("");
   const [joiningMultiplayer, setJoiningMultiplayer] = useState(false);
   const eatTimerRef = useRef<number | null>(null);
+  const herbClickTimerRef = useRef<number | null>(null);
   const walkTimerRef = useRef<number | null>(null);
   const lastMoveAtRef = useRef(0);
   const longPressTriggeredRef = useRef(false);
@@ -1002,9 +1003,9 @@ export default function FarmGame() {
     playTone(supply.kind === "tool" ? 920 : supply.kind === "food" ? 760 : supply.kind === "herb" ? 820 : 660);
   };
 
-  const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].title : RARE_ARTIFACTS[heldItem.id].title : "";
-  const carriedItemShort = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木" : "石") : heldItem.kind === "resource" ? (heldItem.id === "fish" ? "鱼" : CROP_INFO[heldItem.id].short) : heldItem.kind === "seed" ? CROP_INFO[heldItem.id].short : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].short : RARE_ARTIFACTS[heldItem.id].short : "";
-  const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : heldItem.kind === "seed" ? `${heldItem.id}-seeds` : heldItem.kind === "book" ? "book" : "artifact" : "";
+  const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : heldItem.kind === "herb" ? "药材" : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].title : RARE_ARTIFACTS[heldItem.id].title : "";
+  const carriedItemShort = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木" : "石") : heldItem.kind === "resource" ? (heldItem.id === "fish" ? "鱼" : CROP_INFO[heldItem.id].short) : heldItem.kind === "seed" ? CROP_INFO[heldItem.id].short : heldItem.kind === "herb" ? "药" : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].short : RARE_ARTIFACTS[heldItem.id].short : "";
+  const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : heldItem.kind === "seed" ? `${heldItem.id}-seeds` : heldItem.kind === "herb" ? "herb" : heldItem.kind === "book" ? "book" : "artifact" : "";
   const renderCarriedItem = () => heldItem ? <span className={`held-overhead held-${carriedItemClass}`} title={carriedItemName}>{carriedItemShort}</span> : null;
 
   const giveHeldItem = (person: string) => {
@@ -1059,7 +1060,8 @@ export default function FarmGame() {
       else if (heldItem.kind === "seed") {
         const field = CROP_INFO[heldItem.id].seedField;
         next = { ...current, [field]: Math.max(0, current[field] - 1) };
-      } else next = { ...current, bookBag: current.bookBag.filter((bookId) => bookId !== heldItem.id) };
+      } else if (heldItem.kind === "herb") next = { ...current, herbs: Math.max(0, current.herbs - 1) };
+      else next = { ...current, bookBag: current.bookBag.filter((bookId) => bookId !== heldItem.id) };
       if (!returnGift) return next;
       if (returnGift.kind === "seed" || returnGift.kind === "material") return { ...next, [returnGift.field]: next[returnGift.field] + returnGift.amount };
       if (returnGift.kind === "energy") return { ...next, energy: Math.min(100, next.energy + returnGift.amount) };
@@ -1226,6 +1228,30 @@ export default function FarmGame() {
     }));
     setMessage("使用了 1 份药材，小禾恢复了健康，体力也增加了 25 点！");
     playTone(820);
+  };
+
+  const clickHerb = () => {
+    if (herbClickTimerRef.current) window.clearTimeout(herbClickTimerRef.current);
+    herbClickTimerRef.current = window.setTimeout(() => {
+      useHerb();
+      herbClickTimerRef.current = null;
+    }, 260);
+  };
+
+  const pickUpHerb = () => {
+    if (herbClickTimerRef.current) {
+      window.clearTimeout(herbClickTimerRef.current);
+      herbClickTimerRef.current = null;
+    }
+    if (game.herbs <= 0) {
+      setMessage("药材袋还是空的，暂时没有东西可以拿起。 ");
+      playTone(220);
+      return;
+    }
+    setHeldItem({ kind: "herb" });
+    setSelectedResource(null);
+    setMessage("双击拿起了 1 份药材，现在药材举在小禾头顶，可以送给居民。 ");
+    playTone(720);
   };
 
   const useChest = () => {
@@ -1974,7 +2000,7 @@ export default function FarmGame() {
               {(Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => <button key={resource} className={heldItem?.kind === "resource" && heldItem.id === resource ? "resource-item held-material" : selectedResource === resource ? "resource-item selected" : "resource-item"} onClick={() => clickResource(resource)} onDoubleClick={() => pickUpResource(resource)} onPointerDown={() => startEating(resource)} onPointerUp={stopEating} onPointerCancel={stopEating} onPointerLeave={stopEating} onContextMenu={(event) => event.preventDefault()} aria-pressed={selectedResource === resource} aria-label={`${RESOURCE_INFO[resource].name} ${game.inventory[resource]} 个，双击拿起送人，长按食用`} title="双击拿起送人，长按吃掉"><span className={`harvest-icon ${resource}-icon`}>{resource === "fish" ? "鱼" : CROP_INFO[resource].short}</span><p>{resource === "fish" ? "鱼获" : CROP_INFO[resource].name}<strong>{game.inventory[resource]}</strong><small>双击拿起</small></p></button>)}
               <button className={heldItem?.kind === "material" && heldItem.id === "wood" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("wood")} title="双击拿起木头"><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong><small>双击拿起</small></p></button>
               <button className={heldItem?.kind === "material" && heldItem.id === "stone" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("stone")} title="双击拿起石材"><span className="harvest-icon stone-icon">石</span><p>石材<strong>{game.stone}</strong><small>双击拿起</small></p></button>
-              <button className="resource-item herb-record" onClick={useHerb} aria-label={`药材 ${game.herbs} 份，生病时单击使用`} title="生病时单击使用"><span className="harvest-icon herb-icon">药</span><p>药材<strong>{game.herbs}</strong><small>{game.sick ? "单击使用" : "生病时使用"}</small></p></button>
+              <button className={heldItem?.kind === "herb" ? "resource-item herb-record held-material" : "resource-item herb-record"} onClick={clickHerb} onDoubleClick={pickUpHerb} aria-label={`药材 ${game.herbs} 份，生病时单击使用，双击拿起送人`} title="生病时单击使用，双击拿起送人"><span className="harvest-icon herb-icon">药</span><p>药材<strong>{game.herbs}</strong><small>{game.sick ? "单击用 · 双击拿" : "双击拿起"}</small></p></button>
               {game.bookBag.map((bookId) => <button key={`bag-book-${bookId}`} className={heldItem?.kind === "book" && heldItem.id === bookId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${LOST_BOOKS[bookId].title}：${LOST_BOOKS[bookId].content}`)} onDoubleClick={() => carryLostBook(bookId)} title="点击阅读，双击拿起来送给叶老师"><span className="harvest-icon book-icon">书</span><p>{LOST_BOOKS[bookId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
               {game.artifactBag.map((artifactId) => <button key={`bag-artifact-${artifactId}`} className={heldItem?.kind === "artifact" && heldItem.id === artifactId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${RARE_ARTIFACTS[artifactId].title}：${RARE_ARTIFACTS[artifactId].description}`)} onDoubleClick={() => carryArtifact(artifactId)} title="点击查看，双击拿起来送到博物馆"><span className={`harvest-icon artifact-icon artifact-icon-${artifactId + 1}`}>{RARE_ARTIFACTS[artifactId].short}</span><p>{RARE_ARTIFACTS[artifactId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
             </div>
