@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 
 type VillageId = "qinghe" | "maple";
-type Scene = "farm" | "town" | "eastNeighbor" | "southNeighbor" | "northNeighbor";
+type Scene = "farm" | "town" | "cultureDistrict" | "eastNeighbor" | "southNeighbor" | "northNeighbor";
 
 type MultiplayerPayload = {
   roomCode?: string;
@@ -76,7 +76,7 @@ function serializePlayers(rows: PlayerRow[], now: number) {
     playerName: row.player_name,
     village: row.village,
     currentVillage: row.current_village === "maple" ? "maple" : row.current_village === "qinghe" ? "qinghe" : row.village,
-    scene: ["farm", "town", "eastNeighbor", "southNeighbor", "northNeighbor"].includes(row.scene ?? "") ? row.scene : "farm",
+    scene: ["farm", "town", "cultureDistrict", "eastNeighbor", "southNeighbor", "northNeighbor"].includes(row.scene ?? "") ? row.scene : "farm",
     x: row.x,
     y: row.y,
     day: row.day,
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
   const playerName = payload.playerName?.trim().slice(0, 12) || "小禾";
   const requestedVillage = payload.village === "maple" ? "maple" : "qinghe";
   const currentVillage = payload.currentVillage === "maple" ? "maple" : payload.currentVillage === "qinghe" ? "qinghe" : requestedVillage;
-  const currentScene: Scene = ["farm", "town", "eastNeighbor", "southNeighbor", "northNeighbor"].includes(payload.scene ?? "") ? payload.scene as Scene : "farm";
+  const currentScene: Scene = ["farm", "town", "cultureDistrict", "eastNeighbor", "southNeighbor", "northNeighbor"].includes(payload.scene ?? "") ? payload.scene as Scene : "farm";
   if (!roomCode || !deviceId) return Response.json({ error: "房间信息不正确" }, { status: 400 });
 
   await ensureSchema();

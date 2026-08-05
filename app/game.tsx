@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 
 type Tool = "hoe" | "seed" | "water" | "hand" | "rod" | "axe";
 type TileState = "grass" | "soil" | "crop";
-type Scene = "farm" | "town" | "eastNeighbor" | "southNeighbor" | "northNeighbor";
+type Scene = "farm" | "town" | "cultureDistrict" | "eastNeighbor" | "southNeighbor" | "northNeighbor";
 type NeighborScene = "eastNeighbor" | "southNeighbor" | "northNeighbor";
 type BuildingId = "farmhouse" | "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library" | "museum";
 type CropType = "radish" | "strawberry" | "corn" | "watermelon" | "tomato" | "potato" | "pumpkin" | "blueberry";
@@ -126,12 +126,12 @@ const RESOURCE_INFO: Record<StorableResource, { name: string; energy: number; pr
 const BUILDING_INFO: Record<BuildingId, { name: string; owner: string; greeting: string; exit: { x: number; y: number } }> = {
   farmhouse: { name: "小禾农舍", owner: "温暖的家", greeting: "这里可以休息、整理一天的收获，再从门口回到农场。", exit: { x: 9, y: 3 } },
   supermarket: { name: "青禾超市", owner: "林婶", greeting: "种子、食品和日用品都在这里。", exit: { x: 3, y: 4 } },
-  townhall: { name: "镇公所", owner: "周镇长", greeting: "镇上的公告、活动和居民委托都记在这里。", exit: { x: 6, y: 4 } },
+  townhall: { name: "镇公所", owner: "周镇长", greeting: "镇上的公告、活动和居民委托都记在这里。", exit: { x: 3, y: 4 } },
   clinic: { name: "青禾诊所", owner: "白医生", greeting: "别让自己太累，健康也是农场生活的一部分。", exit: { x: 9, y: 4 } },
   cafe: { name: "麦香咖啡", owner: "阿麦", greeting: "刚出炉的面包和热咖啡最能恢复精神。", exit: { x: 10, y: 5 } },
   workshop: { name: "木匠工坊", owner: "鲁师傅", greeting: "等你攒够材料，我可以帮你扩建农舍。", exit: { x: 3, y: 5 } },
   library: { name: "山谷图书馆", owner: "叶老师", greeting: "这里收藏着作物、矿石和青禾谷的故事。", exit: { x: 8, y: 5 } },
-  museum: { name: "青禾博物馆", owner: "沈馆长", greeting: "欢迎来看看山谷的稀奇发现。捡到珍贵物品，可以交给我放进展柜。", exit: { x: 6, y: 5 } },
+  museum: { name: "青禾博物馆", owner: "沈馆长", greeting: "欢迎来看看山谷的稀奇发现。捡到珍贵物品，可以交给我放进展柜。", exit: { x: 8, y: 4 } },
 };
 
 const BUILDING_ITEMS: Record<BuildingId, string[]> = {
@@ -296,7 +296,12 @@ export default function FarmGame() {
   const [scene, setScene] = useState<Scene>("farm");
   const [activeBuilding, setActiveBuilding] = useState<BuildingId | null>(null);
   const [isFishing, setIsFishing] = useState(false);
+  const [fishingPhase, setFishingPhase] = useState<"idle" | "waiting" | "bite" | "reeling">("idle");
+  const [fishingMarker, setFishingMarker] = useState(4);
+  const [fishingScore, setFishingScore] = useState(0);
   const [craftingOpen, setCraftingOpen] = useState(false);
+  const [brandMenuOpen, setBrandMenuOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [chestOpen, setChestOpen] = useState(false);
   const [stoveLit, setStoveLit] = useState(false);
   const [neighborInterior, setNeighborInterior] = useState<NeighborScene | null>(null);
@@ -325,6 +330,11 @@ export default function FarmGame() {
   const eatTimerRef = useRef<number | null>(null);
   const walkTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
+  const fishingWaitTimerRef = useRef<number | null>(null);
+  const fishingBiteTimerRef = useRef<number | null>(null);
+  const fishingMarkerTimerRef = useRef<number | null>(null);
+  const fishingMarkerDirectionRef = useRef(1);
+  const fishingBaitUsedRef = useRef(false);
   const multiplayerStatusRef = useRef({ player, game });
   const splitLeftRef = useRef<HTMLIFrameElement | null>(null);
   const splitRightRef = useRef<HTMLIFrameElement | null>(null);
@@ -454,7 +464,29 @@ export default function FarmGame() {
   useEffect(() => () => {
     if (eatTimerRef.current) window.clearTimeout(eatTimerRef.current);
     if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
+    if (fishingWaitTimerRef.current) window.clearTimeout(fishingWaitTimerRef.current);
+    if (fishingBiteTimerRef.current) window.clearTimeout(fishingBiteTimerRef.current);
+    if (fishingMarkerTimerRef.current) window.clearInterval(fishingMarkerTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (fishingPhase !== "reeling") return;
+    fishingMarkerDirectionRef.current = 1;
+    setFishingMarker(4);
+    fishingMarkerTimerRef.current = window.setInterval(() => {
+      setFishingMarker((current) => {
+        const speed = game.toolUpgrades.rod ? 4 : 6;
+        let next = current + fishingMarkerDirectionRef.current * speed;
+        if (next >= 96) { next = 96; fishingMarkerDirectionRef.current = -1; }
+        if (next <= 4) { next = 4; fishingMarkerDirectionRef.current = 1; }
+        return next;
+      });
+    }, 70);
+    return () => {
+      if (fishingMarkerTimerRef.current) window.clearInterval(fishingMarkerTimerRef.current);
+      fishingMarkerTimerRef.current = null;
+    };
+  }, [fishingPhase, game.toolUpgrades.rod]);
 
   const showWalking = useCallback((dx: number, dy: number) => {
     if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) setFacing(dx < 0 ? "left" : "right");
@@ -511,9 +543,21 @@ export default function FarmGame() {
       return;
     }
     if (scene === "town" && dy < 0 && player.y === 0) {
-      setScene("northNeighbor");
-      setPlayer({ x: 6, y: 7 });
-      setMessage("来到叶老师的林间书屋，这里安静又凉快。 ");
+      if (player.x >= 4 && player.x <= 8) {
+        setScene("cultureDistrict");
+        setPlayer({ x: 6, y: 7 });
+        setMessage("来到清河文化街，镇公所在左边，青禾博物馆在右边。 ");
+      } else {
+        setScene("northNeighbor");
+        setPlayer({ x: 6, y: 7 });
+        setMessage("来到叶老师的林间书屋，这里安静又凉快。 ");
+      }
+      return;
+    }
+    if (scene === "cultureDistrict" && dy > 0 && player.y === 7) {
+      setScene("town");
+      setPlayer({ x: 6, y: 0 });
+      setMessage("沿着石板路回到青禾镇中心街。 ");
       return;
     }
     if (scene === "eastNeighbor" && dx > 0 && player.x === 11 && worldVillage === "qinghe") {
@@ -548,15 +592,18 @@ export default function FarmGame() {
     };
     setPlayer(next);
 
-    if (scene === "town") {
+    if (scene === "town" || scene === "cultureDistrict") {
       let entrance: BuildingId | null = null;
-      if (next.x >= 2 && next.x <= 4 && next.y <= 3) entrance = "supermarket";
-      else if (next.x >= 5 && next.x <= 7 && next.y <= 3) entrance = "townhall";
-      else if (next.x >= 9 && next.y <= 3) entrance = "clinic";
-      else if (next.x >= 2 && next.x <= 4 && next.y >= 6) entrance = "workshop";
-      else if (next.x >= 5 && next.x <= 6 && next.y >= 6 && worldVillage === "qinghe") entrance = "museum";
-      else if (next.x >= 7 && next.x <= 9 && next.y >= 6) entrance = "library";
-      else if (next.x >= 10 && next.y >= 6) entrance = "cafe";
+      if (scene === "cultureDistrict") {
+        if (next.x >= 1 && next.x <= 5 && next.y <= 4) entrance = "townhall";
+        else if (next.x >= 7 && next.x <= 10 && next.y <= 4 && worldVillage === "qinghe") entrance = "museum";
+      } else {
+        if (next.x >= 2 && next.x <= 4 && next.y <= 3) entrance = "supermarket";
+        else if (next.x >= 9 && next.y <= 3) entrance = "clinic";
+        else if (next.x >= 2 && next.x <= 4 && next.y >= 6) entrance = "workshop";
+        else if (next.x >= 7 && next.x <= 9 && next.y >= 6) entrance = "library";
+        else if (next.x >= 10 && next.y >= 6) entrance = "cafe";
+      }
 
       if (entrance) {
         setActiveBuilding(entrance);
@@ -598,7 +645,7 @@ export default function FarmGame() {
         const building = BUILDING_INFO[activeBuilding];
         setActiveBuilding(null);
         setPlayer(building.exit);
-        setMessage(`离开${building.name}，回到中心街。`);
+        setMessage(`离开${building.name}，回到${activeBuilding === "townhall" || activeBuilding === "museum" ? "文化街" : "中心街"}。`);
         return;
       }
       if (["arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
@@ -687,13 +734,70 @@ export default function FarmGame() {
     }
   };
 
+  const cancelFishing = () => {
+    if (fishingWaitTimerRef.current) window.clearTimeout(fishingWaitTimerRef.current);
+    if (fishingBiteTimerRef.current) window.clearTimeout(fishingBiteTimerRef.current);
+    fishingWaitTimerRef.current = null;
+    fishingBiteTimerRef.current = null;
+    setFishingPhase("idle");
+    setFishingScore(0);
+    setIsFishing(false);
+  };
+
+  const finishFishingCatch = () => {
+    const catches = ["银鳞鲫", "春溪鳟", "花尾鲤", "小泥鳅"];
+    const caught = catches[Math.floor(Math.random() * catches.length)];
+    const fishingFestivalBonus = currentFestival?.id === "fishing" ? 2 : 0;
+    const luckyRodBonus = game.toolUpgrades.rod ? 1 : 0;
+    const amount = (fishingBaitUsedRef.current ? 2 : 1) + fishingFestivalBonus + luckyRodBonus;
+    setGame((current) => ({ ...current, fishCaught: current.fishCaught + amount, inventory: { ...current.inventory, fish: current.inventory.fish + amount }, daily: { ...current.daily, fish: current.daily.fish + amount } }));
+    setMessage(`成功钓到${caught}！鱼获 +${amount}${fishingBaitUsedRef.current ? "，鱼饵让基础鱼获翻倍" : ""}${fishingFestivalBonus ? "，钓鱼节额外奖励 2 条" : ""}${luckyRodBonus ? "，幸运鱼竿再加 1 条" : ""}，已经放进背包。`);
+    setFishingPhase("idle");
+    setFishingScore(0);
+    setIsFishing(false);
+    playTone(820);
+  };
+
+  const attemptReel = () => {
+    const zoneStart = game.toolUpgrades.rod ? 38 : 47;
+    const zoneEnd = game.toolUpgrades.rod ? 79 : 70;
+    if (fishingMarker >= zoneStart && fishingMarker <= zoneEnd) {
+      const nextScore = fishingScore + 1;
+      if (nextScore >= 3) finishFishingCatch();
+      else {
+        setFishingScore(nextScore);
+        setMessage(`提竿时机正确！还要命中 ${3 - nextScore} 次绿色区域。`);
+        playTone(690 + nextScore * 60);
+      }
+    } else {
+      setFishingScore((score) => Math.max(0, score - 1));
+      setMessage("提竿早了或晚了！等游标进入绿色区域再点。 ");
+      playTone(240);
+    }
+  };
+
   const castLine = () => {
     if (selected !== "rod") {
       setMessage("先在工具栏选择鱼竿，再点击钓鱼池。");
       playTone(260);
       return;
     }
-    if (isFishing) return;
+    if (fishingPhase === "waiting") {
+      setMessage("浮标还没有动，先耐心等问号出现。 ");
+      return;
+    }
+    if (fishingPhase === "bite") {
+      if (fishingBiteTimerRef.current) window.clearTimeout(fishingBiteTimerRef.current);
+      setFishingPhase("reeling");
+      setFishingScore(0);
+      setMessage("鱼咬钩了！等游标进入绿色区域时点击“提竿”，连续成功 3 次。 ");
+      playTone(880);
+      return;
+    }
+    if (fishingPhase === "reeling") {
+      attemptReel();
+      return;
+    }
     if (game.energy < 5) {
       setMessage("体力不够了，明天再来钓鱼吧。");
       playTone(220);
@@ -702,31 +806,23 @@ export default function FarmGame() {
 
     setIsFishing(true);
     const baitUsed = game.bait > 0;
-    setMessage("浮标落入水中……耐心等鱼儿上钩。");
+    fishingBaitUsedRef.current = baitUsed;
+    setFishingPhase("waiting");
+    setMessage("浮标落入水中……先耐心等鱼儿咬钩。");
     setGame((current) => ({ ...current, bait: baitUsed ? current.bait - 1 : current.bait, energy: current.energy - 5 }));
     playTone(390);
-
-    window.setTimeout(() => {
-      const catches = [
-        { name: "银鳞鲫", coins: 32 },
-        { name: "春溪鳟", coins: 48 },
-        { name: "花尾鲤", coins: 40 },
-        { name: "小泥鳅", coins: 24 },
-      ];
-      const caught = catches[Math.floor(Math.random() * catches.length)];
-      const fishingFestivalBonus = currentFestival?.id === "fishing" ? 2 : 0;
-      const luckyRodBonus = game.toolUpgrades.rod ? 1 : 0;
-      const amount = (baitUsed ? 2 : 1) + fishingFestivalBonus + luckyRodBonus;
-      setGame((current) => ({
-        ...current,
-        fishCaught: current.fishCaught + amount,
-        inventory: { ...current.inventory, fish: current.inventory.fish + amount },
-        daily: { ...current.daily, fish: current.daily.fish + amount },
-      }));
-      setMessage(`钓到${caught.name}！鱼获 +${amount}${fishingFestivalBonus ? "，钓鱼节额外奖励 2 条" : baitUsed ? "，鱼饵让收获翻倍" : ""}${luckyRodBonus ? "，幸运鱼竿再加 1 条" : ""}，已经放进背包。`);
-      setIsFishing(false);
-      playTone(780);
-    }, 1100);
+    const waitTime = game.toolUpgrades.rod ? 700 + Math.random() * 700 : 1_700 + Math.random() * 1_500;
+    fishingWaitTimerRef.current = window.setTimeout(() => {
+      setFishingPhase("bite");
+      setMessage("？ 鱼咬钩了！赶紧点击钓鱼池！");
+      playTone(940);
+      fishingBiteTimerRef.current = window.setTimeout(() => {
+        setFishingPhase("idle");
+        setIsFishing(false);
+        setMessage("慢了一步，鱼把鱼钩吐出来游走了。重新抛竿再试试。 ");
+        playTone(210);
+      }, game.toolUpgrades.rod ? 2_200 : 1_650);
+    }, waitTime);
   };
 
   const chopTree = (index: number) => {
@@ -1309,10 +1405,11 @@ export default function FarmGame() {
     setActiveBuilding(null);
     setInspectedItem(null);
     setPlayer(building.exit);
-    setMessage(`离开${building.name}。沿着左边道路可以回农场。`);
+    setMessage(`离开${building.name}，回到${activeBuilding === "townhall" || activeBuilding === "museum" ? "清河文化街" : "中心街"}。`);
   };
 
   const returnToFarm = () => {
+    cancelFishing();
     setActiveBuilding(null);
     setInspectedItem(null);
     setCraftingOpen(false);
@@ -1323,6 +1420,20 @@ export default function FarmGame() {
     setScene("farm");
     setPlayer({ x: 10, y: 5 });
     setMessage("已经安全回到农场，原来的进度都还在。");
+  };
+
+  const travelFromMap = (destination: Scene, position: { x: number; y: number }, destinationName: string) => {
+    cancelFishing();
+    setActiveBuilding(null);
+    setNeighborInterior(null);
+    setCraftingOpen(false);
+    setChestOpen(false);
+    setMapOpen(false);
+    setBrandMenuOpen(false);
+    setScene(destination);
+    setPlayer(position);
+    setMessage(`打开小地图，来到了${destinationName}。`);
+    playTone(620);
   };
 
   const useBuildingService = (building: Exclude<BuildingId, "supermarket" | "farmhouse">) => {
@@ -1399,6 +1510,7 @@ export default function FarmGame() {
   };
 
   const nextDay = () => {
+    cancelFishing();
     const nextDayNumber = game.day === 28 ? 1 : game.day + 1;
     const daysSinceIllness = game.lastIllnessDay === 0
       ? nextDayNumber
@@ -1476,7 +1588,7 @@ export default function FarmGame() {
     setIndoorPlayer({ x: 34, y: 69 });
     setScene("farm");
     setActiveBuilding(null);
-    setIsFishing(false);
+    cancelFishing();
     setCraftingOpen(false);
     setChestOpen(false);
     setSelectedResource(null);
@@ -1688,7 +1800,7 @@ export default function FarmGame() {
   const nextFestival = FESTIVAL_SCHEDULE.find((festival) => festival.day >= game.day) ?? FESTIVAL_SCHEDULE[0];
   const daysUntilFestival = nextFestival.day >= game.day ? nextFestival.day - game.day : 28 - game.day + nextFestival.day;
   const displayName = multiplayerSession?.playerName ?? "小禾";
-  const sceneLabel = scene === "farm" ? activeVillageInfo.farm : scene === "town" ? `${activeVillageInfo.name} · 中心街` : scene === "eastNeighbor" ? "东郊 · 林婶的果园小屋" : scene === "southNeighbor" ? "南坡 · 鲁师傅的院子" : "北林 · 叶老师的书屋";
+  const sceneLabel = scene === "farm" ? activeVillageInfo.farm : scene === "town" ? `${activeVillageInfo.name} · 中心街` : scene === "cultureDistrict" ? `${activeVillageInfo.name} · 清河文化街` : scene === "eastNeighbor" ? "东郊 · 林婶的果园小屋" : scene === "southNeighbor" ? "南坡 · 鲁师傅的院子" : "北林 · 叶老师的书屋";
 
   const goToFestival = () => {
     const festival = currentFestival ?? nextFestival;
@@ -1744,8 +1856,9 @@ export default function FarmGame() {
     <main className={`game-shell ${embeddedMode ? "embedded-game" : ""}`}>
       <header className="topbar">
         <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
+          <button className="brand-mark" onClick={() => setBrandMenuOpen((open) => !open)} aria-label="打开青禾谷菜单" aria-expanded={brandMenuOpen}><i /><i /><i /></button>
           <div><strong>青禾谷</strong><span>GREENFIELD VALLEY</span></div>
+          {brandMenuOpen && <div className="brand-menu"><span>青禾谷村庄菜单</span><strong>想去哪里看看？</strong><button onClick={() => { setMapOpen(true); setBrandMenuOpen(false); }}><i className="mini-map-icon" /><b>打开小地图</b><small>查看场景和建筑</small></button></div>}
         </div>
         <div className="day-card">
           <span className="season-dot">春</span>
@@ -1761,6 +1874,8 @@ export default function FarmGame() {
           <button className="round-button" onClick={resetGame} aria-label="重新开始">↻</button>
         </div>
       </header>
+
+      {mapOpen && <div className="map-overlay" role="presentation"><section className="village-map-panel" role="dialog" aria-modal="true" aria-labelledby="village-map-title"><header><div><span>青禾谷旅行地图</span><h2 id="village-map-title">清河村小地图</h2></div><button onClick={() => setMapOpen(false)} aria-label="关闭地图">×</button></header><div className="village-map-canvas"><i className="map-river" /><i className="map-path map-path-one" /><i className="map-path map-path-two" /><button className={`map-place map-farm ${scene === "farm" ? "you-are-here" : ""}`} onClick={() => travelFromMap("farm", { x: 8, y: 5 }, activeVillageInfo.farm)}><b>农场</b><span>农舍 · 农田 · 鱼塘</span></button><button className={`map-place map-town ${scene === "town" ? "you-are-here" : ""}`} onClick={() => travelFromMap("town", { x: 5, y: 5 }, "中心街")}><b>中心街</b><span>超市 · 诊所 · 咖啡 · 工坊 · 图书馆</span></button><button className={`map-place map-culture ${scene === "cultureDistrict" ? "you-are-here" : ""}`} onClick={() => travelFromMap("cultureDistrict", { x: 6, y: 7 }, "清河文化街")}><b>文化街</b><span>镇公所 · 青禾博物馆</span></button><button className={`map-place map-east ${scene === "eastNeighbor" ? "you-are-here" : ""}`} onClick={() => travelFromMap("eastNeighbor", { x: 3, y: 5 }, "林婶的果园小屋")}><b>东郊</b><span>林婶家</span></button><button className={`map-place map-south ${scene === "southNeighbor" ? "you-are-here" : ""}`} onClick={() => travelFromMap("southNeighbor", { x: 6, y: 3 }, "鲁师傅的院子")}><b>南坡</b><span>鲁师傅家</span></button><button className={`map-place map-north ${scene === "northNeighbor" ? "you-are-here" : ""}`} onClick={() => travelFromMap("northNeighbor", { x: 6, y: 5 }, "叶老师的书屋")}><b>北林</b><span>叶老师家</span></button><div className="map-legend"><span><i />你现在的位置</span><small>点击地图上的地点可以直接前往</small></div></div><footer><span>从中心街最上方中间的路口，也能步行进入文化街。</span><button onClick={() => setMapOpen(false)}>收起地图</button></footer></section></div>}
 
       <section className="game-layout">
         <aside className="side-panel">
@@ -1802,13 +1917,13 @@ export default function FarmGame() {
               ))}
             </div>
           </div>
-          <div className="tip-card"><span>?</span><p><strong>{scene === "farm" ? "农场小贴士" : "小镇指南"}</strong>{scene === "farm" ? "用斧头砍树获得木头，再点左上角“制作”。鱼竿可以在钓鱼池使用。" : "每栋建筑都能进入；走到门口或直接点击建筑。"}</p></div>
+          <div className="tip-card"><span>?</span><p><strong>{scene === "farm" ? "农场小贴士" : scene === "cultureDistrict" ? "文化街指南" : "小镇指南"}</strong>{scene === "farm" ? "钓鱼要等待问号，再完成提竿小游戏。幸运鱼竿会更快咬钩。" : scene === "cultureDistrict" ? "镇公所在左边，博物馆在右边；向下走回中心街。" : "中心街上方中间是文化街路口；每栋建筑都能进入。"}</p></div>
           <button className="sleep-button" onClick={nextDay}><span>☾</span><div><strong>结束今天</strong><small>回家睡一觉</small></div><b>›</b></button>
         </aside>
 
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
-          <div className={`world ${scene === "farm" ? "farm-world" : scene === "town" ? "town-world" : "neighbor-world"} ${activeVillage}-village ${twilightLevel > 0 ? "twilight-world" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
-            <div className="location-chip"><span>{scene === "farm" ? "⌂" : "◆"}</span>{sceneLabel}</div>
+          <div className={`world ${scene === "farm" ? "farm-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : "neighbor-world"} ${activeVillage}-village ${twilightLevel > 0 ? "twilight-world" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
+            <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "cultureDistrict" ? "▣" : "◆"}</span>{sceneLabel}</div>
             <button className="craft-button" onClick={() => { setCraftingOpen(true); setMessage("打开制作手册，选择想做的东西。"); }} aria-label="打开制作菜单"><span>⚒</span><strong>制作</strong><b>{game.wood} 木</b></button>
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
@@ -1819,8 +1934,9 @@ export default function FarmGame() {
               <>
                 <div className="path path-one" /><div className="path path-two" />
                 <button className={`pond ${isFishing ? "fishing" : ""} ${currentFestival?.id === "fishing" ? "fishing-festival-pond" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
-                  <i /><i /><i /><b className="fishing-float" /><span className="pond-label">{currentFestival?.id === "fishing" ? "钓鱼节会场 · 鱼获 +2" : "钓鱼池"}</span>
+                  <i /><i /><i /><b className="fishing-float" />{fishingPhase === "bite" && <strong className="bite-question">?</strong>}<span className="pond-label">{fishingPhase === "waiting" ? "等待鱼儿咬钩…" : fishingPhase === "bite" ? "快点！点击问号" : currentFestival?.id === "fishing" ? "钓鱼节会场 · 鱼获 +2" : "钓鱼池"}</span>
                 </button>
+                {fishingPhase === "reeling" && <div className="fishing-challenge" onClick={(event) => event.stopPropagation()}><header><span>提竿小游戏</span><b>{fishingScore}/3</b></header><p>等红色游标进入绿色区域时，点击提竿！</p><div className="fishing-timing-bar"><i className={game.toolUpgrades.rod ? "lucky-zone" : ""} /><b style={{ left: `${fishingMarker}%` }} /></div><button onClick={attemptReel}>提竿！</button><small>{game.toolUpgrades.rod ? "幸运鱼竿：咬钩更快，成功区域更宽" : "连续命中 3 次才能把鱼钓上来"}</small></div>}
                 {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} className={`crowd-person crowd-${index + 1}`} onClick={() => interactWithPerson(name, `${name}：钓鱼节开始啦，鱼塘边来了好多村民！`)}><i /><b /><span>{name}</span></button>)}</div>}
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" /><span className="sign">{displayName}的农舍{game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
                 {game.rockStates.map((standing, index) => <button key={`rock-${index}`} className={`farm-rock rock-${index + 1} ${standing ? "" : "broken"}`} onClick={() => breakRock(index)} aria-label={standing ? `敲碎第 ${index + 1} 块石头` : `第 ${index + 1} 处碎石`} />)}
@@ -1860,18 +1976,26 @@ export default function FarmGame() {
                 <button className="town-building supermarket" onClick={() => setActiveBuilding("supermarket")} aria-label="进入青禾超市">
                   <span className="building-roof" /><span className="building-body" /><span className="shop-awning" /><span className="building-door" /><span className="building-windows" /><strong>青禾超市</strong><small>种子 · 食品 · 日用品</small>
                 </button>
-                <button className="town-building townhall" onClick={() => setActiveBuilding("townhall")} aria-label="进入镇公所"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>镇公所</strong></button>
                 <button className="town-building clinic" onClick={() => setActiveBuilding("clinic")} aria-label="进入青禾诊所"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>青禾诊所</strong><b>＋</b></button>
                 <button className="town-building cafe" onClick={() => setActiveBuilding("cafe")} aria-label="进入麦香咖啡"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>麦香咖啡</strong></button>
                 <button className="town-building workshop" onClick={() => setActiveBuilding("workshop")} aria-label="进入木匠工坊"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>木匠工坊</strong></button>
                 <button className="town-building library" onClick={() => setActiveBuilding("library")} aria-label="进入山谷图书馆"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>山谷图书馆</strong></button>
-                {activeVillage === "qinghe" && <button className="town-building museum" onClick={() => { setActiveBuilding("museum"); setMessage("进入青禾博物馆。沈馆长正在整理空展柜。 "); }} aria-label="进入青禾博物馆"><span className="building-roof" /><span className="museum-dome" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>青禾博物馆</strong><small>稀奇物品收藏</small></button>}
-                {activeVillage === "qinghe" && <button className="museum-guide" onClick={() => { setActiveBuilding("museum"); setMessage("顺着指路牌走进青禾博物馆。 "); }}><span>博物馆在这里</span><strong>稀奇物品展馆</strong><b>↓</b></button>}
+                <button className="culture-gate" onClick={() => { setScene("cultureDistrict"); setPlayer({ x: 6, y: 7 }); setMessage("来到清河文化街，镇公所在左边，青禾博物馆在右边。 "); }}><span>清河文化街</span><strong>镇公所 · 博物馆</strong><b>↑</b><small>从最上方中间进入</small></button>
 
                 <button className="edge-gate town-exit" onClick={() => { setScene("farm"); setPlayer({ x: 11, y: 5 }); setMessage("回到农场啦。"); }} aria-label={`返回${activeVillageInfo.farm}`}>
                   <b>←</b><span>{activeVillageInfo.farm}</span><small>继续向左走</small>
                 </button>
                 <div className="door-prompt"><span>↑</span>走到任意建筑门口即可进入</div>
+              </>
+            ) : scene === "cultureDistrict" ? (
+              <>
+                <div className="culture-road culture-road-main" /><div className="culture-road culture-road-branch" />
+                <div className="culture-garden"><i /><i /><i /><strong>文化街花园</strong></div>
+                <div className="culture-lamp culture-lamp-one" /><div className="culture-lamp culture-lamp-two" />
+                <button className="town-building townhall culture-townhall" onClick={() => { setActiveBuilding("townhall"); setMessage("进入镇公所，周镇长正在整理公告栏。 "); }} aria-label="进入镇公所"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>镇公所</strong><small>公告 · 活动 · 居民委托</small></button>
+                {activeVillage === "qinghe" && <button className="town-building museum culture-museum" onClick={() => { setActiveBuilding("museum"); setMessage("进入青禾博物馆。沈馆长正在整理展柜。 "); }} aria-label="进入青禾博物馆"><span className="building-roof" /><span className="museum-dome" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>青禾博物馆</strong><small>稀奇物品收藏</small></button>}
+                <div className="culture-sign"><strong>清河文化街</strong><span>镇公所 ←　→ 青禾博物馆</span></div>
+                <button className="edge-gate culture-return" onClick={() => { setScene("town"); setPlayer({ x: 6, y: 0 }); setMessage("沿着石板路回到青禾镇中心街。 "); }}><b>↓</b><span>返回中心街</span><small>一直向下走</small></button>
               </>
             ) : (
               <>
@@ -1907,7 +2031,7 @@ export default function FarmGame() {
               {renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
             </div>
             {partner?.online && partner.currentVillage === activeVillage && partner.scene === scene && <div className="online-partner" style={{ left: `${4 + partner.x * 7.7}%`, top: `${8 + partner.y * 10.5}%` }} aria-label={`${partner.playerName}也在这里`}><span>{partner.playerName}<small>朋友</small></span><i className="player-shadow" /><img src={partner.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>}
-            {partner?.online && partner.currentVillage === activeVillage && partner.scene !== scene && <button className="friend-locator" onClick={(event) => { event.stopPropagation(); setActiveBuilding(null); setNeighborInterior(null); setScene(partner.scene); setPlayer({ x: Math.max(0, Math.min(11, partner.x + (partner.x < 11 ? 1 : -1))), y: partner.y }); setMessage(`找到${partner.playerName}了！现在你们在同一个地方。`); }}><span>● {partner.playerName}也在{activeVillageInfo.name}</span><strong>点击去找朋友</strong><small>{partner.scene === "farm" ? activeVillageInfo.farm : partner.scene === "town" ? "中心街" : partner.scene === "eastNeighbor" ? "东郊" : partner.scene === "southNeighbor" ? "南坡" : "北林"}</small></button>}
+            {partner?.online && partner.currentVillage === activeVillage && partner.scene !== scene && <button className="friend-locator" onClick={(event) => { event.stopPropagation(); setActiveBuilding(null); setNeighborInterior(null); setScene(partner.scene); setPlayer({ x: Math.max(0, Math.min(11, partner.x + (partner.x < 11 ? 1 : -1))), y: partner.y }); setMessage(`找到${partner.playerName}了！现在你们在同一个地方。`); }}><span>● {partner.playerName}也在{activeVillageInfo.name}</span><strong>点击去找朋友</strong><small>{partner.scene === "farm" ? activeVillageInfo.farm : partner.scene === "town" ? "中心街" : partner.scene === "cultureDistrict" ? "清河文化街" : partner.scene === "eastNeighbor" ? "东郊" : partner.scene === "southNeighbor" ? "南坡" : "北林"}</small></button>}
 
             <div className="speech-bubble"><span>{scene === "farm" ? "☀" : "◆"}</span>{message}</div>
             <div className="movement-help"><span>WASD / 方向键</span>移动</div>
@@ -2094,7 +2218,7 @@ export default function FarmGame() {
                 {tool === "axe" && <b>{game.wood}</b>}
               </button>
             ))}
-            <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? selectedResource ? `拿着${RESOURCE_INFO[selectedResource].name}` : selected === "rod" ? `鱼竿 · 鱼饵 ${game.bait}` : selected === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : TOOL_INFO[selected].name : "中心街"}</strong></div>
+            <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? selectedResource ? `拿着${RESOURCE_INFO[selectedResource].name}` : selected === "rod" ? `鱼竿 · 鱼饵 ${game.bait}` : selected === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : TOOL_INFO[selected].name : scene === "cultureDistrict" ? "清河文化街" : "中心街"}</strong></div>
           </div>
         </section>
       </section>
