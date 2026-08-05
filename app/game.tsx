@@ -84,6 +84,8 @@ type GameState = {
   groundArtifacts: boolean[];
   artifactBag: number[];
   museumArtifacts: number[];
+  groundSupplies: boolean[];
+  toolUpgrades: { water: boolean; axe: boolean; rod: boolean };
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -176,6 +178,15 @@ const RARE_ARTIFACTS = [
   { title: "古铜风铃", short: "铃", description: "小巧的古铜铃上刻着溪水和麦穗，轻轻摇动时会发出很久以前的清亮声音。" },
 ];
 
+const GROUND_SUPPLIES = [
+  { name: "草莓种子小包", short: "莓", kind: "seed", field: "strawberrySeeds", amount: 3, description: "里面有 3 颗草莓种子，捡起后会直接放进种子袋。" },
+  { name: "野莓饭团", short: "食", kind: "food", amount: 30, description: "用野莓和米做成的饭团，捡起食用后可以恢复 30 点体力。" },
+  { name: "大号洒水壶", short: "水", kind: "tool", tool: "water", description: "容量更大的洒水壶，捡起后每天可以装 18 格水。" },
+  { name: "精铁斧头", short: "斧", kind: "tool", tool: "axe", description: "更加锋利的斧头，捡起后每棵树能砍出 6 块木头。" },
+  { name: "幸运鱼竿", short: "竿", kind: "tool", tool: "rod", description: "带幸运银钩的鱼竿，捡起后每次钓鱼会多获得 1 条鱼。" },
+  { name: "西瓜种子小包", short: "瓜", kind: "seed", field: "watermelonSeeds", amount: 3, description: "里面有 3 颗西瓜种子，捡起后会直接放进种子袋。" },
+] as const;
+
 const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description: string }> = {
   qinghe: { name: "青禾村", farm: "青禾农场", description: "绿野、溪流与温暖的木屋" },
   maple: { name: "枫叶村", farm: "枫叶农场", description: "红枫、山路与安静的坡地" },
@@ -249,6 +260,8 @@ const makeNewGame = (): GameState => ({
   groundArtifacts: [true, false, false],
   artifactBag: [],
   museumArtifacts: [],
+  groundSupplies: [true, false, false, false, false, false],
+  toolUpgrades: { water: false, axe: false, rod: false },
 });
 
 function PixelIcon({ type }: { type: Tool }) {
@@ -348,6 +361,7 @@ export default function FarmGame() {
             upgrades: { ...defaults.upgrades, ...(parsed.upgrades ?? {}) },
             builderSupplies: { ...defaults.builderSupplies, ...(parsed.builderSupplies ?? {}) },
             equipment: { ...defaults.equipment, ...(parsed.equipment ?? {}) },
+            toolUpgrades: { ...defaults.toolUpgrades, ...(parsed.toolUpgrades ?? {}) },
             daily: parsed.daily?.day === parsed.day ? { ...defaults.daily, ...parsed.daily } : { ...defaults.daily, day: parsed.day ?? 1 },
             sick: parsed.sick ?? false,
             diagnosed: parsed.diagnosed ?? false,
@@ -404,6 +418,7 @@ export default function FarmGame() {
           upgrades: { ...defaults.upgrades, ...(data.save.upgrades ?? {}) },
           builderSupplies: { ...defaults.builderSupplies, ...(data.save.builderSupplies ?? {}) },
           equipment: { ...defaults.equipment, ...(data.save.equipment ?? {}) },
+          toolUpgrades: { ...defaults.toolUpgrades, ...(data.save.toolUpgrades ?? {}) },
           diagnosed: data.save.diagnosed ?? false,
           daily: { ...defaults.daily, ...(data.save.daily ?? {}) },
         });
@@ -694,14 +709,15 @@ export default function FarmGame() {
       ];
       const caught = catches[Math.floor(Math.random() * catches.length)];
       const fishingFestivalBonus = currentFestival?.id === "fishing" ? 2 : 0;
-      const amount = (baitUsed ? 2 : 1) + fishingFestivalBonus;
+      const luckyRodBonus = game.toolUpgrades.rod ? 1 : 0;
+      const amount = (baitUsed ? 2 : 1) + fishingFestivalBonus + luckyRodBonus;
       setGame((current) => ({
         ...current,
         fishCaught: current.fishCaught + amount,
         inventory: { ...current.inventory, fish: current.inventory.fish + amount },
         daily: { ...current.daily, fish: current.daily.fish + amount },
       }));
-      setMessage(`钓到${caught.name}！鱼获 +${amount}${fishingFestivalBonus ? "，钓鱼节额外奖励 2 条" : baitUsed ? "，鱼饵让收获翻倍" : ""}，已经放进背包。`);
+      setMessage(`钓到${caught.name}！鱼获 +${amount}${fishingFestivalBonus ? "，钓鱼节额外奖励 2 条" : baitUsed ? "，鱼饵让收获翻倍" : ""}${luckyRodBonus ? "，幸运鱼竿再加 1 条" : ""}，已经放进背包。`);
       setIsFishing(false);
       playTone(780);
     }, 1100);
@@ -726,11 +742,11 @@ export default function FarmGame() {
     setGame((current) => ({
       ...current,
       energy: current.energy - 4,
-      wood: current.wood + 4,
+      wood: current.wood + (current.toolUpgrades.axe ? 6 : 4),
       treeStates: current.treeStates.map((tree, treeIndex) => treeIndex === index ? false : tree),
       daily: { ...current.daily, chopped: current.daily.chopped + 1 },
     }));
-    setMessage("砍下树木，获得 4 块木头！点击左上角“制作”使用木头。");
+    setMessage(`砍下树木，获得 ${game.toolUpgrades.axe ? 6 : 4} 块木头！点击左上角“制作”使用木头。`);
     playTone(330);
   };
 
@@ -846,6 +862,25 @@ export default function FarmGame() {
     setSelectedResource(null);
     setMessage(`捡起了稀奇物品“${artifact.title}”：${artifact.description} 它现在举在头顶，可以送到青禾博物馆。`);
     playTone(900);
+  };
+
+  const pickUpGroundSupply = (supplyId: number) => {
+    const supply = GROUND_SUPPLIES[supplyId];
+    if (!supply || !game.groundSupplies[supplyId]) return;
+    setGame((current) => {
+      const next = { ...current, groundSupplies: current.groundSupplies.map((visible, index) => index === supplyId ? false : visible) };
+      if (supply.kind === "seed") return { ...next, [supply.field]: current[supply.field] + supply.amount };
+      if (supply.kind === "food") return { ...next, energy: Math.min(100, current.energy + supply.amount) };
+      if (current.toolUpgrades[supply.tool]) return { ...next, coins: current.coins + 20 };
+      return {
+        ...next,
+        water: supply.tool === "water" ? 18 : current.water,
+        toolUpgrades: { ...current.toolUpgrades, [supply.tool]: true },
+      };
+    });
+    const alreadyOwned = supply.kind === "tool" && game.toolUpgrades[supply.tool];
+    setMessage(alreadyOwned ? `捡起了${supply.name}，工具已经升级过，于是换成了 20 枚金币。` : `捡起了${supply.name}！${supply.description}`);
+    playTone(supply.kind === "tool" ? 920 : supply.kind === "food" ? 760 : 660);
   };
 
   const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].title : RARE_ARTIFACTS[heldItem.id].title : "";
@@ -1235,7 +1270,7 @@ export default function FarmGame() {
       const next = {
         ...current,
         coins: current.coins - details.price,
-        water: item === "water" ? 12 : current.water,
+        water: item === "water" ? (current.toolUpgrades.water ? 18 : 12) : current.water,
         bait: item === "bait" ? current.bait + 5 : current.bait,
         treeStates: item === "sapling" ? current.treeStates.map(() => true) : current.treeStates,
         energy: item === "snack" ? Math.min(100, current.energy + 25) : item === "soup" ? Math.min(100, current.energy + 50) : current.energy,
@@ -1385,6 +1420,13 @@ export default function FarmGame() {
         const artifactId = Math.floor(nextDayNumber / 4) % RARE_ARTIFACTS.length;
         if (!current.artifactBag.includes(artifactId) && !current.museumArtifacts.includes(artifactId)) groundArtifacts[artifactId] = true;
       }
+      const groundSupplies = [...current.groundSupplies];
+      if (nextDayNumber % 2 === 0) {
+        let supplyId = Math.floor(nextDayNumber / 2) % GROUND_SUPPLIES.length;
+        const supply = GROUND_SUPPLIES[supplyId];
+        if (supply.kind === "tool" && current.toolUpgrades[supply.tool]) supplyId = [0, 1, 5][nextDayNumber % 3];
+        groundSupplies[supplyId] = true;
+      }
       return {
         ...current,
         day: nextDayNumber,
@@ -1394,11 +1436,12 @@ export default function FarmGame() {
         sick: remainsSick,
         diagnosed: false,
         lastIllnessDay: becameSick ? nextDayNumber : current.lastIllnessDay,
-        water: 12,
+        water: current.toolUpgrades.water ? 18 : 12,
         treeStates,
         rockStates,
         groundBooks,
         groundArtifacts,
+        groundSupplies,
         tiles: current.tiles.map((tile) =>
           tile.state === "crop"
             ? { ...tile, stage: tile.watered ? Math.min(3, tile.stage + 1) : tile.stage, watered: false }
@@ -1814,6 +1857,7 @@ export default function FarmGame() {
                 <button className="town-building workshop" onClick={() => setActiveBuilding("workshop")} aria-label="进入木匠工坊"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>木匠工坊</strong></button>
                 <button className="town-building library" onClick={() => setActiveBuilding("library")} aria-label="进入山谷图书馆"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>山谷图书馆</strong></button>
                 {activeVillage === "qinghe" && <button className="town-building museum" onClick={() => { setActiveBuilding("museum"); setMessage("进入青禾博物馆。沈馆长正在整理空展柜。 "); }} aria-label="进入青禾博物馆"><span className="building-roof" /><span className="museum-dome" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>青禾博物馆</strong><small>稀奇物品收藏</small></button>}
+                {activeVillage === "qinghe" && <button className="museum-guide" onClick={() => { setActiveBuilding("museum"); setMessage("顺着指路牌走进青禾博物馆。 "); }}><span>博物馆在这里</span><strong>稀奇物品展馆</strong><b>↓</b></button>}
 
                 <button className="edge-gate town-exit" onClick={() => { setScene("farm"); setPlayer({ x: 11, y: 5 }); setMessage("回到农场啦。"); }} aria-label={`返回${activeVillageInfo.farm}`}>
                   <b>←</b><span>{activeVillageInfo.farm}</span><small>继续向左走</small>
@@ -1842,6 +1886,12 @@ export default function FarmGame() {
               if (!visible || scene !== artifactScene) return null;
               const artifact = RARE_ARTIFACTS[artifactId];
               return <button key={`ground-artifact-${artifactId}`} className={`ground-artifact ground-artifact-${artifactId + 1}`} onClick={(event) => { event.stopPropagation(); setMessage(`发现稀奇物品“${artifact.title}”：${artifact.description} 双击可以捡起来送到博物馆。`); playTone(760); }} onDoubleClick={(event) => { event.stopPropagation(); carryArtifact(artifactId, true); }} aria-label={`稀奇物品${artifact.title}，双击捡起`}><i>{artifact.short}</i><span>{artifact.title}<small>双击捡起 · 送博物馆</small></span></button>;
+            })}
+            {(scene === "farm" || scene === "town") && game.groundSupplies.map((visible, supplyId) => {
+              const supplyScene: Scene = supplyId === 1 || supplyId === 3 || supplyId === 5 ? "town" : "farm";
+              if (!visible || scene !== supplyScene) return null;
+              const supply = GROUND_SUPPLIES[supplyId];
+              return <button key={`ground-supply-${supplyId}`} className={`ground-supply supply-${supply.kind} ground-supply-${supplyId + 1}`} onClick={(event) => { event.stopPropagation(); setMessage(`地上掉着${supply.name}：${supply.description} 双击可以捡起来。`); playTone(540); }} onDoubleClick={(event) => { event.stopPropagation(); pickUpGroundSupply(supplyId); }} aria-label={`${supply.name}，双击捡起`}><i>{supply.short}</i><span>{supply.name}<small>双击捡起</small></span></button>;
             })}
 
             <div className={`player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${4 + player.x * 7.7}%`, top: `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
@@ -1953,7 +2003,7 @@ export default function FarmGame() {
                     <div className="house-table"><i /><i /></div>
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     {game.upgrades.house >= 1 && <button className={`house-equipment house-lamp ${game.equipment.lampOn ? "active" : ""}`} onClick={() => { setGame((current) => ({ ...current, equipment: { ...current.equipment, lampOn: !current.equipment.lampOn } })); setMessage(game.equipment.lampOn ? "关掉了暖光灯。" : "暖光灯亮起来，夜晚的房间变得明亮了！"); }}><i />暖光灯</button>}
-                    {game.upgrades.house >= 2 && <button className="house-equipment house-water-tank" onClick={() => { setGame((current) => ({ ...current, water: 12 })); setMessage("自动水箱把洒水壶补满了！"); playTone(620); }}><i />自动水箱</button>}
+                    {game.upgrades.house >= 2 && <button className="house-equipment house-water-tank" onClick={() => { setGame((current) => ({ ...current, water: current.toolUpgrades.water ? 18 : 12 })); setMessage("自动水箱把洒水壶补满了！"); playTone(620); }}><i />自动水箱</button>}
                     {game.upgrades.house >= 3 && <button className="house-equipment house-kitchen" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 20) })); setMessage("在料理台吃了一份热饭，恢复 20 点体力！"); playTone(740); }}><i />料理台</button>}
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
@@ -2028,7 +2078,7 @@ export default function FarmGame() {
             <div className="inventory-note"><strong>{scene === "farm" ? "背包" : "小镇背包"}</strong><span>{scene === "farm" ? "选择工具，再点击田地" : "超市可以买到农场补给"}</span></div>
             {(Object.keys(TOOL_INFO) as Tool[]).map((tool) => (
               <button key={tool} className={selected === tool && !selectedResource ? "tool-button selected" : "tool-button"} onClick={() => chooseTool(tool)} aria-pressed={selected === tool && !selectedResource}>
-                <kbd>{TOOL_INFO[tool].key}</kbd><PixelIcon type={tool} /><span>{tool === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : TOOL_INFO[tool].name}</span>
+                <kbd>{TOOL_INFO[tool].key}</kbd><PixelIcon type={tool} /><span>{tool === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : tool === "water" && game.toolUpgrades.water ? "大号洒水壶" : tool === "axe" && game.toolUpgrades.axe ? "精铁斧头" : tool === "rod" && game.toolUpgrades.rod ? "幸运鱼竿" : TOOL_INFO[tool].name}</span>
                 {tool === "seed" && <b>{game[CROP_INFO[selectedCrop].seedField]}</b>}
                 {tool === "water" && <b>{game.water}</b>}
                 {tool === "rod" && <b>{game.inventory.fish}</b>}
