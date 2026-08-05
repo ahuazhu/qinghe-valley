@@ -543,15 +543,15 @@ export default function FarmGame() {
       return;
     }
     if (scene === "town" && dy < 0 && player.y === 0) {
-      if (player.x >= 4 && player.x <= 8) {
-        setScene("cultureDistrict");
-        setPlayer({ x: 6, y: 7 });
-        setMessage("来到清河文化街，镇公所在左边，青禾博物馆在右边。 ");
-      } else {
-        setScene("northNeighbor");
-        setPlayer({ x: 6, y: 7 });
-        setMessage("来到叶老师的林间书屋，这里安静又凉快。 ");
-      }
+      setScene("cultureDistrict");
+      setPlayer({ x: 6, y: 7 });
+      setMessage("来到清河文化街，镇公所在左边，青禾博物馆在右边。继续向上可以去北林书屋。 ");
+      return;
+    }
+    if (scene === "cultureDistrict" && dy < 0 && player.y === 0) {
+      setScene("northNeighbor");
+      setPlayer({ x: 6, y: 7 });
+      setMessage("穿过文化街后面的林间小路，来到叶老师的北林书屋。 ");
       return;
     }
     if (scene === "cultureDistrict" && dy > 0 && player.y === 7) {
@@ -583,7 +583,7 @@ export default function FarmGame() {
       setScene("town"); setPlayer({ x: 6, y: 7 }); setMessage("回到青禾镇中心街。"); return;
     }
     if (scene === "northNeighbor" && dy > 0 && player.y === 7) {
-      setScene("town"); setPlayer({ x: 6, y: 0 }); setMessage("回到青禾镇中心街。"); return;
+      setScene("cultureDistrict"); setPlayer({ x: 6, y: 0 }); setMessage("从北林书屋回到清河文化街。 "); return;
     }
 
     const next = {
@@ -1879,7 +1879,7 @@ export default function FarmGame() {
         <section className="village-map-panel" role="dialog" aria-modal="true" aria-labelledby="village-map-title">
           <header><div><span>按照游戏实际道路绘制</span><h2 id="village-map-title">青禾谷实际地图</h2></div><button onClick={() => setMapOpen(false)} aria-label="关闭地图">×</button></header>
           <div className="village-map-canvas">
-            <i className="map-river" /><i className="actual-route route-farm-town" /><i className="actual-route route-town-east" /><i className="actual-route route-east-maple" /><i className="actual-route route-town-culture" /><i className="actual-route route-town-north" /><i className="actual-route route-town-south" /><i className="map-tree-cluster tree-cluster-one" /><i className="map-tree-cluster tree-cluster-two" />
+            <i className="map-river" /><i className="actual-route route-farm-town" /><i className="actual-route route-town-east" /><i className="actual-route route-east-maple" /><i className="actual-route route-town-culture" /><i className="actual-route route-culture-north" /><i className="actual-route route-town-south" /><i className="map-tree-cluster tree-cluster-one" /><i className="map-tree-cluster tree-cluster-two" />
             <button className={`map-place map-farm ${activeVillage === "qinghe" && scene === "farm" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("farm", { x: 8, y: 5 }, "青禾农场"); }}><i className="map-scene-picture picture-farm"><em /><em /><em /></i><b>青禾农场</b><span>农舍 · 农田 · 鱼塘</span></button>
             <button className={`map-place map-town ${activeVillage === "qinghe" && scene === "town" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("town", { x: 5, y: 5 }, "中心街"); }}><i className="map-scene-picture picture-town"><em /><em /><em /></i><b>中心街</b><span>商店和居民建筑</span></button>
             <button className={`map-place map-culture ${activeVillage === "qinghe" && scene === "cultureDistrict" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("cultureDistrict", { x: 6, y: 7 }, "清河文化街"); }}><i className="map-scene-picture picture-culture"><em /><em /><em /></i><b>清河文化街</b><span>镇公所 · 博物馆</span></button>
@@ -1889,7 +1889,7 @@ export default function FarmGame() {
             <button className={`map-place map-north ${activeVillage === "qinghe" && scene === "northNeighbor" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("northNeighbor", { x: 6, y: 5 }, "叶老师的书屋"); }}><i className="map-scene-picture picture-library"><em /><em /><em /></i><b>北林书屋</b><span>叶老师家</span></button>
             <div className="map-legend"><span><i />你现在的位置</span><small>点击地图上的场景图可以直接前往</small></div>
           </div>
-          <footer><span>从中心街最上方中间的路口，也能步行进入文化街。</span><button onClick={() => setMapOpen(false)}>收起地图</button></footer>
+          <footer><span>中心街向上到文化街，再从文化街继续向上，才会到北林书屋。</span><button onClick={() => setMapOpen(false)}>收起地图</button></footer>
         </section>
       </div>}
 
@@ -1933,7 +1933,7 @@ export default function FarmGame() {
               ))}
             </div>
           </div>
-          <div className="tip-card"><span>?</span><p><strong>{scene === "farm" ? "农场小贴士" : scene === "cultureDistrict" ? "文化街指南" : "小镇指南"}</strong>{scene === "farm" ? "钓鱼要等待问号，再完成提竿小游戏。幸运鱼竿会更快咬钩。" : scene === "cultureDistrict" ? "镇公所在左边，博物馆在右边；向下走回中心街。" : "中心街上方中间是文化街路口；每栋建筑都能进入。"}</p></div>
+          <div className="tip-card"><span>?</span><p><strong>{scene === "farm" ? "农场小贴士" : scene === "cultureDistrict" ? "文化街指南" : "小镇指南"}</strong>{scene === "farm" ? "钓鱼要等待问号，再完成提竿小游戏。幸运鱼竿会更快咬钩。" : scene === "cultureDistrict" ? "镇公所在左边，博物馆在右边；向上去北林，向下回中心街。" : "中心街向上先到文化街，北林书屋在文化街后面。"}</p></div>
           <button className="sleep-button" onClick={nextDay}><span>☾</span><div><strong>结束今天</strong><small>回家睡一觉</small></div><b>›</b></button>
         </aside>
 
@@ -2011,6 +2011,7 @@ export default function FarmGame() {
                 <button className="town-building townhall culture-townhall" onClick={() => { setActiveBuilding("townhall"); setMessage("进入镇公所，周镇长正在整理公告栏。 "); }} aria-label="进入镇公所"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>镇公所</strong><small>公告 · 活动 · 居民委托</small></button>
                 {activeVillage === "qinghe" && <button className="town-building museum culture-museum" onClick={() => { setActiveBuilding("museum"); setMessage("进入青禾博物馆。沈馆长正在整理展柜。 "); }} aria-label="进入青禾博物馆"><span className="building-roof" /><span className="museum-dome" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>青禾博物馆</strong><small>稀奇物品收藏</small></button>}
                 <div className="culture-sign"><strong>清河文化街</strong><span>镇公所 ←　→ 青禾博物馆</span></div>
+                <button className="edge-gate culture-north-gate" onClick={() => { setScene("northNeighbor"); setPlayer({ x: 6, y: 7 }); setMessage("穿过文化街后面的林间小路，来到叶老师的北林书屋。 "); }}><span>北林书屋</span><b>↑</b><small>在文化街后面</small></button>
                 <button className="edge-gate culture-return" onClick={() => { setScene("town"); setPlayer({ x: 6, y: 0 }); setMessage("沿着石板路回到青禾镇中心街。 "); }}><b>↓</b><span>返回中心街</span><small>一直向下走</small></button>
               </>
             ) : (
@@ -2019,7 +2020,7 @@ export default function FarmGame() {
                 <button className={`neighbor-house ${scene}`} onClick={() => { setNeighborInterior(scene as NeighborScene); setIndoorPlayer({ x: 31, y: 70 }); setMessage(`进入${scene === "eastNeighbor" ? "林婶的果园小屋" : scene === "southNeighbor" ? "鲁师傅的山脚院子" : "叶老师的林间书屋"}。`); }}><span className="neighbor-roof" /><span className="neighbor-wall" /><span className="neighbor-door" /><span className="neighbor-window" /><strong>{scene === "eastNeighbor" ? "林婶的果园小屋" : scene === "southNeighbor" ? "鲁师傅的山脚院子" : "叶老师的林间书屋"}<small>点击进入</small></strong></button>
                 <button className={`npc-villager npc-${scene}`} onClick={() => talkToNeighbor(scene as NeighborScene)} aria-label="和居民人机说话或送礼"><i className="npc-hair" /><i className="npc-head" /><i className="npc-body" /><span>{scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师"}<small>{heldItem ? `点击送出${carriedItemName}` : "点击交谈"}</small></span></button>
                 <div className="neighbor-decor"><i /><i /><i /></div>
-                <button className={`edge-gate neighbor-return return-${scene}`} onClick={() => { setScene("town"); setPlayer(scene === "eastNeighbor" ? { x: 11, y: 5 } : scene === "southNeighbor" ? { x: 6, y: 7 } : { x: 6, y: 0 }); setMessage("回到青禾镇中心街。"); }}><b>{scene === "eastNeighbor" ? "←" : scene === "southNeighbor" ? "↑" : "↓"}</b><span>返回青禾镇</span><small>走到边缘也能返回</small></button>
+                <button className={`edge-gate neighbor-return return-${scene}`} onClick={() => { if (scene === "northNeighbor") { setScene("cultureDistrict"); setPlayer({ x: 6, y: 0 }); setMessage("从北林书屋回到清河文化街。 "); } else { setScene("town"); setPlayer(scene === "eastNeighbor" ? { x: 11, y: 5 } : { x: 6, y: 7 }); setMessage("回到青禾镇中心街。"); } }}><b>{scene === "eastNeighbor" ? "←" : scene === "southNeighbor" ? "↑" : "↓"}</b><span>{scene === "northNeighbor" ? "返回文化街" : "返回青禾镇"}</span><small>{scene === "northNeighbor" ? "北林在文化街后面" : "走到边缘也能返回"}</small></button>
                 {scene === "eastNeighbor" && activeVillage === "qinghe" && <button className="edge-gate village-crossing crossing-right" onClick={() => { const friend = partner?.online && partner.currentVillage === "maple" ? partner : null; setWorldVillage("maple"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x - 1)), y: friend.y } : { x: 0, y: 5 }); setMessage(friend ? `到了枫叶村，马上看见了${friend.playerName}！` : "沿着右边山路走到了枫叶村！"); }}><span>前往枫叶村</span><b>→</b><small>{partner?.online && partner.currentVillage === "maple" ? `去见${partner.playerName}` : "一直向右走"}</small></button>}
               </>
             )}

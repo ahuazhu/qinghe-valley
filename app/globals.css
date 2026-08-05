@@ -418,3 +418,10 @@ button { font: inherit; }
 @media (max-width:760px) {
   .village-map-panel { overflow-x: auto; }.village-map-canvas { width: 760px; height: 500px; }.village-map-panel > header,.village-map-panel > footer { min-width: 760px; }.map-place { width: 128px; min-width: 128px; }.map-farm { left: 1%; }.map-town { left: 26%; top: 40%; }.map-culture { left: 18%; top: 2%; }.map-north { left: 43%; top: 2%; }.map-east { left: 52%; top: 40%; }.map-maple { right: 1%; top: 40%; }.map-south { left: 26%; bottom: 1%; }
 }
+
+/* North Forest is directly behind Culture Street. */
+.culture-north-gate { left: 50%; top: -20px; transform: translateX(-50%); }.culture-north-gate:hover,.culture-north-gate:focus-visible { top: -12px; outline: 4px solid rgba(255,240,151,.8); }.route-farm-town,.route-town-east,.route-east-maple { top: 59%; }.route-town-culture { left: 34%; top: 43%; width: 15px; height: 8%; }.route-town-culture::after { content: "先到文化街"; }.route-culture-north { position: absolute; left: 34%; top: 20%; width: 15px; height: 8%; }.route-culture-north::after { content: "继续向上到北林"; left: 8px; top: 45%; transform: rotate(-90deg) translateY(-50%); transform-origin: center; }.route-town-south { left: 34%; top: 67%; height: 13%; }.map-farm { top: 48%; }.map-town { left: 26%; top: 48%; }.map-culture { left: 26%; top: 24%; }.map-north { left: 26%; top: 1%; }.map-east { top: 48%; }.map-maple { top: 48%; }.map-south { left: 26%; bottom: 0; }.tree-cluster-one { left: 3%; top: 13%; }.tree-cluster-two { right: 8%; bottom: 10%; }
+
+@media (max-width:760px) {
+  .map-farm { top: 48%; }.map-town { left: 26%; top: 48%; }.map-culture { left: 26%; top: 24%; }.map-north { left: 26%; top: 1%; }.map-east { top: 48%; }.map-maple { top: 48%; }.map-south { left: 26%; bottom: 0; }
+}
