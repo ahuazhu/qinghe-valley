@@ -167,6 +167,15 @@ const FESTIVAL_SCHEDULE: { day: number; id: FestivalId; name: string; place: str
 ];
 
 const FESTIVAL_GUESTS = ["林婶", "鲁师傅", "叶老师", "白医生", "阿麦", "周镇长"];
+type ReturnGift = { kind: "seed"; field: SeedField; amount: number; name: string } | { kind: "material"; field: "wood" | "stone"; amount: number; name: string } | { kind: "energy"; amount: number; name: string } | { kind: "coins"; amount: number; name: string };
+const PERSON_RETURN_GIFTS: Record<string, ReturnGift> = {
+  林婶: { kind: "seed", field: "strawberrySeeds", amount: 2, name: "2 颗草莓种子" },
+  鲁师傅: { kind: "material", field: "wood", amount: 2, name: "2 块打磨好的木头" },
+  叶老师: { kind: "seed", field: "blueberrySeeds", amount: 2, name: "2 颗蓝莓种子" },
+  白医生: { kind: "energy", amount: 15, name: "恢复体力的草药茶" },
+  阿麦: { kind: "energy", amount: 20, name: "一杯热咖啡" },
+  周镇长: { kind: "coins", amount: 25, name: "25 枚感谢金币" },
+};
 
 const makeTiles = (count = 32): FarmTile[] =>
   Array.from({ length: count }, () => ({ state: "grass", stage: 0, watered: false }));
@@ -215,7 +224,13 @@ function PlayerSprite({ facing, sick }: { facing: Facing; sick: boolean }) {
   if (facing === "left" || facing === "right") {
     return <><img className="side-sprite side-walk-frame side-walk-a" src="/xiaohe-walk-right-a.png" alt="" draggable={false} /><img className="side-sprite side-walk-frame side-walk-b" src="/xiaohe-walk-right-b.png" alt="" draggable={false} /></>;
   }
-  return <img className="front-sprite" src={sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} />;
+  if (facing === "up") {
+    return <><img className="vertical-walk-frame vertical-walk-a" src="/xiaohe-walk-up-a.png" alt="" draggable={false} /><img className="vertical-walk-frame vertical-walk-b" src="/xiaohe-walk-up-b.png" alt="" draggable={false} /></>;
+  }
+  if (!sick) {
+    return <><img className="vertical-walk-frame vertical-walk-a" src="/xiaohe-walk-down-a.png" alt="" draggable={false} /><img className="vertical-walk-frame vertical-walk-b" src="/xiaohe-walk-down-b.png" alt="" draggable={false} /></>;
+  }
+  return <img className="front-sprite" src="/xiaohe-sick-sprite.png" alt="" draggable={false} />;
 }
 
 export default function FarmGame() {
@@ -777,13 +792,21 @@ export default function FarmGame() {
       playTone(650);
       return true;
     }
+    const returnGift = Math.random() < .45 ? PERSON_RETURN_GIFTS[person] : null;
     setGame((current) => {
-      if (heldItem.kind === "resource") return { ...current, inventory: { ...current.inventory, [heldItem.id]: Math.max(0, current.inventory[heldItem.id] - 1) } };
-      if (heldItem.kind === "material") return { ...current, [heldItem.id]: Math.max(0, current[heldItem.id] - 1) };
-      const field = CROP_INFO[heldItem.id].seedField;
-      return { ...current, [field]: Math.max(0, current[field] - 1) };
+      let next: GameState;
+      if (heldItem.kind === "resource") next = { ...current, inventory: { ...current.inventory, [heldItem.id]: Math.max(0, current.inventory[heldItem.id] - 1) } };
+      else if (heldItem.kind === "material") next = { ...current, [heldItem.id]: Math.max(0, current[heldItem.id] - 1) };
+      else {
+        const field = CROP_INFO[heldItem.id].seedField;
+        next = { ...current, [field]: Math.max(0, current[field] - 1) };
+      }
+      if (!returnGift) return next;
+      if (returnGift.kind === "seed" || returnGift.kind === "material") return { ...next, [returnGift.field]: next[returnGift.field] + returnGift.amount };
+      if (returnGift.kind === "energy") return { ...next, energy: Math.min(100, next.energy + returnGift.amount) };
+      return { ...next, coins: next.coins + returnGift.amount };
     });
-    setMessage(`${person}收下了小禾送的${carriedItemName}，开心地说：“谢谢你，我会好好珍惜！”`);
+    setMessage(returnGift ? `${person}收下了${carriedItemName}，又回送了${returnGift.name}！` : `${person}收下了小禾送的${carriedItemName}，开心地说：“谢谢你，我会好好珍惜！”`);
     setHeldItem(null);
     playTone(760);
     return true;
