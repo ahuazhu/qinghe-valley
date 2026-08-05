@@ -13,6 +13,7 @@ type VillageId = "qinghe" | "maple";
 type Facing = "down" | "up" | "left" | "right";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft";
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
+type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "seed"; id: CropType };
 
 type OnlinePlayer = {
   deviceId: string;
@@ -212,7 +213,7 @@ function PixelIcon({ type }: { type: Tool }) {
 
 function PlayerSprite({ facing, sick }: { facing: Facing; sick: boolean }) {
   if (facing === "left" || facing === "right") {
-    return <><img className="side-sprite side-upper" src="/xiaohe-side-right.png" alt="" draggable={false} /><span className="side-css-legs" aria-hidden="true"><i className="side-leg side-leg-near"><b className="side-leg-shape" /></i><i className="side-leg side-leg-far"><b className="side-leg-shape" /></i></span></>;
+    return <><img className="side-sprite side-walk-frame side-walk-a" src="/xiaohe-walk-right-a.png" alt="" draggable={false} /><img className="side-sprite side-walk-frame side-walk-b" src="/xiaohe-walk-right-b.png" alt="" draggable={false} /></>;
   }
   return <img className="front-sprite" src={sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} />;
 }
@@ -234,7 +235,7 @@ export default function FarmGame() {
   const [neighborInterior, setNeighborInterior] = useState<NeighborScene | null>(null);
   const [festivalDisplay, setFestivalDisplay] = useState<"wood" | null>(null);
   const [festivalMusicPlaying, setFestivalMusicPlaying] = useState(false);
-  const [heldMaterial, setHeldMaterial] = useState<"wood" | "stone" | null>(null);
+  const [heldItem, setHeldItem] = useState<CarriedItem | null>(null);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
   const [inspectedItem, setInspectedItem] = useState<string | null>(null);
@@ -724,31 +725,85 @@ export default function FarmGame() {
       setMessage(material === "wood" ? "现在没有木头可以拿起来。" : "现在没有石材可以拿起来。 ");
       return;
     }
-    setHeldMaterial(material);
-    setMessage(`双击拿起了${material === "wood" ? "木头" : "石材"}。现在去南坡点击鲁师傅，把材料交给他。`);
+    setHeldItem({ kind: "material", id: material });
+    setSelectedResource(null);
+    setMessage(`双击拿起了${material === "wood" ? "木头" : "石材"}，它现在举在小禾头顶。点击任意居民就能送给对方。`);
     playTone(540);
   };
 
+  const pickUpResource = (resource: StorableResource) => {
+    const name = RESOURCE_INFO[resource].name;
+    if (game.inventory[resource] <= 0) {
+      setMessage(`背包里还没有${name}可以拿起来。`);
+      playTone(220);
+      return;
+    }
+    setHeldItem({ kind: "resource", id: resource });
+    setSelectedResource(null);
+    setMessage(`双击拿起了${name}，它现在举在小禾头顶。点击任意居民就能送给对方。`);
+    playTone(560);
+  };
+
+  const pickUpSeed = (crop: CropType) => {
+    const field = CROP_INFO[crop].seedField;
+    if (game[field] <= 0) {
+      setMessage(`种子袋里没有${CROP_INFO[crop].name}种子。`);
+      playTone(220);
+      return;
+    }
+    setHeldItem({ kind: "seed", id: crop });
+    setSelectedResource(null);
+    setMessage(`双击拿起了${CROP_INFO[crop].name}种子包，点击任意居民就能送给对方。`);
+    playTone(560);
+  };
+
+  const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : `${CROP_INFO[heldItem.id].name}种子包` : "";
+  const carriedItemShort = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木" : "石") : heldItem.kind === "resource" ? (heldItem.id === "fish" ? "鱼" : CROP_INFO[heldItem.id].short) : CROP_INFO[heldItem.id].short : "";
+  const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : `${heldItem.id}-seeds` : "";
+  const renderCarriedItem = () => heldItem ? <span className={`held-overhead held-${carriedItemClass}`} title={carriedItemName}>{carriedItemShort}</span> : null;
+
+  const giveHeldItem = (person: string) => {
+    if (!heldItem) return false;
+    if (heldItem.kind === "material" && person === "鲁师傅") {
+      const amount = game[heldItem.id];
+      setGame((current) => ({
+        ...current,
+        [heldItem.id]: 0,
+        builderSupplies: { ...current.builderSupplies, [heldItem.id]: current.builderSupplies[heldItem.id] + amount },
+      }));
+      setMessage(`鲁师傅收下了 ${amount} 块${carriedItemName}，放进了扩建材料堆。`);
+      setHeldItem(null);
+      setBuilderOpen(true);
+      playTone(650);
+      return true;
+    }
+    setGame((current) => {
+      if (heldItem.kind === "resource") return { ...current, inventory: { ...current.inventory, [heldItem.id]: Math.max(0, current.inventory[heldItem.id] - 1) } };
+      if (heldItem.kind === "material") return { ...current, [heldItem.id]: Math.max(0, current[heldItem.id] - 1) };
+      const field = CROP_INFO[heldItem.id].seedField;
+      return { ...current, [field]: Math.max(0, current[field] - 1) };
+    });
+    setMessage(`${person}收下了小禾送的${carriedItemName}，开心地说：“谢谢你，我会好好珍惜！”`);
+    setHeldItem(null);
+    playTone(760);
+    return true;
+  };
+
+  const interactWithPerson = (person: string, fallback: string) => {
+    if (giveHeldItem(person)) return;
+    setMessage(fallback);
+    playTone(520);
+  };
+
   const talkToNeighbor = (neighbor: NeighborScene) => {
+    const person = neighbor === "eastNeighbor" ? "林婶" : neighbor === "southNeighbor" ? "鲁师傅" : "叶老师";
+    if (giveHeldItem(person)) return;
     if (neighbor !== "southNeighbor") {
       setMessage(neighbor === "eastNeighbor" ? "林婶：你好呀！周六记得来尝我的草莓果酱。" : "叶老师：天气好的时候，我喜欢在林子里散步读书。 ");
       return;
     }
-    if (heldMaterial) {
-      const amount = game[heldMaterial];
-      setGame((current) => ({
-        ...current,
-        [heldMaterial]: 0,
-        builderSupplies: { ...current.builderSupplies, [heldMaterial]: current.builderSupplies[heldMaterial] + amount },
-      }));
-      setMessage(`把 ${amount} 块${heldMaterial === "wood" ? "木头" : "石材"}交给了鲁师傅。`);
-      setHeldMaterial(null);
-      setBuilderOpen(true);
-      playTone(650);
-      return;
-    }
     setBuilderOpen(true);
-    setMessage("鲁师傅：把木头和石材双击拿起来，再交给我，我就能帮你制作和扩建。 ");
+    setMessage("鲁师傅：把木头和石材双击拿起来，再交给我，我就能帮你制作和扩建；其他礼物我也会好好收下。 ");
   };
 
   const commissionBuilder = (item: "house" | "land") => {
@@ -928,6 +983,7 @@ export default function FarmGame() {
       daily: { ...current.daily, sold: current.daily.sold + itemCount },
     }));
     setSelectedResource(null);
+    if (heldItem?.kind === "resource") setHeldItem(null);
     setMessage(`自动售卖 ${itemCount} 件鱼和作物，赚到 ${earnings} 金币！木头没有清空。`);
     playTone(820);
   };
@@ -1092,7 +1148,7 @@ export default function FarmGame() {
     setChestOpen(false);
     setBuilderOpen(false);
     setNeighborInterior(null);
-    setHeldMaterial(null);
+    setHeldItem(null);
     setScene("farm");
     setPlayer({ x: 10, y: 5 });
     setMessage("已经安全回到农场，原来的进度都还在。");
@@ -1516,14 +1572,14 @@ export default function FarmGame() {
             <div className="seed-record">
               <div><strong>种子袋</strong><small>领取后会显示在这里 · 点击选择播种</small></div>
               <div className="seed-record-list">
-                {CROP_TYPES.filter((crop) => game[CROP_INFO[crop].seedField] > 0).map((crop) => <button key={crop} className={selected === "seed" && selectedCrop === crop ? "selected" : ""} onClick={() => { setSelected("seed"); setSelectedCrop(crop); setSelectedResource(null); setMessage(`拿出${CROP_INFO[crop].name}种子，现在有 ${game[CROP_INFO[crop].seedField]} 颗，可以去松好的土地播种。`); playTone(560); }}><span className={`${crop}-icon`}>{CROP_INFO[crop].short}</span><strong>{game[CROP_INFO[crop].seedField]}</strong><small>{CROP_INFO[crop].name}种子</small></button>)}
+                {CROP_TYPES.filter((crop) => game[CROP_INFO[crop].seedField] > 0).map((crop) => <button key={crop} className={heldItem?.kind === "seed" && heldItem.id === crop ? "selected" : selected === "seed" && selectedCrop === crop ? "selected" : ""} onClick={() => { setSelected("seed"); setSelectedCrop(crop); setSelectedResource(null); setMessage(`拿出${CROP_INFO[crop].name}种子，现在有 ${game[CROP_INFO[crop].seedField]} 颗，可以去松好的土地播种；双击可以举到头顶送人。`); playTone(560); }} onDoubleClick={() => pickUpSeed(crop)} title="双击拿起种子包送给居民"><span className={`${crop}-icon`}>{CROP_INFO[crop].short}</span><strong>{game[CROP_INFO[crop].seedField]}</strong><small>{CROP_INFO[crop].name}种子</small></button>)}
               </div>
             </div>
             <div className="harvest-subtitle">已经收获的水果、蔬菜和鱼</div>
             <div className="harvest-items">
-              {(Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => <button key={resource} className={selectedResource === resource ? "resource-item selected" : "resource-item"} onClick={() => clickResource(resource)} onPointerDown={() => startEating(resource)} onPointerUp={stopEating} onPointerCancel={stopEating} onPointerLeave={stopEating} onContextMenu={(event) => event.preventDefault()} aria-pressed={selectedResource === resource} aria-label={`${RESOURCE_INFO[resource].name} ${game.inventory[resource]} 个，轻点拿起，长按食用`} title="轻点拿起，长按吃掉"><span className={`harvest-icon ${resource}-icon`}>{resource === "fish" ? "鱼" : CROP_INFO[resource].short}</span><p>{resource === "fish" ? "鱼获" : CROP_INFO[resource].name}<strong>{game.inventory[resource]}</strong><small>长按吃</small></p></button>)}
-              <button className={heldMaterial === "wood" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("wood")} title="双击拿起木头"><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong><small>双击拿起</small></p></button>
-              <button className={heldMaterial === "stone" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("stone")} title="双击拿起石材"><span className="harvest-icon stone-icon">石</span><p>石材<strong>{game.stone}</strong><small>双击拿起</small></p></button>
+              {(Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => <button key={resource} className={heldItem?.kind === "resource" && heldItem.id === resource ? "resource-item held-material" : selectedResource === resource ? "resource-item selected" : "resource-item"} onClick={() => clickResource(resource)} onDoubleClick={() => pickUpResource(resource)} onPointerDown={() => startEating(resource)} onPointerUp={stopEating} onPointerCancel={stopEating} onPointerLeave={stopEating} onContextMenu={(event) => event.preventDefault()} aria-pressed={selectedResource === resource} aria-label={`${RESOURCE_INFO[resource].name} ${game.inventory[resource]} 个，双击拿起送人，长按食用`} title="双击拿起送人，长按吃掉"><span className={`harvest-icon ${resource}-icon`}>{resource === "fish" ? "鱼" : CROP_INFO[resource].short}</span><p>{resource === "fish" ? "鱼获" : CROP_INFO[resource].name}<strong>{game.inventory[resource]}</strong><small>双击拿起</small></p></button>)}
+              <button className={heldItem?.kind === "material" && heldItem.id === "wood" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("wood")} title="双击拿起木头"><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong><small>双击拿起</small></p></button>
+              <button className={heldItem?.kind === "material" && heldItem.id === "stone" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("stone")} title="双击拿起石材"><span className="harvest-icon stone-icon">石</span><p>石材<strong>{game.stone}</strong><small>双击拿起</small></p></button>
             </div>
           </div>
           <div className="task-card">
@@ -1555,7 +1611,7 @@ export default function FarmGame() {
                 <button className={`pond ${isFishing ? "fishing" : ""} ${currentFestival?.id === "fishing" ? "fishing-festival-pond" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
                   <i /><i /><i /><b className="fishing-float" /><span className="pond-label">{currentFestival?.id === "fishing" ? "钓鱼节会场 · 鱼获 +2" : "钓鱼池"}</span>
                 </button>
-                {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} className={`crowd-person crowd-${index + 1}`} onClick={() => setMessage(`${name}：钓鱼节开始啦，鱼塘边来了好多村民！`)}><i /><b /><span>{name}</span></button>)}</div>}
+                {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} className={`crowd-person crowd-${index + 1}`} onClick={() => interactWithPerson(name, `${name}：钓鱼节开始啦，鱼塘边来了好多村民！`)}><i /><b /><span>{name}</span></button>)}</div>}
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" /><span className="sign">{displayName}的农舍{game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
                 {game.rockStates.map((standing, index) => <button key={`rock-${index}`} className={`farm-rock rock-${index + 1} ${standing ? "" : "broken"}`} onClick={() => breakRock(index)} aria-label={standing ? `敲碎第 ${index + 1} 块石头` : `第 ${index + 1} 处碎石`} />)}
                 {game.treeStates.map((standing, index) => (
@@ -1588,7 +1644,7 @@ export default function FarmGame() {
               <>
                 <div className="town-road road-horizontal" /><div className="town-road road-vertical" />
                 <div className="town-square"><span>✦</span><i /><i /><i /></div>
-                {currentFestival?.id === "spring" && <><div className="saturday-market" aria-label="周六春日集市"><strong>春日集市</strong><button onClick={tasteFestivalJam}>草莓果酱<small>恢复 25 体力</small></button><button onClick={() => { setFestivalDisplay("wood"); setMessage("鲁师傅把精雕细刻的木工作品摆到了展示台上。 "); }}>木工作品<small>点击看展品</small></button><button className={festivalMusicPlaying ? "music-playing" : ""} onClick={playValleyMusic}>山谷音乐<small>{festivalMusicPlaying ? "正在演奏♪" : "点击播放"}</small></button></div><div className="festival-crowd" aria-label="参加春日集市的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} className={`crowd-person crowd-${index + 1}`} onClick={() => setMessage(`${name}：春日集市真热闹，大家都来到中心广场啦！`)}><i /><b /><span>{name}</span></button>)}</div></>}
+                {currentFestival?.id === "spring" && <><div className="saturday-market" aria-label="周六春日集市"><strong>春日集市</strong><button onClick={tasteFestivalJam}>草莓果酱<small>恢复 25 体力</small></button><button onClick={() => { setFestivalDisplay("wood"); setMessage("鲁师傅把精雕细刻的木工作品摆到了展示台上。 "); }}>木工作品<small>点击看展品</small></button><button className={festivalMusicPlaying ? "music-playing" : ""} onClick={playValleyMusic}>山谷音乐<small>{festivalMusicPlaying ? "正在演奏♪" : "点击播放"}</small></button></div><div className="festival-crowd" aria-label="参加春日集市的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} className={`crowd-person crowd-${index + 1}`} onClick={() => interactWithPerson(name, `${name}：春日集市真热闹，大家都来到中心广场啦！`)}><i /><b /><span>{name}</span></button>)}</div></>}
                 <div className="street-lamp lamp-one" /><div className="street-lamp lamp-two" /><div className="street-lamp lamp-three" />
 
                 <button className="town-building supermarket" onClick={() => setActiveBuilding("supermarket")} aria-label="进入青禾超市">
@@ -1609,7 +1665,7 @@ export default function FarmGame() {
               <>
                 <div className="neighbor-path" />
                 <button className={`neighbor-house ${scene}`} onClick={() => { setNeighborInterior(scene as NeighborScene); setIndoorPlayer({ x: 31, y: 70 }); setMessage(`进入${scene === "eastNeighbor" ? "林婶的果园小屋" : scene === "southNeighbor" ? "鲁师傅的山脚院子" : "叶老师的林间书屋"}。`); }}><span className="neighbor-roof" /><span className="neighbor-wall" /><span className="neighbor-door" /><span className="neighbor-window" /><strong>{scene === "eastNeighbor" ? "林婶的果园小屋" : scene === "southNeighbor" ? "鲁师傅的山脚院子" : "叶老师的林间书屋"}<small>点击进入</small></strong></button>
-                <button className={`npc-villager npc-${scene}`} onClick={() => talkToNeighbor(scene as NeighborScene)} aria-label="和居民人机说话"><i className="npc-hair" /><i className="npc-head" /><i className="npc-body" /><span>{scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师"}<small>{scene === "southNeighbor" && heldMaterial ? "点击交材料" : "点击交谈"}</small></span></button>
+                <button className={`npc-villager npc-${scene}`} onClick={() => talkToNeighbor(scene as NeighborScene)} aria-label="和居民人机说话或送礼"><i className="npc-hair" /><i className="npc-head" /><i className="npc-body" /><span>{scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师"}<small>{heldItem ? `点击送出${carriedItemName}` : "点击交谈"}</small></span></button>
                 <div className="neighbor-decor"><i /><i /><i /></div>
                 <button className={`edge-gate neighbor-return return-${scene}`} onClick={() => { setScene("town"); setPlayer(scene === "eastNeighbor" ? { x: 11, y: 5 } : scene === "southNeighbor" ? { x: 6, y: 7 } : { x: 6, y: 0 }); setMessage("回到青禾镇中心街。"); }}><b>{scene === "eastNeighbor" ? "←" : scene === "southNeighbor" ? "↑" : "↓"}</b><span>返回青禾镇</span><small>走到边缘也能返回</small></button>
                 {scene === "eastNeighbor" && activeVillage === "qinghe" && <button className="edge-gate village-crossing crossing-right" onClick={() => { setWorldVillage("maple"); setScene("farm"); setPlayer({ x: 0, y: 5 }); setMessage("沿着右边山路走到了枫叶村！"); }}><span>前往枫叶村</span><b>→</b><small>一直向右走</small></button>}
@@ -1617,7 +1673,7 @@ export default function FarmGame() {
             )}
 
             <div className={`player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${4 + player.x * 7.7}%`, top: `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
-              {heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
+              {renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
             </div>
             {partner?.online && partner.currentVillage === activeVillage && partner.scene === scene && <div className="online-partner" style={{ left: `${4 + partner.x * 7.7}%`, top: `${8 + partner.y * 10.5}%` }} aria-label={`${partner.playerName}也在这里`}><span>{partner.playerName}<small>朋友</small></span><i className="player-shadow" /><img src={partner.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>}
 
@@ -1643,10 +1699,10 @@ export default function FarmGame() {
                     </div>
                     <button className="neighbor-indoor-npc" onClick={() => talkToNeighbor(neighborInterior)}><i className="npc-hair" /><i className="npc-face" /><i className="npc-body" /><span>{neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师"}</span></button>
                     <button className="house-door neighbor-home-door" onClick={() => { setNeighborInterior(null); setBuilderOpen(false); setMessage("从居民家的门口出来了。 "); }}><span>出口</span></button>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师"}</strong><p>{neighborInterior === "eastNeighbor" ? "欢迎来我家！桌上放着果酱和刚摘下来的草莓。" : neighborInterior === "southNeighbor" ? "把木头和石材交给我，我能帮你制作东西、扩建农舍和地盘。" : "欢迎来到林间书屋，书架上的故事都可以慢慢看。"}</p></div>
-                  <div className="service-actions"><button onClick={() => talkToNeighbor(neighborInterior)}>{neighborInterior === "southNeighbor" ? (heldMaterial ? "把手里的材料交给鲁师傅" : "打开鲁师傅的委托单") : "和主人聊天"}</button><button className="exit-action" onClick={() => { setNeighborInterior(null); setBuilderOpen(false); setMessage("从居民家的门口出来了。 "); }}>从门口出去</button></div>
+                  <div className="service-actions"><button onClick={() => talkToNeighbor(neighborInterior)}>{heldItem ? `把${carriedItemName}送给${neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师"}` : neighborInterior === "southNeighbor" ? "打开鲁师傅的委托单" : "和主人聊天"}</button><button className="exit-action" onClick={() => { setNeighborInterior(null); setBuilderOpen(false); setMessage("从居民家的门口出来了。 "); }}>从门口出去</button></div>
                   <footer><span>{message}</span><small>屋里可以移动 · 按 Esc 出去</small></footer>
                 </section>
               </div>
@@ -1728,7 +1784,7 @@ export default function FarmGame() {
                     {game.upgrades.house >= 3 && <button className="house-equipment house-kitchen" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 20) })); setMessage("在料理台吃了一份热饭，恢复 20 点体力！"); playTone(740); }}><i />料理台</button>}
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{heldMaterial && <span className={`held-overhead held-${heldMaterial}`}>{heldMaterial === "wood" ? "木" : "石"}</span>}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>回到家啦</strong><p>床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。</p></div>
                   <div className="service-actions">
@@ -1744,8 +1800,8 @@ export default function FarmGame() {
               <div className="shop-overlay" role="presentation">
                 <section className="shop-panel" role="dialog" aria-modal="true" aria-labelledby="shop-title">
                   <header><div><span>青禾镇杂货</span><h2 id="shop-title">青禾超市</h2></div><div className="shop-wallet"><small>你的金币</small><strong>● {game.coins}</strong></div><button onClick={leaveBuilding} aria-label="离开商店">×</button></header>
-                  <div className="shopkeeper"><div className="shopkeeper-face"><i /><b /></div><p><strong>林婶</strong>{game.day === 3 ? "种子分享日快乐！今天所有水果和蔬菜种子都免费。" : "欢迎呀，小禾！今天想带点什么回农场？"}</p><div className={`player indoor-player indoor-shop-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: "0" }}><span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div></div>
-                  {game.day === 3 && <><div className="free-seed-festival"><strong>种子分享日 · 全部免费</strong><span>西瓜、番茄、土豆、南瓜、蓝莓等 8 种种子</span><button onClick={takeFreeSeedBundle}>免费领取 8 种种子大礼包</button></div><div className="shop-festival-guests" aria-label="参加种子分享日的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} onClick={() => setMessage(`${name}：种子分享日真热闹，大家都领到了喜欢的种子！`)}><i /><b /><span>{name}</span></button>)}</div></>}
+                  <div className="shopkeeper"><button className="shopkeeper-face" onClick={() => interactWithPerson("林婶", "林婶：欢迎呀，小禾！今天想带点什么回农场？")} aria-label={heldItem ? `把${carriedItemName}送给林婶` : "和林婶交谈"}><i /><b /></button><p><strong>林婶</strong>{heldItem ? `小禾正举着${carriedItemName}，点击林婶就能送给她。` : game.day === 3 ? "种子分享日快乐！今天所有水果和蔬菜种子都免费。" : "欢迎呀，小禾！今天想带点什么回农场？"}</p><div className={`player indoor-player indoor-shop-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: "0" }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div></div>
+                  {game.day === 3 && <><div className="free-seed-festival"><strong>种子分享日 · 全部免费</strong><span>西瓜、番茄、土豆、南瓜、蓝莓等 8 种种子</span><button onClick={takeFreeSeedBundle}>免费领取 8 种种子大礼包</button></div><div className="shop-festival-guests" aria-label="参加种子分享日的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} onClick={() => interactWithPerson(name, `${name}：种子分享日真热闹，大家都领到了喜欢的种子！`)}><i /><b /><span>{name}</span></button>)}</div></>}
                   <div className="product-grid">
                     {CROP_TYPES.map((crop) => <article className="product-card" key={crop}><span className={`product-icon ${crop}-seeds`}>{CROP_INFO[crop].short}</span><div><strong>{CROP_INFO[crop].name}种子包</strong><small>内含 5 颗种子</small></div><button className={game.day === 3 ? "free-shop-button" : ""} onClick={() => buyItem(CROP_INFO[crop].seedField)}>{game.day === 3 ? "免费" : <><span>●</span>{CROP_INFO[crop].seedPrice}</>}</button></article>)}
                     <article className="product-card"><span className="product-icon water-drop">水</span><div><strong>水壶补给</strong><small>立刻补满 12 格水</small></div><button onClick={() => buyItem("water")}><span>●</span>25</button></article>
@@ -1770,14 +1826,14 @@ export default function FarmGame() {
                     <div className="room-window"><i /><i /></div>
                     <div className="room-rug" />
                     <div className="room-furniture"><i /><i /><i /></div>
-                    <div className="npc-character"><span className="npc-hair" /><span className="npc-face" /><span className="npc-body" /></div>
-                    {((activeBuilding === "cafe" && currentFestival?.id === "coffee") || (activeBuilding === "workshop" && currentFestival?.id === "craft")) && <div className={`festival-indoor-guests guests-${activeBuilding}`} aria-label={`参加${currentFestival.name}的居民`}>{FESTIVAL_GUESTS.map((name, index) => <button key={name} className={`indoor-guest guest-${index + 1}`} onClick={() => setMessage(`${name}：${currentFestival.name}真热闹，屋里坐满了村民！`)}><i /><b /><span>{name}</span></button>)}</div>}
+                    <button className="npc-character" onClick={() => interactWithPerson(BUILDING_INFO[activeBuilding].owner, `${BUILDING_INFO[activeBuilding].owner}：${BUILDING_INFO[activeBuilding].greeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${BUILDING_INFO[activeBuilding].owner}` : `和${BUILDING_INFO[activeBuilding].owner}交谈`}><span className="npc-hair" /><span className="npc-face" /><span className="npc-body" /></button>
+                    {((activeBuilding === "cafe" && currentFestival?.id === "coffee") || (activeBuilding === "workshop" && currentFestival?.id === "craft")) && <div className={`festival-indoor-guests guests-${activeBuilding}`} aria-label={`参加${currentFestival.name}的居民`}>{FESTIVAL_GUESTS.map((name, index) => <button key={name} className={`indoor-guest guest-${index + 1}`} onClick={() => interactWithPerson(name, `${name}：${currentFestival.name}真热闹，屋里坐满了村民！`)}><i /><b /><span>{name}</span></button>)}</div>}
                     <div className="interior-counter" />
                     <div className="interior-sign">{activeBuilding === "townhall" ? "公告" : activeBuilding === "clinic" ? "健康" : activeBuilding === "cafe" ? "今日菜单" : activeBuilding === "workshop" ? "制作台" : "农事图鉴"}</div>
                     <div className={`room-specials special-${activeBuilding}`}>
                       {BUILDING_ITEMS[activeBuilding].map((item) => <button type="button" key={item} onClick={() => inspectBuildingItem(item)}>{item}</button>)}
                     </div>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在房子里面"><span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在房子里面">{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{BUILDING_INFO[activeBuilding].owner}</strong><p>{BUILDING_INFO[activeBuilding].greeting}</p></div>
                   {inspectedItem && (
