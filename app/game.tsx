@@ -473,10 +473,20 @@ export default function FarmGame() {
       return;
     }
     if (scene === "eastNeighbor" && dx > 0 && player.x === 11 && worldVillage === "qinghe") {
-      setWorldVillage("maple"); setScene("farm"); setPlayer({ x: 0, y: 5 }); setMessage("沿着右边山路走到了枫叶村！如果朋友也在这里，就能碰面啦。 "); return;
+      const friend = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId && onlinePlayer.online && onlinePlayer.currentVillage === "maple");
+      setWorldVillage("maple");
+      setScene(friend?.scene ?? "farm");
+      setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x - 1)), y: friend.y } : { x: 0, y: 5 });
+      setMessage(friend ? `沿着右边山路到了枫叶村，一进村就看见了${friend.playerName}！` : "沿着右边山路走到了枫叶村！朋友来到同一个场景后就会出现。 ");
+      return;
     }
     if (scene === "farm" && dx < 0 && player.x === 0 && worldVillage === "maple") {
-      setWorldVillage("qinghe"); setScene("eastNeighbor"); setPlayer({ x: 11, y: 5 }); setMessage("沿着左边山路回到了青禾村！"); return;
+      const friend = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId && onlinePlayer.online && onlinePlayer.currentVillage === "qinghe");
+      setWorldVillage("qinghe");
+      setScene(friend?.scene ?? "farm");
+      setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x + 1)), y: friend.y } : { x: 11, y: 5 });
+      setMessage(friend ? `沿着左边山路到了青禾村，一进村就看见了${friend.playerName}！` : "沿着左边山路到了青禾村。朋友来到同一个场景后就会出现。 ");
+      return;
     }
     if (scene === "eastNeighbor" && dx < 0 && player.x === 0) {
       setScene("town"); setPlayer({ x: 11, y: 5 }); setMessage("回到青禾镇中心街。"); return;
@@ -508,7 +518,7 @@ export default function FarmGame() {
         setMessage(`进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, chestOpen, craftingOpen, neighborInterior, player, scene, showWalking, worldVillage]);
+  }, [activeBuilding, chestOpen, craftingOpen, multiplayerSession?.deviceId, neighborInterior, onlinePlayers, player, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1710,7 +1720,7 @@ export default function FarmGame() {
                 <button className="edge-gate farm-exit" onClick={() => { setScene("town"); setPlayer({ x: 0, y: 5 }); setMessage(`欢迎来到${activeVillageInfo.name}！超市在左上方。`); }} aria-label={`前往${activeVillageInfo.name}`}>
                   <span>{activeVillageInfo.name}</span><b>→</b><small>继续向右走</small>
                 </button>
-                {activeVillage === "maple" && <button className="edge-gate village-crossing crossing-left" onClick={() => { setWorldVillage("qinghe"); setScene("eastNeighbor"); setPlayer({ x: 11, y: 5 }); setMessage("沿着左边山路回到了青禾村！"); }}><b>←</b><span>前往青禾村</span><small>一直向左走</small></button>}
+                {activeVillage === "maple" && <button className="edge-gate village-crossing crossing-left" onClick={() => { const friend = partner?.online && partner.currentVillage === "qinghe" ? partner : null; setWorldVillage("qinghe"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x + 1)), y: friend.y } : { x: 11, y: 5 }); setMessage(friend ? `到了青禾村，马上看见了${friend.playerName}！` : "沿着左边山路到了青禾村。 "); }}><b>←</b><span>前往青禾村</span><small>{partner?.online && partner.currentVillage === "qinghe" ? `去见${partner.playerName}` : "一直向左走"}</small></button>}
               </>
             ) : scene === "town" ? (
               <>
@@ -1740,7 +1750,7 @@ export default function FarmGame() {
                 <button className={`npc-villager npc-${scene}`} onClick={() => talkToNeighbor(scene as NeighborScene)} aria-label="和居民人机说话或送礼"><i className="npc-hair" /><i className="npc-head" /><i className="npc-body" /><span>{scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师"}<small>{heldItem ? `点击送出${carriedItemName}` : "点击交谈"}</small></span></button>
                 <div className="neighbor-decor"><i /><i /><i /></div>
                 <button className={`edge-gate neighbor-return return-${scene}`} onClick={() => { setScene("town"); setPlayer(scene === "eastNeighbor" ? { x: 11, y: 5 } : scene === "southNeighbor" ? { x: 6, y: 7 } : { x: 6, y: 0 }); setMessage("回到青禾镇中心街。"); }}><b>{scene === "eastNeighbor" ? "←" : scene === "southNeighbor" ? "↑" : "↓"}</b><span>返回青禾镇</span><small>走到边缘也能返回</small></button>
-                {scene === "eastNeighbor" && activeVillage === "qinghe" && <button className="edge-gate village-crossing crossing-right" onClick={() => { setWorldVillage("maple"); setScene("farm"); setPlayer({ x: 0, y: 5 }); setMessage("沿着右边山路走到了枫叶村！"); }}><span>前往枫叶村</span><b>→</b><small>一直向右走</small></button>}
+                {scene === "eastNeighbor" && activeVillage === "qinghe" && <button className="edge-gate village-crossing crossing-right" onClick={() => { const friend = partner?.online && partner.currentVillage === "maple" ? partner : null; setWorldVillage("maple"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x - 1)), y: friend.y } : { x: 0, y: 5 }); setMessage(friend ? `到了枫叶村，马上看见了${friend.playerName}！` : "沿着右边山路走到了枫叶村！"); }}><span>前往枫叶村</span><b>→</b><small>{partner?.online && partner.currentVillage === "maple" ? `去见${partner.playerName}` : "一直向右走"}</small></button>}
               </>
             )}
 
@@ -1755,6 +1765,7 @@ export default function FarmGame() {
               {renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
             </div>
             {partner?.online && partner.currentVillage === activeVillage && partner.scene === scene && <div className="online-partner" style={{ left: `${4 + partner.x * 7.7}%`, top: `${8 + partner.y * 10.5}%` }} aria-label={`${partner.playerName}也在这里`}><span>{partner.playerName}<small>朋友</small></span><i className="player-shadow" /><img src={partner.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>}
+            {partner?.online && partner.currentVillage === activeVillage && partner.scene !== scene && <button className="friend-locator" onClick={(event) => { event.stopPropagation(); setActiveBuilding(null); setNeighborInterior(null); setScene(partner.scene); setPlayer({ x: Math.max(0, Math.min(11, partner.x + (partner.x < 11 ? 1 : -1))), y: partner.y }); setMessage(`找到${partner.playerName}了！现在你们在同一个地方。`); }}><span>● {partner.playerName}也在{activeVillageInfo.name}</span><strong>点击去找朋友</strong><small>{partner.scene === "farm" ? activeVillageInfo.farm : partner.scene === "town" ? "中心街" : partner.scene === "eastNeighbor" ? "东郊" : partner.scene === "southNeighbor" ? "南坡" : "北林"}</small></button>}
 
             <div className="speech-bubble"><span>{scene === "farm" ? "☀" : "◆"}</span>{message}</div>
             <div className="movement-help"><span>WASD / 方向键</span>移动</div>
