@@ -68,6 +68,7 @@ type GameState = {
   chestStorage: Record<StorableResource, number>;
   wood: number;
   stone: number;
+  herbs: number;
   treeStates: boolean[];
   rockStates: boolean[];
   crafted: { chest: number; fence: number; scarecrow: number };
@@ -185,6 +186,8 @@ const GROUND_SUPPLIES = [
   { name: "精铁斧头", short: "斧", kind: "tool", tool: "axe", description: "更加锋利的斧头，捡起后每棵树能砍出 6 块木头。" },
   { name: "幸运鱼竿", short: "竿", kind: "tool", tool: "rod", description: "带幸运银钩的鱼竿，捡起后每次钓鱼会多获得 1 条鱼。" },
   { name: "西瓜种子小包", short: "瓜", kind: "seed", field: "watermelonSeeds", amount: 3, description: "里面有 3 颗西瓜种子，捡起后会直接放进种子袋。" },
+  { name: "溪边艾草", short: "艾", kind: "herb", amount: 2, description: "带着清香的新鲜艾草，捡起后会收进药材袋。" },
+  { name: "金银花", short: "药", kind: "herb", amount: 2, description: "山坡上掉落的金银花，可以收进药材袋，之后拿给白医生查看。" },
 ] as const;
 
 const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description: string }> = {
@@ -244,6 +247,7 @@ const makeNewGame = (): GameState => ({
   chestStorage: { radish: 0, strawberry: 0, corn: 0, watermelon: 0, tomato: 0, potato: 0, pumpkin: 0, blueberry: 0, fish: 0 },
   wood: 0,
   stone: 0,
+  herbs: 0,
   treeStates: [true, true, true, true],
   rockStates: [true, true, true],
   crafted: { chest: 0, fence: 0, scarecrow: 0 },
@@ -260,7 +264,7 @@ const makeNewGame = (): GameState => ({
   groundArtifacts: [true, false, false],
   artifactBag: [],
   museumArtifacts: [],
-  groundSupplies: [true, false, false, false, false, false],
+  groundSupplies: [true, false, false, false, false, false, true, false],
   toolUpgrades: { water: false, axe: false, rod: false },
 });
 
@@ -355,6 +359,8 @@ export default function FarmGame() {
             chestStorage: { ...defaults.chestStorage, ...(parsed.chestStorage ?? {}) },
             wood: parsed.wood ?? 0,
             stone: parsed.stone ?? 0,
+            herbs: parsed.herbs ?? 0,
+            groundSupplies: defaults.groundSupplies.map((defaultVisible, index) => parsed.groundSupplies?.[index] ?? defaultVisible),
             treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
             rockStates: parsed.rockStates?.length === 3 ? parsed.rockStates : defaults.rockStates,
             crafted: { ...defaults.crafted, ...(parsed.crafted ?? {}) },
@@ -871,6 +877,7 @@ export default function FarmGame() {
       const next = { ...current, groundSupplies: current.groundSupplies.map((visible, index) => index === supplyId ? false : visible) };
       if (supply.kind === "seed") return { ...next, [supply.field]: current[supply.field] + supply.amount };
       if (supply.kind === "food") return { ...next, energy: Math.min(100, current.energy + supply.amount) };
+      if (supply.kind === "herb") return { ...next, herbs: current.herbs + supply.amount };
       if (current.toolUpgrades[supply.tool]) return { ...next, coins: current.coins + 20 };
       return {
         ...next,
@@ -880,7 +887,7 @@ export default function FarmGame() {
     });
     const alreadyOwned = supply.kind === "tool" && game.toolUpgrades[supply.tool];
     setMessage(alreadyOwned ? `捡起了${supply.name}，工具已经升级过，于是换成了 20 枚金币。` : `捡起了${supply.name}！${supply.description}`);
-    playTone(supply.kind === "tool" ? 920 : supply.kind === "food" ? 760 : 660);
+    playTone(supply.kind === "tool" ? 920 : supply.kind === "food" ? 760 : supply.kind === "herb" ? 820 : 660);
   };
 
   const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].title : RARE_ARTIFACTS[heldItem.id].title : "";
@@ -1676,6 +1683,7 @@ export default function FarmGame() {
   const partner = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId);
   const dailyWoodcraftIndex = (game.day - 1) % DAILY_WOODCRAFTS.length;
   const dailyWoodcraft = DAILY_WOODCRAFTS[dailyWoodcraftIndex];
+  const inspectedArtifactIndex = RARE_ARTIFACTS.findIndex((artifact) => artifact.title === inspectedItem);
   const currentFestival = FESTIVAL_SCHEDULE.find((festival) => festival.day === game.day) ?? null;
   const nextFestival = FESTIVAL_SCHEDULE.find((festival) => festival.day >= game.day) ?? FESTIVAL_SCHEDULE[0];
   const daysUntilFestival = nextFestival.day >= game.day ? nextFestival.day - game.day : 28 - game.day + nextFestival.day;
@@ -1779,6 +1787,7 @@ export default function FarmGame() {
               {(Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => <button key={resource} className={heldItem?.kind === "resource" && heldItem.id === resource ? "resource-item held-material" : selectedResource === resource ? "resource-item selected" : "resource-item"} onClick={() => clickResource(resource)} onDoubleClick={() => pickUpResource(resource)} onPointerDown={() => startEating(resource)} onPointerUp={stopEating} onPointerCancel={stopEating} onPointerLeave={stopEating} onContextMenu={(event) => event.preventDefault()} aria-pressed={selectedResource === resource} aria-label={`${RESOURCE_INFO[resource].name} ${game.inventory[resource]} 个，双击拿起送人，长按食用`} title="双击拿起送人，长按吃掉"><span className={`harvest-icon ${resource}-icon`}>{resource === "fish" ? "鱼" : CROP_INFO[resource].short}</span><p>{resource === "fish" ? "鱼获" : CROP_INFO[resource].name}<strong>{game.inventory[resource]}</strong><small>双击拿起</small></p></button>)}
               <button className={heldItem?.kind === "material" && heldItem.id === "wood" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("wood")} title="双击拿起木头"><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong><small>双击拿起</small></p></button>
               <button className={heldItem?.kind === "material" && heldItem.id === "stone" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("stone")} title="双击拿起石材"><span className="harvest-icon stone-icon">石</span><p>石材<strong>{game.stone}</strong><small>双击拿起</small></p></button>
+              <div className="resource-item herb-record"><span className="harvest-icon herb-icon">药</span><p>药材<strong>{game.herbs}</strong><small>从地上捡取</small></p></div>
               {game.bookBag.map((bookId) => <button key={`bag-book-${bookId}`} className={heldItem?.kind === "book" && heldItem.id === bookId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${LOST_BOOKS[bookId].title}：${LOST_BOOKS[bookId].content}`)} onDoubleClick={() => carryLostBook(bookId)} title="点击阅读，双击拿起来送给叶老师"><span className="harvest-icon book-icon">书</span><p>{LOST_BOOKS[bookId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
               {game.artifactBag.map((artifactId) => <button key={`bag-artifact-${artifactId}`} className={heldItem?.kind === "artifact" && heldItem.id === artifactId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${RARE_ARTIFACTS[artifactId].title}：${RARE_ARTIFACTS[artifactId].description}`)} onDoubleClick={() => carryArtifact(artifactId)} title="点击查看，双击拿起来送到博物馆"><span className={`harvest-icon artifact-icon artifact-icon-${artifactId + 1}`}>{RARE_ARTIFACTS[artifactId].short}</span><p>{RARE_ARTIFACTS[artifactId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
             </div>
@@ -1888,7 +1897,7 @@ export default function FarmGame() {
               return <button key={`ground-artifact-${artifactId}`} className={`ground-artifact ground-artifact-${artifactId + 1}`} onClick={(event) => { event.stopPropagation(); setMessage(`发现稀奇物品“${artifact.title}”：${artifact.description} 双击可以捡起来送到博物馆。`); playTone(760); }} onDoubleClick={(event) => { event.stopPropagation(); carryArtifact(artifactId, true); }} aria-label={`稀奇物品${artifact.title}，双击捡起`}><i>{artifact.short}</i><span>{artifact.title}<small>双击捡起 · 送博物馆</small></span></button>;
             })}
             {(scene === "farm" || scene === "town") && game.groundSupplies.map((visible, supplyId) => {
-              const supplyScene: Scene = supplyId === 1 || supplyId === 3 || supplyId === 5 ? "town" : "farm";
+              const supplyScene: Scene = supplyId === 1 || supplyId === 3 || supplyId === 5 || supplyId === 7 ? "town" : "farm";
               if (!visible || scene !== supplyScene) return null;
               const supply = GROUND_SUPPLIES[supplyId];
               return <button key={`ground-supply-${supplyId}`} className={`ground-supply supply-${supply.kind} ground-supply-${supplyId + 1}`} onClick={(event) => { event.stopPropagation(); setMessage(`地上掉着${supply.name}：${supply.description} 双击可以捡起来。`); playTone(540); }} onDoubleClick={(event) => { event.stopPropagation(); pickUpGroundSupply(supplyId); }} aria-label={`${supply.name}，双击捡起`}><i>{supply.short}</i><span>{supply.name}<small>双击捡起</small></span></button>;
@@ -2056,13 +2065,13 @@ export default function FarmGame() {
                     <div className={`room-specials special-${activeBuilding}`}>
                       {BUILDING_ITEMS[activeBuilding].map((item) => <button type="button" key={item} onClick={() => inspectBuildingItem(item)}>{item}</button>)}
                       {activeBuilding === "library" && game.libraryBooks.map((bookId) => <button type="button" className="recovered-book" key={`library-book-${bookId}`} onClick={() => inspectBuildingItem(LOST_BOOKS[bookId].title)}>{LOST_BOOKS[bookId].title}</button>)}
-                      {activeBuilding === "museum" && game.museumArtifacts.map((artifactId) => <button type="button" className={`museum-case artifact-case-${artifactId + 1}`} key={`museum-artifact-${artifactId}`} onClick={() => inspectBuildingItem(RARE_ARTIFACTS[artifactId].title)}><i>{RARE_ARTIFACTS[artifactId].short}</i>{RARE_ARTIFACTS[artifactId].title}</button>)}
+                      {activeBuilding === "museum" && game.museumArtifacts.map((artifactId) => <button type="button" className={`museum-case artifact-case-${artifactId + 1}`} key={`museum-artifact-${artifactId}`} onClick={() => inspectBuildingItem(RARE_ARTIFACTS[artifactId].title)}><span className="museum-artifact-thumb"><img src="/museum-artifacts.png" alt="" draggable={false} /></span>{RARE_ARTIFACTS[artifactId].title}</button>)}
                     </div>
                     <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在房子里面">{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{BUILDING_INFO[activeBuilding].owner}</strong><p>{BUILDING_INFO[activeBuilding].greeting}</p></div>
                   {inspectedItem && (
-                    <div className="inspection-card"><div><strong>{inspectedItem}</strong><p>{inspectedItem === "药品柜" ? (!game.diagnosed ? "要先接受白医生的免费检查，才能查看药品。" : game.sick ? "里面放着白医生刚配好的处方药，价格 50 金币。" : "检查结果不需要用药。") : inspectedItem === "健康档案" && !game.diagnosed ? "还没有检查结果，档案暂时是空白的。" : LOST_BOOKS.find((book) => book.title === inspectedItem)?.content ?? RARE_ARTIFACTS.find((artifact) => artifact.title === inspectedItem)?.description ?? ITEM_DESCRIPTIONS[inspectedItem]}</p></div><button onClick={() => setInspectedItem(null)}>收起</button></div>
+                    <div className={`inspection-card ${inspectedArtifactIndex >= 0 ? "artifact-inspection-card" : ""}`}>{inspectedArtifactIndex >= 0 && <div className={`artifact-inspection-image artifact-preview-${inspectedArtifactIndex + 1}`}><img src="/museum-artifacts.png" alt={inspectedItem} draggable={false} /></div>}<div><strong>{inspectedItem}</strong><p>{inspectedItem === "药品柜" ? (!game.diagnosed ? "要先接受白医生的免费检查，才能查看药品。" : game.sick ? "里面放着白医生刚配好的处方药，价格 50 金币。" : "检查结果不需要用药。") : inspectedItem === "健康档案" && !game.diagnosed ? "还没有检查结果，档案暂时是空白的。" : LOST_BOOKS.find((book) => book.title === inspectedItem)?.content ?? RARE_ARTIFACTS.find((artifact) => artifact.title === inspectedItem)?.description ?? ITEM_DESCRIPTIONS[inspectedItem]}</p></div><button onClick={() => setInspectedItem(null)}>收起</button></div>
                   )}
                   <div className="service-actions">
                     <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? (!game.diagnosed ? "接受免费检查" : game.sick ? "购买白医生开的药 · 50 金币" : "检查结果：没有生病") : activeBuilding === "cafe" ? (currentFestival?.id === "coffee" ? "免费领取咖啡和点心" : "购买咖啡套餐 · 35 金币") : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "免费参观手工作品" : activeBuilding === "museum" ? heldItem?.kind === "artifact" ? `捐赠${carriedItemName}` : `查看馆藏 · ${game.museumArtifacts.length}/3` : "翻阅农事图鉴"}</button>
