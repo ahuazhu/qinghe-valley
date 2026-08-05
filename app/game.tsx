@@ -71,7 +71,7 @@ type GameState = {
   treeStates: boolean[];
   rockStates: boolean[];
   crafted: { chest: number; fence: number; scarecrow: number };
-  upgrades: { house: number; land: number };
+  upgrades: { house: number; land: number; field: number };
   builderSupplies: { wood: number; stone: number };
   equipment: { lampOn: boolean };
   daily: { day: number; planted: number; watered: number; harvested: number; fish: number; chopped: number; sold: number; rewardClaimed: boolean };
@@ -186,6 +186,12 @@ const PERSON_RETURN_GIFTS: Record<string, ReturnGift> = {
   周镇长: { kind: "coins", amount: 25, name: "25 枚感谢金币" },
 };
 
+const DAILY_WOODCRAFTS = [
+  { name: "花纹鸟屋", description: "带斜屋顶、圆门和小栖木，木板上刻着花朵与麦穗。" },
+  { name: "摇摇小木马", description: "马鬃、缰绳和弧形摇板都经过细细雕刻，可以看出四条腿。" },
+  { name: "山谷守护鹿", description: "一只温柔的鹿站在松树旁，底座刻着青禾谷的叶片纹样。" },
+];
+
 const makeTiles = (count = 32): FarmTile[] =>
   Array.from({ length: count }, () => ({ state: "grass", stage: 0, watered: false }));
 
@@ -216,7 +222,7 @@ const makeNewGame = (): GameState => ({
   treeStates: [true, true, true, true],
   rockStates: [true, true, true],
   crafted: { chest: 0, fence: 0, scarecrow: 0 },
-  upgrades: { house: 0, land: 0 },
+  upgrades: { house: 0, land: 0, field: 0 },
   builderSupplies: { wood: 0, stone: 0 },
   equipment: { lampOn: false },
   daily: { day: 1, planted: 0, watered: 0, harvested: 0, fish: 0, chopped: 0, sold: 0, rewardClaimed: false },
@@ -878,14 +884,15 @@ export default function FarmGame() {
     setMessage("鲁师傅：把木头和石材双击拿起来，再交给我，我就能帮你制作和扩建；其他礼物我也会好好收下。 ");
   };
 
-  const commissionBuilder = (item: "house" | "land") => {
+  const commissionBuilder = (item: "house" | "land" | "field") => {
     const houseLevel = game.upgrades.house;
     const recipes = {
       house: { name: "扩大农舍", wood: 20 + houseLevel * 10, stone: 12 + houseLevel * 8 },
       land: { name: "扩大地盘", wood: 12, stone: 18 },
+      field: { name: "扩大土地", wood: 10, stone: 10 },
     } as const;
     const recipe = recipes[item];
-    if ((item === "house" && houseLevel >= 3) || (item === "land" && game.upgrades.land >= 1)) {
+    if ((item === "house" && houseLevel >= 3) || (item === "land" && game.upgrades.land >= 1) || (item === "field" && game.upgrades.field >= 1)) {
       setMessage(`${recipe.name}已经完成了。`);
       return;
     }
@@ -898,9 +905,9 @@ export default function FarmGame() {
       ...current,
       builderSupplies: { wood: current.builderSupplies.wood - recipe.wood, stone: current.builderSupplies.stone - recipe.stone },
       upgrades: { ...current.upgrades, [item]: item === "house" ? current.upgrades.house + 1 : 1 },
-      tiles: item === "land" ? [...current.tiles, ...makeTiles(8)] : current.tiles,
+      tiles: item === "field" ? [...current.tiles, ...makeTiles(8)] : current.tiles,
     }));
-    const installed = item === "house" ? ["暖光灯", "自动水箱", "料理台"][houseLevel] : "更大的农田";
+    const installed = item === "house" ? ["暖光灯", "自动水箱", "料理台"][houseLevel] : item === "field" ? "8 格新农田" : "更宽敞的农场地盘";
     setMessage(`鲁师傅完成了${recipe.name}，并安装了${installed}！`);
     playTone(820);
   };
@@ -1558,6 +1565,8 @@ export default function FarmGame() {
   const activeVillage = worldVillage;
   const activeVillageInfo = VILLAGE_INFO[activeVillage];
   const partner = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId);
+  const dailyWoodcraftIndex = (game.day - 1) % DAILY_WOODCRAFTS.length;
+  const dailyWoodcraft = DAILY_WOODCRAFTS[dailyWoodcraftIndex];
   const currentFestival = FESTIVAL_SCHEDULE.find((festival) => festival.day === game.day) ?? null;
   const nextFestival = FESTIVAL_SCHEDULE.find((festival) => festival.day >= game.day) ?? FESTIVAL_SCHEDULE[0];
   const daysUntilFestival = nextFestival.day >= game.day ? nextFestival.day - game.day : 28 - game.day + nextFestival.day;
@@ -1704,7 +1713,7 @@ export default function FarmGame() {
                 {game.crafted.fence > 0 && <button className="crafted-object crafted-fence" onClick={() => dismantleItem("fence")} aria-label={`木栅栏 ${game.crafted.fence} 个，使用斧头可拆除`}><i /><i /><i /><b>{game.crafted.fence}</b></button>}
                 {game.crafted.scarecrow > 0 && <button className="crafted-object crafted-scarecrow" onClick={() => dismantleItem("scarecrow")} aria-label={`稻草人 ${game.crafted.scarecrow} 个，使用斧头可拆除`}><i /><span /><b>{game.crafted.scarecrow}</b></button>}
 
-                <div className="field" aria-label="32 格农田">
+                <div className={`field ${game.tiles.length > 32 ? "expanded-field" : ""}`} aria-label={`${game.tiles.length} 格农田`}>
                   {game.tiles.map((tile, index) => (
                     <button
                       key={index}
@@ -1772,7 +1781,7 @@ export default function FarmGame() {
 
             {festivalDisplay === "wood" && (
               <div className="shop-overlay festival-exhibit-overlay" role="presentation">
-                <section className="festival-exhibit" role="dialog" aria-modal="true" aria-labelledby="wood-exhibit-title"><header><div><span>木匠工坊 · 免费常设展览</span><h2 id="wood-exhibit-title">鲁师傅的木工作品</h2></div><button onClick={() => setFestivalDisplay(null)}>×</button></header><div className="wood-exhibit-stage"><i className="wood-birdhouse" /><i className="wood-horse" /><i className="wood-carving" /><span>鸟屋</span><span>小木马</span><span>山谷木雕</span></div><p>每一件作品都用青禾谷的木材手工打磨，任何一天都可以免费参观。</p><footer><button onClick={() => setFestivalDisplay(null)}>看完展品</button></footer></section>
+                <section className="festival-exhibit" role="dialog" aria-modal="true" aria-labelledby="wood-exhibit-title"><header><div><span>木匠工坊 · 每日轮换展览</span><h2 id="wood-exhibit-title">鲁师傅的木工作品</h2></div><button onClick={() => setFestivalDisplay(null)}>×</button></header><div className={`wood-exhibit-stage daily-craft-${dailyWoodcraftIndex}`}><div className="woodcraft-window"><img src="/woodcraft-showcase.png" alt={dailyWoodcraft.name} draggable={false} /></div><div className="daily-craft-copy"><small>第 {game.day} 天 · 今日展品</small><strong>{dailyWoodcraft.name}</strong><p>{dailyWoodcraft.description}</p></div></div><p>鲁师傅每天早上都会换一件木雕。每件作品都用青禾谷的木材手工打磨，可以每天来看看。</p><footer><button onClick={() => setFestivalDisplay(null)}>看完今日展品</button></footer></section>
               </div>
             )}
 
@@ -1799,7 +1808,7 @@ export default function FarmGame() {
             )}
 
             {builderOpen && (
-              <div className={`shop-overlay builder-overlay ${neighborInterior ? "nested-house-overlay" : ""}`} role="presentation"><section className="builder-panel" role="dialog" aria-modal="true" aria-labelledby="builder-title"><header><div><span>鲁师傅的扩建委托</span><h2 id="builder-title">选择扩建项目</h2></div><button onClick={() => setBuilderOpen(false)}>×</button></header><div className="builder-supplies"><span>已经交给鲁师傅</span><strong>{game.builderSupplies.wood} 木头 · {game.builderSupplies.stone} 石材</strong><small>回到资源栏双击木头或石材，再点击鲁师傅，可以继续交材料。</small></div><div className="builder-grid"><button onClick={() => commissionBuilder("land")} disabled={Boolean(game.upgrades.land)}><b>扩大地盘</b><span>{game.upgrades.land ? "已经完成" : "12 木 · 18 石"}</span></button><button onClick={() => commissionBuilder("house")} disabled={game.upgrades.house >= 3}><b>扩大农舍</b><span>{game.upgrades.house >= 3 ? "三级扩建已经完成" : `${20 + game.upgrades.house * 10} 木 · ${12 + game.upgrades.house * 8} 石 · 安装${["暖光灯", "自动水箱", "料理台"][game.upgrades.house]}`}</span></button></div><footer><span>{message}</span><button onClick={() => setBuilderOpen(false)}>收起扩建委托</button></footer></section></div>
+              <div className={`shop-overlay builder-overlay ${neighborInterior ? "nested-house-overlay" : ""}`} role="presentation"><section className="builder-panel" role="dialog" aria-modal="true" aria-labelledby="builder-title"><header><div><span>鲁师傅的扩建委托</span><h2 id="builder-title">选择扩建项目</h2></div><button onClick={() => setBuilderOpen(false)}>×</button></header><div className="builder-supplies"><span>已经交给鲁师傅</span><strong>{game.builderSupplies.wood} 木头 · {game.builderSupplies.stone} 石材</strong><small>回到资源栏双击木头或石材，再点击鲁师傅，可以继续交材料。</small></div><div className="builder-grid"><button onClick={() => commissionBuilder("land")} disabled={Boolean(game.upgrades.land)}><b>扩大地盘</b><span>{game.upgrades.land ? "已经完成" : "12 木 · 18 石"}</span></button><button onClick={() => commissionBuilder("house")} disabled={game.upgrades.house >= 3}><b>扩大农舍</b><span>{game.upgrades.house >= 3 ? "三级扩建已经完成" : `${20 + game.upgrades.house * 10} 木 · ${12 + game.upgrades.house * 8} 石 · 安装${["暖光灯", "自动水箱", "料理台"][game.upgrades.house]}`}</span></button><button onClick={() => commissionBuilder("field")} disabled={Boolean(game.upgrades.field)}><b>扩大土地</b><span>{game.upgrades.field ? "已经增加 8 格土地" : "10 木 · 10 石 · 增加 8 格"}</span></button></div><footer><span>{message}</span><button onClick={() => setBuilderOpen(false)}>收起扩建委托</button></footer></section></div>
             )}
 
             {multiplayerOpen && (
