@@ -331,6 +331,7 @@ export default function FarmGame() {
   const [joiningMultiplayer, setJoiningMultiplayer] = useState(false);
   const eatTimerRef = useRef<number | null>(null);
   const walkTimerRef = useRef<number | null>(null);
+  const lastMoveAtRef = useRef(0);
   const longPressTriggeredRef = useRef(false);
   const fishingWaitTimerRef = useRef<number | null>(null);
   const fishingBiteTimerRef = useRef<number | null>(null);
@@ -503,11 +504,14 @@ export default function FarmGame() {
     else if (dy !== 0) setFacing(dy < 0 ? "up" : "down");
     setIsWalking(true);
     if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
-    walkTimerRef.current = window.setTimeout(() => setIsWalking(false), 360);
+    walkTimerRef.current = window.setTimeout(() => setIsWalking(false), 520);
   }, []);
 
   const move = useCallback((dx: number, dy: number) => {
     if (craftingOpen || chestOpen) return;
+    const now = Date.now();
+    if (now - lastMoveAtRef.current < 230) return;
+    lastMoveAtRef.current = now;
     showWalking(dx, dy);
     if (neighborInterior) {
       setIndoorPlayer((current) => ({
@@ -1200,6 +1204,28 @@ export default function FarmGame() {
       return;
     }
     selectResource(resource);
+  };
+
+  const useHerb = () => {
+    if (game.herbs <= 0) {
+      setMessage("药材袋还是空的，去农场或小镇地上找找艾草和金银花吧。 ");
+      playTone(220);
+      return;
+    }
+    if (!game.sick) {
+      setMessage("小禾现在没有生病，先把药材留在袋子里，不会浪费。 ");
+      playTone(420);
+      return;
+    }
+    setGame((current) => ({
+      ...current,
+      herbs: current.herbs - 1,
+      sick: false,
+      diagnosed: false,
+      energy: Math.min(100, current.energy + 25),
+    }));
+    setMessage("使用了 1 份药材，小禾恢复了健康，体力也增加了 25 点！");
+    playTone(820);
   };
 
   const useChest = () => {
@@ -1948,7 +1974,7 @@ export default function FarmGame() {
               {(Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => <button key={resource} className={heldItem?.kind === "resource" && heldItem.id === resource ? "resource-item held-material" : selectedResource === resource ? "resource-item selected" : "resource-item"} onClick={() => clickResource(resource)} onDoubleClick={() => pickUpResource(resource)} onPointerDown={() => startEating(resource)} onPointerUp={stopEating} onPointerCancel={stopEating} onPointerLeave={stopEating} onContextMenu={(event) => event.preventDefault()} aria-pressed={selectedResource === resource} aria-label={`${RESOURCE_INFO[resource].name} ${game.inventory[resource]} 个，双击拿起送人，长按食用`} title="双击拿起送人，长按吃掉"><span className={`harvest-icon ${resource}-icon`}>{resource === "fish" ? "鱼" : CROP_INFO[resource].short}</span><p>{resource === "fish" ? "鱼获" : CROP_INFO[resource].name}<strong>{game.inventory[resource]}</strong><small>双击拿起</small></p></button>)}
               <button className={heldItem?.kind === "material" && heldItem.id === "wood" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("wood")} title="双击拿起木头"><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong><small>双击拿起</small></p></button>
               <button className={heldItem?.kind === "material" && heldItem.id === "stone" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("stone")} title="双击拿起石材"><span className="harvest-icon stone-icon">石</span><p>石材<strong>{game.stone}</strong><small>双击拿起</small></p></button>
-              <div className="resource-item herb-record"><span className="harvest-icon herb-icon">药</span><p>药材<strong>{game.herbs}</strong><small>从地上捡取</small></p></div>
+              <button className="resource-item herb-record" onClick={useHerb} aria-label={`药材 ${game.herbs} 份，生病时单击使用`} title="生病时单击使用"><span className="harvest-icon herb-icon">药</span><p>药材<strong>{game.herbs}</strong><small>{game.sick ? "单击使用" : "生病时使用"}</small></p></button>
               {game.bookBag.map((bookId) => <button key={`bag-book-${bookId}`} className={heldItem?.kind === "book" && heldItem.id === bookId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${LOST_BOOKS[bookId].title}：${LOST_BOOKS[bookId].content}`)} onDoubleClick={() => carryLostBook(bookId)} title="点击阅读，双击拿起来送给叶老师"><span className="harvest-icon book-icon">书</span><p>{LOST_BOOKS[bookId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
               {game.artifactBag.map((artifactId) => <button key={`bag-artifact-${artifactId}`} className={heldItem?.kind === "artifact" && heldItem.id === artifactId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${RARE_ARTIFACTS[artifactId].title}：${RARE_ARTIFACTS[artifactId].description}`)} onDoubleClick={() => carryArtifact(artifactId)} title="点击查看，双击拿起来送到博物馆"><span className={`harvest-icon artifact-icon artifact-icon-${artifactId + 1}`}>{RARE_ARTIFACTS[artifactId].short}</span><p>{RARE_ARTIFACTS[artifactId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
             </div>
