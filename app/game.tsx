@@ -13,7 +13,7 @@ type VillageId = "qinghe" | "maple";
 type Facing = "down" | "up" | "left" | "right";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft";
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
-type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "seed"; id: CropType };
+type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "seed"; id: CropType } | { kind: "book"; id: number };
 
 type OnlinePlayer = {
   deviceId: string;
@@ -78,6 +78,9 @@ type GameState = {
   sick: boolean;
   diagnosed: boolean;
   lastIllnessDay: number;
+  groundBooks: boolean[];
+  bookBag: number[];
+  libraryBooks: number[];
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -153,6 +156,12 @@ const ITEM_DESCRIPTIONS: Record<string, string> = {
 
 const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
+const LOST_BOOKS = [
+  { title: "《青禾溪的萤火》", short: "萤", content: "夏夜里，小禾沿着青禾溪寻找迟归的萤火虫。她发现溪边的灯光不是星星掉进水里，而是一群萤火虫在为迷路的小鹿照亮回家的石桥。" },
+  { title: "《风车坡的种子信》", short: "风", content: "老风车每转一圈，就会把一封种子写的信送往山谷。信里记着播种的日期、雨水的气味，还有农夫对下一次丰收的愿望。" },
+  { title: "《枫叶村的月亮面包》", short: "月", content: "阿麦曾在满月夜烤出一炉月亮形状的面包。香味越过山路飘到枫叶村，两个村庄的居民提着灯，在桥中央分享了第一块热面包。" },
+];
+
 const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description: string }> = {
   qinghe: { name: "青禾村", farm: "青禾农场", description: "绿野、溪流与温暖的木屋" },
   maple: { name: "枫叶村", farm: "枫叶农场", description: "红枫、山路与安静的坡地" },
@@ -214,6 +223,9 @@ const makeNewGame = (): GameState => ({
   sick: false,
   diagnosed: false,
   lastIllnessDay: 0,
+  groundBooks: [true, false, false],
+  bookBag: [],
+  libraryBooks: [],
 });
 
 function PixelIcon({ type }: { type: Tool }) {
@@ -772,9 +784,24 @@ export default function FarmGame() {
     playTone(560);
   };
 
-  const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : `${CROP_INFO[heldItem.id].name}种子包` : "";
-  const carriedItemShort = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木" : "石") : heldItem.kind === "resource" ? (heldItem.id === "fish" ? "鱼" : CROP_INFO[heldItem.id].short) : CROP_INFO[heldItem.id].short : "";
-  const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : `${heldItem.id}-seeds` : "";
+  const carryLostBook = (bookId: number, fromGround = false) => {
+    const book = LOST_BOOKS[bookId];
+    if (!book) return;
+    if (fromGround && !game.groundBooks[bookId]) return;
+    setGame((current) => ({
+      ...current,
+      groundBooks: fromGround ? current.groundBooks.map((visible, index) => index === bookId ? false : visible) : current.groundBooks,
+      bookBag: current.bookBag.includes(bookId) ? current.bookBag : [...current.bookBag, bookId],
+    }));
+    setHeldItem({ kind: "book", id: bookId });
+    setSelectedResource(null);
+    setMessage(`捡起了${book.title}，书里写着：${book.content} 现在它被小禾举在头顶，可以送给叶老师。`);
+    playTone(640);
+  };
+
+  const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : LOST_BOOKS[heldItem.id].title : "";
+  const carriedItemShort = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木" : "石") : heldItem.kind === "resource" ? (heldItem.id === "fish" ? "鱼" : CROP_INFO[heldItem.id].short) : heldItem.kind === "seed" ? CROP_INFO[heldItem.id].short : LOST_BOOKS[heldItem.id].short : "";
+  const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : heldItem.kind === "seed" ? `${heldItem.id}-seeds` : "book" : "";
   const renderCarriedItem = () => heldItem ? <span className={`held-overhead held-${carriedItemClass}`} title={carriedItemName}>{carriedItemShort}</span> : null;
 
   const giveHeldItem = (person: string) => {
@@ -792,15 +819,27 @@ export default function FarmGame() {
       playTone(650);
       return true;
     }
+    if (heldItem.kind === "book" && person === "叶老师") {
+      const book = LOST_BOOKS[heldItem.id];
+      setGame((current) => ({
+        ...current,
+        bookBag: current.bookBag.filter((bookId) => bookId !== heldItem.id),
+        libraryBooks: current.libraryBooks.includes(heldItem.id) ? current.libraryBooks : [...current.libraryBooks, heldItem.id],
+      }));
+      setMessage(`叶老师收下了${book.title}：“谢谢你找回来！我已经把它编入山谷图书馆，现在随时都能打开阅读。”`);
+      setHeldItem(null);
+      playTone(820);
+      return true;
+    }
     const returnGift = Math.random() < .45 ? PERSON_RETURN_GIFTS[person] : null;
     setGame((current) => {
       let next: GameState;
       if (heldItem.kind === "resource") next = { ...current, inventory: { ...current.inventory, [heldItem.id]: Math.max(0, current.inventory[heldItem.id] - 1) } };
       else if (heldItem.kind === "material") next = { ...current, [heldItem.id]: Math.max(0, current[heldItem.id] - 1) };
-      else {
+      else if (heldItem.kind === "seed") {
         const field = CROP_INFO[heldItem.id].seedField;
         next = { ...current, [field]: Math.max(0, current[field] - 1) };
-      }
+      } else next = { ...current, bookBag: current.bookBag.filter((bookId) => bookId !== heldItem.id) };
       if (!returnGift) return next;
       if (returnGift.kind === "seed" || returnGift.kind === "material") return { ...next, [returnGift.field]: next[returnGift.field] + returnGift.amount };
       if (returnGift.kind === "energy") return { ...next, energy: Math.min(100, next.energy + returnGift.amount) };
@@ -1227,10 +1266,13 @@ export default function FarmGame() {
 
   const inspectBuildingItem = (item: string) => {
     setInspectedItem(item);
+    const lostBook = LOST_BOOKS.find((book) => book.title === item);
     if (item === "药品柜") {
       setMessage(!game.diagnosed ? "白医生：要先接受免费检查，检查以后才能查看处方药。" : game.sick ? "药品柜里有白医生刚配好的处方药，需要支付 50 金币。" : "检查结果不需要用药，药品柜暂时不能打开。 ");
     } else if (item === "健康档案" && !game.diagnosed) {
       setMessage("健康档案还是空白的，要先让白医生做免费检查。 ");
+    } else if (lostBook) {
+      setMessage(`打开${lostBook.title}：${lostBook.content}`);
     } else {
       setMessage(`打开查看“${item}”：${ITEM_DESCRIPTIONS[item]}`);
     }
@@ -1256,6 +1298,11 @@ export default function FarmGame() {
       const rockStates = [...current.rockStates];
       const emptyRock = rockStates.indexOf(false);
       if (emptyRock >= 0) rockStates[emptyRock] = true;
+      const groundBooks = [...current.groundBooks];
+      if (nextDayNumber % 3 === 0) {
+        const bookId = (Math.floor(nextDayNumber / 3) - 1) % LOST_BOOKS.length;
+        if (!current.bookBag.includes(bookId) && !current.libraryBooks.includes(bookId)) groundBooks[bookId] = true;
+      }
       return {
         ...current,
         day: nextDayNumber,
@@ -1268,6 +1315,7 @@ export default function FarmGame() {
         water: 12,
         treeStates,
         rockStates,
+        groundBooks,
         tiles: current.tiles.map((tile) =>
           tile.state === "crop"
             ? { ...tile, stage: tile.watered ? Math.min(3, tile.stage + 1) : tile.stage, watered: false }
@@ -1603,6 +1651,7 @@ export default function FarmGame() {
               {(Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => <button key={resource} className={heldItem?.kind === "resource" && heldItem.id === resource ? "resource-item held-material" : selectedResource === resource ? "resource-item selected" : "resource-item"} onClick={() => clickResource(resource)} onDoubleClick={() => pickUpResource(resource)} onPointerDown={() => startEating(resource)} onPointerUp={stopEating} onPointerCancel={stopEating} onPointerLeave={stopEating} onContextMenu={(event) => event.preventDefault()} aria-pressed={selectedResource === resource} aria-label={`${RESOURCE_INFO[resource].name} ${game.inventory[resource]} 个，双击拿起送人，长按食用`} title="双击拿起送人，长按吃掉"><span className={`harvest-icon ${resource}-icon`}>{resource === "fish" ? "鱼" : CROP_INFO[resource].short}</span><p>{resource === "fish" ? "鱼获" : CROP_INFO[resource].name}<strong>{game.inventory[resource]}</strong><small>双击拿起</small></p></button>)}
               <button className={heldItem?.kind === "material" && heldItem.id === "wood" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("wood")} title="双击拿起木头"><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong><small>双击拿起</small></p></button>
               <button className={heldItem?.kind === "material" && heldItem.id === "stone" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("stone")} title="双击拿起石材"><span className="harvest-icon stone-icon">石</span><p>石材<strong>{game.stone}</strong><small>双击拿起</small></p></button>
+              {game.bookBag.map((bookId) => <button key={`bag-book-${bookId}`} className={heldItem?.kind === "book" && heldItem.id === bookId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${LOST_BOOKS[bookId].title}：${LOST_BOOKS[bookId].content}`)} onDoubleClick={() => carryLostBook(bookId)} title="点击阅读，双击拿起来送给叶老师"><span className="harvest-icon book-icon">书</span><p>{LOST_BOOKS[bookId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
             </div>
           </div>
           <div className="task-card">
@@ -1694,6 +1743,13 @@ export default function FarmGame() {
                 {scene === "eastNeighbor" && activeVillage === "qinghe" && <button className="edge-gate village-crossing crossing-right" onClick={() => { setWorldVillage("maple"); setScene("farm"); setPlayer({ x: 0, y: 5 }); setMessage("沿着右边山路走到了枫叶村！"); }}><span>前往枫叶村</span><b>→</b><small>一直向右走</small></button>}
               </>
             )}
+
+            {(scene === "farm" || scene === "town") && game.groundBooks.map((visible, bookId) => {
+              const bookScene: Scene = bookId === 1 ? "town" : "farm";
+              if (!visible || scene !== bookScene) return null;
+              const book = LOST_BOOKS[bookId];
+              return <button key={`ground-book-${bookId}`} className={`ground-book ground-book-${bookId + 1}`} onClick={(event) => { event.stopPropagation(); setMessage(`发现${book.title}。翻开一看：${book.content} 双击可以捡起来。`); playTone(480); }} onDoubleClick={(event) => { event.stopPropagation(); carryLostBook(bookId, true); }} aria-label={`遗失的书${book.title}，双击捡起`}><i /><span>{book.title}<small>双击捡起</small></span></button>;
+            })}
 
             <div className={`player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${4 + player.x * 7.7}%`, top: `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
               {renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
@@ -1855,12 +1911,13 @@ export default function FarmGame() {
                     <div className="interior-sign">{activeBuilding === "townhall" ? "公告" : activeBuilding === "clinic" ? "健康" : activeBuilding === "cafe" ? "今日菜单" : activeBuilding === "workshop" ? "制作台" : "农事图鉴"}</div>
                     <div className={`room-specials special-${activeBuilding}`}>
                       {BUILDING_ITEMS[activeBuilding].map((item) => <button type="button" key={item} onClick={() => inspectBuildingItem(item)}>{item}</button>)}
+                      {activeBuilding === "library" && game.libraryBooks.map((bookId) => <button type="button" className="recovered-book" key={`library-book-${bookId}`} onClick={() => inspectBuildingItem(LOST_BOOKS[bookId].title)}>{LOST_BOOKS[bookId].title}</button>)}
                     </div>
                     <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在房子里面">{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{BUILDING_INFO[activeBuilding].owner}</strong><p>{BUILDING_INFO[activeBuilding].greeting}</p></div>
                   {inspectedItem && (
-                    <div className="inspection-card"><div><strong>{inspectedItem}</strong><p>{inspectedItem === "药品柜" ? (!game.diagnosed ? "要先接受白医生的免费检查，才能查看药品。" : game.sick ? "里面放着白医生刚配好的处方药，价格 50 金币。" : "检查结果不需要用药。") : inspectedItem === "健康档案" && !game.diagnosed ? "还没有检查结果，档案暂时是空白的。" : ITEM_DESCRIPTIONS[inspectedItem]}</p></div><button onClick={() => setInspectedItem(null)}>收起</button></div>
+                    <div className="inspection-card"><div><strong>{inspectedItem}</strong><p>{inspectedItem === "药品柜" ? (!game.diagnosed ? "要先接受白医生的免费检查，才能查看药品。" : game.sick ? "里面放着白医生刚配好的处方药，价格 50 金币。" : "检查结果不需要用药。") : inspectedItem === "健康档案" && !game.diagnosed ? "还没有检查结果，档案暂时是空白的。" : LOST_BOOKS.find((book) => book.title === inspectedItem)?.content ?? ITEM_DESCRIPTIONS[inspectedItem]}</p></div><button onClick={() => setInspectedItem(null)}>收起</button></div>
                   )}
                   <div className="service-actions">
                     <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? (!game.diagnosed ? "接受免费检查" : game.sick ? "购买白医生开的药 · 50 金币" : "检查结果：没有生病") : activeBuilding === "cafe" ? (currentFestival?.id === "coffee" ? "免费领取咖啡和点心" : "购买咖啡套餐 · 35 金币") : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "免费参观手工作品" : "翻阅农事图鉴"}</button>
