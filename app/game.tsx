@@ -212,7 +212,7 @@ function PixelIcon({ type }: { type: Tool }) {
 
 function PlayerSprite({ facing, sick }: { facing: Facing; sick: boolean }) {
   if (facing === "left" || facing === "right") {
-    return <><img className="side-sprite side-upper" src="/xiaohe-side-right.png" alt="" draggable={false} /><span className="side-css-legs" aria-hidden="true"><i className="side-leg side-leg-near" /><i className="side-leg side-leg-far" /></span></>;
+    return <><img className="side-sprite side-upper" src="/xiaohe-side-right.png" alt="" draggable={false} /><span className="side-css-legs" aria-hidden="true"><i className="side-leg side-leg-near"><b className="side-leg-shape" /></i><i className="side-leg side-leg-far"><b className="side-leg-shape" /></i></span></>;
   }
   return <img className="front-sprite" src={sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} />;
 }
