@@ -87,6 +87,7 @@ type GameState = {
   museumArtifacts: number[];
   groundSupplies: boolean[];
   toolUpgrades: { water: boolean; axe: boolean; rod: boolean };
+  toolUpgradeDays: { axe: number; rod: number };
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -183,8 +184,8 @@ const GROUND_SUPPLIES = [
   { name: "草莓种子小包", short: "莓", kind: "seed", field: "strawberrySeeds", amount: 3, description: "里面有 3 颗草莓种子，捡起后会直接放进种子袋。" },
   { name: "野莓饭团", short: "食", kind: "food", amount: 30, description: "用野莓和米做成的饭团，捡起食用后可以恢复 30 点体力。" },
   { name: "大号洒水壶", short: "水", kind: "tool", tool: "water", description: "容量更大的洒水壶，捡起后每天可以装 18 格水。" },
-  { name: "精铁斧头", short: "斧", kind: "tool", tool: "axe", description: "更加锋利的斧头，捡起后每棵树能砍出 6 块木头。" },
-  { name: "幸运鱼竿", short: "竿", kind: "tool", tool: "rod", description: "带幸运银钩的鱼竿，捡起后每次钓鱼会多获得 1 条鱼。" },
+  { name: "精铁斧头", short: "斧", kind: "tool", tool: "axe", description: "更加锋利的斧头，捡起后可使用 7 天，每棵树能砍出 6 块木头。" },
+  { name: "幸运鱼竿", short: "竿", kind: "tool", tool: "rod", description: "带幸运银钩的鱼竿，捡起后可使用 7 天，钓鱼更快且每次多获得 1 条鱼。" },
   { name: "西瓜种子小包", short: "瓜", kind: "seed", field: "watermelonSeeds", amount: 3, description: "里面有 3 颗西瓜种子，捡起后会直接放进种子袋。" },
   { name: "溪边艾草", short: "艾", kind: "herb", amount: 2, description: "带着清香的新鲜艾草，捡起后会收进药材袋。" },
   { name: "金银花", short: "药", kind: "herb", amount: 2, description: "山坡上掉落的金银花，可以收进药材袋，之后拿给白医生查看。" },
@@ -266,6 +267,7 @@ const makeNewGame = (): GameState => ({
   museumArtifacts: [],
   groundSupplies: [true, false, false, false, false, false, true, false],
   toolUpgrades: { water: false, axe: false, rod: false },
+  toolUpgradeDays: { axe: 0, rod: 0 },
 });
 
 function PixelIcon({ type }: { type: Tool }) {
@@ -378,6 +380,10 @@ export default function FarmGame() {
             builderSupplies: { ...defaults.builderSupplies, ...(parsed.builderSupplies ?? {}) },
             equipment: { ...defaults.equipment, ...(parsed.equipment ?? {}) },
             toolUpgrades: { ...defaults.toolUpgrades, ...(parsed.toolUpgrades ?? {}) },
+            toolUpgradeDays: {
+              axe: parsed.toolUpgradeDays?.axe ?? (parsed.toolUpgrades?.axe ? 7 : 0),
+              rod: parsed.toolUpgradeDays?.rod ?? (parsed.toolUpgrades?.rod ? 7 : 0),
+            },
             daily: parsed.daily?.day === parsed.day ? { ...defaults.daily, ...parsed.daily } : { ...defaults.daily, day: parsed.day ?? 1 },
             sick: parsed.sick ?? false,
             diagnosed: parsed.diagnosed ?? false,
@@ -435,6 +441,10 @@ export default function FarmGame() {
           builderSupplies: { ...defaults.builderSupplies, ...(data.save.builderSupplies ?? {}) },
           equipment: { ...defaults.equipment, ...(data.save.equipment ?? {}) },
           toolUpgrades: { ...defaults.toolUpgrades, ...(data.save.toolUpgrades ?? {}) },
+          toolUpgradeDays: {
+            axe: data.save.toolUpgradeDays?.axe ?? (data.save.toolUpgrades?.axe ? 7 : 0),
+            rod: data.save.toolUpgradeDays?.rod ?? (data.save.toolUpgrades?.rod ? 7 : 0),
+          },
           diagnosed: data.save.diagnosed ?? false,
           daily: { ...defaults.daily, ...(data.save.daily ?? {}) },
         });
@@ -974,15 +984,17 @@ export default function FarmGame() {
       if (supply.kind === "seed") return { ...next, [supply.field]: current[supply.field] + supply.amount };
       if (supply.kind === "food") return { ...next, energy: Math.min(100, current.energy + supply.amount) };
       if (supply.kind === "herb") return { ...next, herbs: current.herbs + supply.amount };
-      if (current.toolUpgrades[supply.tool]) return { ...next, coins: current.coins + 20 };
+      if (supply.tool === "water" && current.toolUpgrades.water) return { ...next, coins: current.coins + 20 };
       return {
         ...next,
         water: supply.tool === "water" ? 18 : current.water,
         toolUpgrades: { ...current.toolUpgrades, [supply.tool]: true },
+        toolUpgradeDays: supply.tool === "water" ? current.toolUpgradeDays : { ...current.toolUpgradeDays, [supply.tool]: 7 },
       };
     });
-    const alreadyOwned = supply.kind === "tool" && game.toolUpgrades[supply.tool];
-    setMessage(alreadyOwned ? `捡起了${supply.name}，工具已经升级过，于是换成了 20 枚金币。` : `捡起了${supply.name}！${supply.description}`);
+    const alreadyOwned = supply.kind === "tool" && supply.tool === "water" && game.toolUpgrades.water;
+    const temporaryTool = supply.kind === "tool" && supply.tool !== "water";
+    setMessage(alreadyOwned ? `捡起了${supply.name}，工具已经升级过，于是换成了 20 枚金币。` : temporaryTool ? `捡起了${supply.name}！从今天起可使用 7 天，再次捡到可以重新续满 7 天。` : `捡起了${supply.name}！${supply.description}`);
     playTone(supply.kind === "tool" ? 920 : supply.kind === "food" ? 760 : supply.kind === "herb" ? 820 : 660);
   };
 
@@ -1512,16 +1524,23 @@ export default function FarmGame() {
   const nextDay = () => {
     cancelFishing();
     const nextDayNumber = game.day === 28 ? 1 : game.day + 1;
+    const expiringTools = [
+      game.toolUpgrades.axe && game.toolUpgradeDays.axe <= 1 ? "精铁斧头" : "",
+      game.toolUpgrades.rod && game.toolUpgradeDays.rod <= 1 ? "幸运鱼竿" : "",
+    ].filter(Boolean);
     const daysSinceIllness = game.lastIllnessDay === 0
       ? nextDayNumber
       : (nextDayNumber - game.lastIllnessDay + 28) % 28;
     const becameSick = !game.sick && (game.energy <= 0 || (daysSinceIllness >= 6 && nextDayNumber % 6 === 0));
     const remainsSick = game.sick || becameSick;
-    const morningMessage = becameSick
+    const morningMessageBase = becameSick
       ? "早上七点醒来，小禾看起来没什么精神，嘴角变成了伤心的样子。"
       : remainsSick
         ? "早上七点了，小禾的表情仍然有些伤心。"
         : "早上七点了！浇过水的作物长大了，也有一棵树重新长出。";
+    const morningMessage = expiringTools.length
+      ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。`
+      : morningMessageBase;
     setGame((current) => {
       const treeStates = [...current.treeStates];
       const emptySpot = treeStates.indexOf(false);
@@ -1546,6 +1565,15 @@ export default function FarmGame() {
         if (supply.kind === "tool" && current.toolUpgrades[supply.tool]) supplyId = [0, 1, 5][nextDayNumber % 3];
         groundSupplies[supplyId] = true;
       }
+      const toolUpgradeDays = {
+        axe: current.toolUpgrades.axe ? Math.max(0, current.toolUpgradeDays.axe - 1) : 0,
+        rod: current.toolUpgrades.rod ? Math.max(0, current.toolUpgradeDays.rod - 1) : 0,
+      };
+      const toolUpgrades = {
+        ...current.toolUpgrades,
+        axe: toolUpgradeDays.axe > 0,
+        rod: toolUpgradeDays.rod > 0,
+      };
       return {
         ...current,
         day: nextDayNumber,
@@ -1556,6 +1584,8 @@ export default function FarmGame() {
         diagnosed: false,
         lastIllnessDay: becameSick ? nextDayNumber : current.lastIllnessDay,
         water: current.toolUpgrades.water ? 18 : 12,
+        toolUpgrades,
+        toolUpgradeDays,
         treeStates,
         rockStates,
         groundBooks,
@@ -2228,7 +2258,7 @@ export default function FarmGame() {
             <div className="inventory-note"><strong>{scene === "farm" ? "背包" : "小镇背包"}</strong><span>{scene === "farm" ? "选择工具，再点击田地" : "超市可以买到农场补给"}</span></div>
             {(Object.keys(TOOL_INFO) as Tool[]).map((tool) => (
               <button key={tool} className={selected === tool && !selectedResource ? "tool-button selected" : "tool-button"} onClick={() => chooseTool(tool)} aria-pressed={selected === tool && !selectedResource}>
-                <kbd>{TOOL_INFO[tool].key}</kbd><PixelIcon type={tool} /><span>{tool === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : tool === "water" && game.toolUpgrades.water ? "大号洒水壶" : tool === "axe" && game.toolUpgrades.axe ? "精铁斧头" : tool === "rod" && game.toolUpgrades.rod ? "幸运鱼竿" : TOOL_INFO[tool].name}</span>
+                <kbd>{TOOL_INFO[tool].key}</kbd><PixelIcon type={tool} /><span>{tool === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : tool === "water" && game.toolUpgrades.water ? "大号洒水壶" : tool === "axe" && game.toolUpgrades.axe ? `精铁斧头 · ${game.toolUpgradeDays.axe}天` : tool === "rod" && game.toolUpgrades.rod ? `幸运鱼竿 · ${game.toolUpgradeDays.rod}天` : TOOL_INFO[tool].name}</span>
                 {tool === "seed" && <b>{game[CROP_INFO[selectedCrop].seedField]}</b>}
                 {tool === "water" && <b>{game.water}</b>}
                 {tool === "rod" && <b>{game.inventory.fish}</b>}
