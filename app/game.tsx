@@ -17,6 +17,7 @@ type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "watermelonSeeds" |
 type CraftType = "chest" | "fence" | "scarecrow" | "lamp" | "bench" | "sign";
 type CraftRotation = 0 | 45 | 90;
 type PlacedCraft = { id: string; type: CraftType; x: number; y: number; rotation: CraftRotation };
+type FencePlacementSlot = { id: string; x: number; y: number; rotation: 0 | 90 };
 type ForestItem = "branch" | "pinecone" | "pineNut";
 type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
 
@@ -221,6 +222,19 @@ const CRAFT_RECIPES: Record<CraftType, { name: string; short: string; descriptio
   bench: { name: "休息长椅", short: "椅", description: "装饰农场，坐下可恢复少量体力", wood: 10, stone: 2 },
   sign: { name: "方向木牌", short: "牌", description: "可以横放、竖放或斜放的农场路牌", wood: 5, stone: 1 },
 };
+
+const FENCE_PLACEMENT_SLOTS: FencePlacementSlot[] = [
+  ...[24, 34, 44, 54, 64].flatMap((x, index) => [
+    { id: `top-${index}`, x, y: 40, rotation: 0 as const },
+    { id: `bottom-${index}`, x, y: 89, rotation: 0 as const },
+  ]),
+  ...[51, 62, 73, 84].flatMap((y, index) => [
+    { id: `left-${index}`, x: 18, y, rotation: 90 as const },
+    { id: `right-${index}`, x: 74, y, rotation: 90 as const },
+  ]),
+];
+
+const SCHOOL_STUDENTS = ["小玲", "豆豆", "小满", "阿禾", "小树", "安安"];
 
 const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description: string }> = {
   qinghe: { name: "青禾村", farm: "青禾农场", description: "绿野、溪流与温暖的木屋" },
@@ -1362,6 +1376,25 @@ export default function FarmGame() {
     playTone(560);
   };
 
+  const placeFenceInSlot = (slot: FencePlacementSlot) => {
+    if (game.crafted.fence <= 0) {
+      setSelectedCraftItem(null);
+      setMessage("背包里的木围栏已经用完了，可以再打开制作手册制作。 ");
+      return;
+    }
+    const occupied = game.placedCrafts.some((craft) => craft.type === "fence" && Math.abs(craft.x - slot.x) < 1 && Math.abs(craft.y - slot.y) < 1);
+    if (occupied) {
+      setMessage("这里已经放好一段木围栏了，请选择另一块绿色位置。 ");
+      return;
+    }
+    const placed: PlacedCraft = { id: `fence-${slot.id}-${Date.now()}`, type: "fence", x: slot.x, y: slot.y, rotation: slot.rotation };
+    setGame((current) => ({ ...current, crafted: { ...current.crafted, fence: Math.max(0, current.crafted.fence - 1) }, placedCrafts: [...current.placedCrafts, placed] }));
+    if (game.crafted.fence <= 1) setSelectedCraftItem(null);
+    const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length + 1;
+    setMessage(`木围栏整齐地放好了！现在已经围上 ${fenceCount} 段；继续点击绿色位置可以把农田围完整。`);
+    playTone(720);
+  };
+
   const dismantlePlacedCraft = (craft: PlacedCraft) => {
     if (craft.type === "chest" && Object.values(game.chestStorage).some((count) => count > 0)) {
       setMessage("木箱里还有东西，要先取空才能拆除。 ");
@@ -2219,6 +2252,7 @@ export default function FarmGame() {
         ? 1 - (game.hour - 5) / 2
         : 0;
   const isNight = twilightLevel >= 0.5;
+  const isSchoolDay = [0, 2, 4, 6].includes((game.day - 1) % 7);
   const clockHour = Math.floor(game.hour) % 24;
   const clockMinute = Math.round((game.hour - Math.floor(game.hour)) * 60) % 60;
   const activeVillage = worldVillage;
@@ -2273,6 +2307,10 @@ export default function FarmGame() {
       if (game.crafted[selectedCraftItem] <= 0) {
         setSelectedCraftItem(null);
         setMessage("背包里已经没有这个制作物了。 ");
+        return;
+      }
+      if (selectedCraftItem === "fence") {
+        setMessage("请点击农田四周整齐的绿色位置来放木围栏。 ");
         return;
       }
       const placed: PlacedCraft = { id: `${selectedCraftItem}-${Date.now()}`, type: selectedCraftItem, x: Math.max(5, Math.min(94, percentX)), y: Math.max(18, Math.min(86, percentY)), rotation: craftRotation };
@@ -2406,7 +2444,7 @@ export default function FarmGame() {
             {twilightLevel > 0 && <div className="night-sky" aria-hidden="true"><span className="moon" /><i /><i /><i /><i /><i /><i /></div>}
             {twilightLevel > 0 && <div className="twilight-layer" aria-hidden="true" />}
             <div className={`outdoor-lamps outdoor-lamps-${scene}`} aria-hidden="true"><i /><i /><i /><i /></div>
-            {selectedCraftItem && scene === "farm" && <div className="placement-controls" onClick={(event) => event.stopPropagation()}><strong>正在摆放：{CRAFT_RECIPES[selectedCraftItem].name}</strong>{(selectedCraftItem === "fence" || selectedCraftItem === "sign" || selectedCraftItem === "bench") && <div><button className={craftRotation === 0 ? "selected" : ""} onClick={() => setCraftRotation(0)}>横着</button><button className={craftRotation === 90 ? "selected" : ""} onClick={() => setCraftRotation(90)}>竖着</button><button className={craftRotation === 45 ? "selected" : ""} onClick={() => setCraftRotation(45)}>斜着</button></div>}<span>选好方向后，点击农场空地</span><button className="cancel-placement" onClick={() => setSelectedCraftItem(null)}>取消</button></div>}
+            {selectedCraftItem && scene === "farm" && <div className="placement-controls" onClick={(event) => event.stopPropagation()}><strong>正在摆放：{CRAFT_RECIPES[selectedCraftItem].name}</strong>{(selectedCraftItem === "sign" || selectedCraftItem === "bench") && <div><button className={craftRotation === 0 ? "selected" : ""} onClick={() => setCraftRotation(0)}>横着</button><button className={craftRotation === 90 ? "selected" : ""} onClick={() => setCraftRotation(90)}>竖着</button><button className={craftRotation === 45 ? "selected" : ""} onClick={() => setCraftRotation(45)}>斜着</button></div>}<span>{selectedCraftItem === "fence" ? "点击农田四周的绿色位置，围栏会自动对齐" : "选好方向后，点击农场空地"}</span><button className="cancel-placement" onClick={() => setSelectedCraftItem(null)}>取消</button></div>}
 
             {scene === "farm" ? (
               <>
@@ -2422,7 +2460,8 @@ export default function FarmGame() {
                   <button key={index} className={`tree tree-${["a", "b", "c", "d"][index]} ${standing ? "" : "stump"}`} onClick={() => chopTree(index)} aria-label={standing ? `砍伐第 ${index + 1} 棵树` : `第 ${index + 1} 个树桩`} />
                 ))}
                 <div className="flowers flowers-a">✿ · ✿</div><div className="flowers flowers-b">· ✿ ·</div>
-                {game.placedCrafts.map((craft) => <button key={craft.id} className={`placed-craft placed-${craft.type} ${craft.type === "lamp" && isNight ? "placed-lamp-lit" : ""}`} style={{ left: `${craft.x}%`, top: `${craft.y}%`, transform: `translate(-50%,-50%) rotate(${craft.rotation}deg)` }} onClick={(event) => { event.stopPropagation(); usePlacedCraft(craft); }} aria-label={`${CRAFT_RECIPES[craft.type].name}，${selected === "axe" ? "点击拆除" : "点击使用或查看"}`}><i /><i /><i /><b>{craft.type === "chest" ? Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0) : ""}</b></button>)}
+                {selectedCraftItem === "fence" && FENCE_PLACEMENT_SLOTS.map((slot) => { const occupied = game.placedCrafts.some((craft) => craft.type === "fence" && Math.abs(craft.x - slot.x) < 1 && Math.abs(craft.y - slot.y) < 1); return <button key={slot.id} className={`fence-placement-slot ${slot.rotation === 90 ? "slot-vertical" : "slot-horizontal"} ${occupied ? "occupied" : ""}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={(event) => { event.stopPropagation(); placeFenceInSlot(slot); }} disabled={occupied} aria-label={occupied ? "这里已经放有围栏" : "点击在绿色位置放置木围栏"}><i /><span>{occupied ? "已放" : "+"}</span></button>; })}
+                {game.placedCrafts.map((craft) => <button key={craft.id} className={`placed-craft placed-${craft.type} ${craft.type === "fence" && craft.rotation === 90 ? "fence-vertical" : ""} ${craft.type === "lamp" && isNight ? "placed-lamp-lit" : ""}`} style={{ left: `${craft.x}%`, top: `${craft.y}%`, transform: `translate(-50%,-50%) rotate(${craft.rotation}deg)` }} onClick={(event) => { event.stopPropagation(); usePlacedCraft(craft); }} aria-label={`${CRAFT_RECIPES[craft.type].name}，${selected === "axe" ? "点击拆除" : "点击使用或查看"}`}><i /><i /><i /><b>{craft.type === "chest" ? Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0) : ""}</b></button>)}
                 {game.farmVisitor === "crow" && <div className="farm-visitor crow-visitor" aria-label="乌鸦飞进农田"><i /><i /><span>嘎！</span></div>}
                 {game.farmVisitor === "animal" && <div className="farm-visitor animal-visitor" aria-label="小动物跑进农田"><i /><b /><span>偷吃幼苗</span></div>}
                 {game.upgrades.stoneWall > 0 && <div className="farm-stone-wall" aria-label="鲁师傅修建的农场石墙"><i /><i /><i /><i /></div>}
@@ -2693,10 +2732,11 @@ export default function FarmGame() {
                     <div><span>青禾镇室内</span><h2 id="building-title">{BUILDING_INFO[activeBuilding].name}</h2></div>
                     <button onClick={leaveBuilding} aria-label={`离开${BUILDING_INFO[activeBuilding].name}`}>×</button>
                   </header>
-                  <div className="interior-room" onClick={walkInsidePointer}>
+                  <div className={`interior-room ${activeBuilding === "school" ? "school-classroom" : ""}`} onClick={walkInsidePointer}>
                     <div className="room-window"><i /><i /></div>
                     <div className="room-rug" />
                     <div className="room-furniture"><i /><i /><i /></div>
+                    {activeBuilding === "school" && <><div className="school-blackboard"><strong>{isSchoolDay ? "今日课堂" : "课程表"}</strong><span>{isSchoolDay ? ["A B C · 英语", "阅读与写字 · 语文", "加减乘除 · 数学", "种植与浇水 · 农场知识"][Math.floor((game.day - 1) / 2) % 4] : "周一 · 周三 · 周五 · 周日上课"}</span><i /></div><div className="school-desks" aria-label={isSchoolDay ? "同学们坐在课桌前听课" : "今天空着的课桌椅"}>{SCHOOL_STUDENTS.map((student, index) => <button key={student} className={`classroom-seat seat-${index + 1} ${isSchoolDay ? "student-seated" : "empty-seat"}`} disabled={!isSchoolDay} onClick={(event) => { event.stopPropagation(); interactWithPerson(student, `${student}：我正在认真听许老师讲课，今天学到了很多新知识！`); }} aria-label={isSchoolDay ? `${student}坐在课桌前听课` : "空课桌"}><i /><b /><span>{isSchoolDay ? student : "空座位"}</span></button>)}</div></>}
                     <button className={`npc-character ${activeBuilding === "clinic" && doctorIsRestingAtHome ? "clinic-relief-assistant" : isNpcSick(BUILDING_INFO[activeBuilding].owner) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(activeBuildingOwner, `${activeBuildingOwner}：${activeBuildingGreeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${activeBuildingOwner}` : `和${activeBuildingOwner}交谈`}><span className="npc-hair" /><span className="npc-face" /><span className="npc-body" /></button>
                     {activeBuilding === "clinic" && doctorIsRestingAtHome && <div className="clinic-relief-note"><strong>助手代班</strong><span>白医生在自己家休息</span></div>}
                     {((activeBuilding === "cafe" && currentFestival?.id === "coffee") || (activeBuilding === "workshop" && currentFestival?.id === "craft")) && <div className={`festival-indoor-guests guests-${activeBuilding}`} aria-label={`参加${currentFestival.name}的居民`}>{FESTIVAL_GUESTS.map((name, index) => <button key={name} className={`indoor-guest guest-${index + 1} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：${currentFestival.name}真热闹，屋里坐满了村民！`)}><i /><b /><span>{name}</span></button>)}</div>}
