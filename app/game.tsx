@@ -491,6 +491,7 @@ export default function FarmGame() {
   const herbClickTimerRef = useRef<number | null>(null);
   const forestClickTimerRef = useRef<number | null>(null);
   const walkTimerRef = useRef<number | null>(null);
+  const farmActionTimerRef = useRef<number | null>(null);
   const excursionTimerRef = useRef<number | null>(null);
   const lastMoveAtRef = useRef(0);
   const longPressTriggeredRef = useRef(false);
@@ -687,6 +688,7 @@ export default function FarmGame() {
   useEffect(() => () => {
     if (eatTimerRef.current) window.clearTimeout(eatTimerRef.current);
     if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
+    if (farmActionTimerRef.current) window.clearTimeout(farmActionTimerRef.current);
     if (excursionTimerRef.current) window.clearTimeout(excursionTimerRef.current);
     if (fishingWaitTimerRef.current) window.clearTimeout(fishingWaitTimerRef.current);
     if (fishingBiteTimerRef.current) window.clearTimeout(fishingBiteTimerRef.current);
@@ -1807,7 +1809,7 @@ export default function FarmGame() {
     playTone(820);
   };
 
-  const actOnTile = (index: number) => {
+  const performTileAction = (index: number) => {
     let feedback = "";
     let tone = 360;
 
@@ -1899,6 +1901,50 @@ export default function FarmGame() {
       if (feedback) setMessage(feedback);
       playTone(tone);
     }, 0);
+  };
+
+  const actOnTile = (index: number, event: MouseEvent<HTMLButtonElement>) => {
+    if (selected !== "seed" && selected !== "water") {
+      performTileAction(index);
+      return;
+    }
+
+    const world = event.currentTarget.closest(".world") as HTMLElement | null;
+    if (!world) {
+      performTileAction(index);
+      return;
+    }
+    const worldBounds = world.getBoundingClientRect();
+    const tileBounds = event.currentTarget.getBoundingClientRect();
+    const centerX = ((tileBounds.left + tileBounds.width / 2 - worldBounds.left) / worldBounds.width) * 100;
+    const centerY = ((tileBounds.top + tileBounds.height / 2 - worldBounds.top) / worldBounds.height) * 100;
+    const destination = {
+      x: Math.max(0, Math.min(11, Math.round((centerX - 4) / 7.7))),
+      y: Math.max(0, Math.min(7, Math.round((centerY - 8) / 10.5))),
+    };
+    const isNearTile = Math.hypot(player.x - destination.x, player.y - destination.y) <= 1.5;
+    if (isNearTile) {
+      performTileAction(index);
+      return;
+    }
+
+    const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length;
+    const hasGate = game.placedCrafts.some((craft) => craft.type === "gate");
+    const playerInsideField = player.x >= 2 && player.x <= 9 && player.y >= 4;
+    if (fenceCount >= 8 && !playerInsideField && (!hasGate || !farmGateOpen)) {
+      setMessage(hasGate ? "围栏挡住了路，先点击中间的围栏门把它打开，再去播种或浇水。" : "围栏挡住了路，先制作一扇木围栏门才能进入农田。 ");
+      playTone(220);
+      return;
+    }
+
+    if (farmActionTimerRef.current) window.clearTimeout(farmActionTimerRef.current);
+    showWalking(destination.x - player.x, destination.y - player.y);
+    setPlayer(destination);
+    setMessage(selected === "seed" ? "小禾正走到这块田旁边，到了再播种……" : "小禾正提着水壶走到这株作物旁边……");
+    farmActionTimerRef.current = window.setTimeout(() => {
+      performTileAction(index);
+      farmActionTimerRef.current = null;
+    }, 560);
   };
 
   const buyItem = (item: SeedField | "water" | "snack" | "soup" | "bait" | "sapling" | "rockGrowth") => {
@@ -2766,7 +2812,7 @@ export default function FarmGame() {
                     <button
                       key={index}
                       className={`farm-tile ${tile.state} ${tile.cropType ?? "radish"} ${tile.watered ? "watered" : ""}`}
-                      onClick={() => actOnTile(index)}
+                      onClick={(event) => actOnTile(index, event)}
                       aria-label={`农田 ${index + 1}，${tile.state === "grass" ? "未开垦" : tile.state === "soil" ? "已松土" : `作物第 ${tile.stage} 阶段`}`}
                     >
                       {tile.state === "crop" && <span className={`crop-stage stage-${tile.stage}`}><i /><i /><b /></span>}
