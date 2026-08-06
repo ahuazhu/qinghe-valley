@@ -857,23 +857,50 @@ export default function FarmGame() {
       return;
     }
     setFestivalMusicPlaying(true);
-    setMessage("山谷乐队开始演奏啦，居民们跟着节拍跳起舞来！");
+    setMessage("山谷乐队开始演奏一首完整的小曲啦，居民们跟着节拍跳起舞来！");
     try {
       const context = new window.AudioContext();
-      const melody = [523, 659, 784, 659, 587, 698, 880, 784, 659, 523];
+      const beat = .29;
+      const melody: Array<number | null> = [
+        523, 659, 784, 659, 587, 698, 784, null,
+        659, 784, 880, 784, 698, 659, 587, null,
+        523, 587, 659, 784, 880, 784, 659, 587,
+        523, 659, 698, 784, 659, 587, 523, null,
+        659, 784, 880, 988, 880, 784, 698, 659,
+        587, 698, 784, 659, 587, 523, 523, null,
+      ];
+      const master = context.createGain();
+      master.gain.value = .72;
+      master.connect(context.destination);
       melody.forEach((frequency, index) => {
+        if (!frequency) return;
         const oscillator = context.createOscillator();
         const gain = context.createGain();
-        const startsAt = context.currentTime + index * .23;
-        oscillator.type = index % 3 === 0 ? "triangle" : "square";
+        const startsAt = context.currentTime + .08 + index * beat;
+        oscillator.type = "triangle";
+        oscillator.frequency.value = frequency;
+        gain.gain.setValueAtTime(.001, startsAt);
+        gain.gain.exponentialRampToValueAtTime(.055, startsAt + .025);
+        gain.gain.exponentialRampToValueAtTime(.001, startsAt + beat * .86);
+        oscillator.connect(gain).connect(master);
+        oscillator.start(startsAt);
+        oscillator.stop(startsAt + beat * .9);
+      });
+      const bassNotes = [131, 147, 165, 131, 147, 175, 165, 131, 165, 147, 131, 131];
+      bassNotes.forEach((frequency, index) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const startsAt = context.currentTime + .08 + index * beat * 4;
+        oscillator.type = "sine";
         oscillator.frequency.value = frequency;
         gain.gain.setValueAtTime(.035, startsAt);
-        gain.gain.exponentialRampToValueAtTime(.001, startsAt + .2);
-        oscillator.connect(gain).connect(context.destination);
+        gain.gain.exponentialRampToValueAtTime(.001, startsAt + beat * 3.4);
+        oscillator.connect(gain).connect(master);
         oscillator.start(startsAt);
-        oscillator.stop(startsAt + .21);
+        oscillator.stop(startsAt + beat * 3.5);
       });
-      window.setTimeout(() => { setFestivalMusicPlaying(false); void context.close(); }, 2_600);
+      const duration = melody.length * beat * 1_000 + 350;
+      window.setTimeout(() => { setFestivalMusicPlaying(false); void context.close(); }, duration);
     } catch {
       setFestivalMusicPlaying(false);
     }
@@ -2498,7 +2525,7 @@ export default function FarmGame() {
         </aside>
 
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
-          <div className={`world ${scene === "farm" ? "farm-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} ${twilightLevel > 0 ? "twilight-world" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
+          <div className={`world ${scene === "farm" ? "farm-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome ? "interior-open" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />

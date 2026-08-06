@@ -12,6 +12,32 @@
   --brown: #8a5b39;
 }
 
+/* Keep outdoor prompts and signs behind the room whenever a building interior is open. */
+.world.interior-open > .location-chip,
+.world.interior-open > .speech-bubble,
+.world.interior-open > .movement-help,
+.world.interior-open > .edge-gate,
+.world.interior-open > .culture-gate,
+.world.interior-open > .door-prompt,
+.world.interior-open > .culture-sign,
+.world.interior-open > .friend-locator,
+.world.interior-open > .placement-controls {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Move the culture-district entrance sign away from the centered message bubble. */
+.town-world > .culture-gate {
+  left: auto;
+  right: 2%;
+  transform: none;
+}
+
+.town-world > .culture-gate:hover,
+.town-world > .culture-gate:focus-visible {
+  transform: translateY(-3px);
+}
+
 * { box-sizing: border-box; }
 
 html, body { min-height: 100%; }
