@@ -14,7 +14,7 @@ type VillageId = "qinghe" | "maple";
 type Facing = "down" | "up" | "left" | "right";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft";
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
-type CraftType = "chest" | "fence" | "scarecrow" | "lamp" | "bench" | "sign";
+type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign";
 type CraftRotation = 0 | 45 | 90;
 type PlacedCraft = { id: string; type: CraftType; x: number; y: number; rotation: CraftRotation };
 type PlantedTree = { id: string; x: number; y: number; stage: number; watered: boolean };
@@ -218,6 +218,7 @@ const GROUND_SUPPLY_PRICES = [45, 55, 160, 220, 220, 50, 60, 60] as const;
 const CRAFT_RECIPES: Record<CraftType, { name: string; short: string; description: string; wood: number; stone: number }> = {
   chest: { name: "木箱", short: "箱", description: "摆放后可以存放收获", wood: 8, stone: 0 },
   fence: { name: "木栅栏", short: "栏", description: "8 段围栏能挡住偷吃作物的小动物", wood: 4, stone: 0 },
+  gate: { name: "木围栏门", short: "门", description: "装在围栏中间，点击可以开门或关门", wood: 7, stone: 1 },
   scarecrow: { name: "稻草人", short: "田", description: "一个大幅减少乌鸦，两个完全赶走乌鸦", wood: 12, stone: 0 },
   lamp: { name: "农场灯柱", short: "灯", description: "摆在农场，天黑后自动亮起", wood: 6, stone: 4 },
   bench: { name: "休息长椅", short: "椅", description: "装饰农场，坐下可恢复少量体力", wood: 10, stone: 2 },
@@ -356,7 +357,7 @@ const makeNewGame = (): GameState => ({
   treeStates: [true, true, true, true],
   plantedTrees: [],
   rockStates: [true, true, true, true, true, true],
-  crafted: { chest: 0, fence: 0, scarecrow: 0, lamp: 0, bench: 0, sign: 0 },
+  crafted: { chest: 0, fence: 0, gate: 0, scarecrow: 0, lamp: 0, bench: 0, sign: 0 },
   placedCrafts: [],
   farmVisitor: null,
   upgrades: { house: 0, land: 0, field: 0, storage: 0, greenhouse: 0, pond: 0, stoneWall: 0 },
@@ -414,6 +415,7 @@ export default function FarmGame() {
   const [selectedCraftItem, setSelectedCraftItem] = useState<CraftType | null>(null);
   const [plantingPinecone, setPlantingPinecone] = useState(false);
   const [craftRotation, setCraftRotation] = useState<CraftRotation>(0);
+  const [farmGateOpen, setFarmGateOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [chestOpen, setChestOpen] = useState(false);
@@ -549,7 +551,7 @@ export default function FarmGame() {
     if (distanceFromField < 5) return;
     const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length;
     const scarecrowCount = game.placedCrafts.filter((craft) => craft.type === "scarecrow").length;
-    if (fenceCount >= 8 || scarecrowCount >= 1 || game.upgrades.stoneWall > 0) return;
+    if ((fenceCount >= 8 && !farmGateOpen) || scarecrowCount >= 1 || game.upgrades.stoneWall > 0) return;
     setGame((current) => ({
       ...current,
       farmVisitor: "animal",
@@ -557,7 +559,7 @@ export default function FarmGame() {
     }));
     setMessage("小禾离农田超过五格，一只小动物马上跑进来偷吃了 1 株幼苗！围好 8 段围栏、放稻草人或修石墙就能保护它们。 ");
     playTone(220);
-  }, [game.farmVisitor, game.placedCrafts, game.tiles, game.upgrades.stoneWall, player.x, player.y, ready, scene]);
+  }, [farmGateOpen, game.farmVisitor, game.placedCrafts, game.tiles, game.upgrades.stoneWall, player.x, player.y, ready, scene]);
 
   useEffect(() => {
     multiplayerStatusRef.current = { player, game };
@@ -759,6 +761,17 @@ export default function FarmGame() {
       x: Math.max(0, Math.min(11, player.x + dx)),
       y: Math.max(0, Math.min(7, player.y + dy)),
     };
+    if (scene === "farm") {
+      const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length;
+      const hasGate = game.placedCrafts.some((craft) => craft.type === "gate");
+      const isInsideField = (position: { x: number; y: number }) => position.x >= 2 && position.x <= 9 && position.y >= 4;
+      const crossingFence = isInsideField(player) !== isInsideField(next);
+      const crossingAtGate = hasGate && farmGateOpen && next.x >= 5 && next.x <= 6 && ((player.y === 3 && next.y === 4) || (player.y === 4 && next.y === 3));
+      if (fenceCount >= 8 && crossingFence && !crossingAtGate) {
+        setMessage(hasGate ? "木围栏挡住了路。点击围栏中间的门把它打开，再从门口进出。 " : "完整的木围栏也会挡住小禾。先制作一扇木围栏门，装到围栏中间吧。 ");
+        return;
+      }
+    }
     setPlayer(next);
 
     if (scene === "town" || scene === "cultureDistrict") {
@@ -781,7 +794,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, chestOpen, craftingOpen, game.day, game.npcHealedDays, multiplayerSession?.deviceId, neighborInterior, onlinePlayers, player, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, chestOpen, craftingOpen, farmGateOpen, game.day, game.npcHealedDays, game.placedCrafts, multiplayerSession?.deviceId, neighborInterior, onlinePlayers, player, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1502,7 +1515,7 @@ export default function FarmGame() {
     }
     const placed: PlacedCraft = { id: `fence-${slot.id}-${Date.now()}`, type: "fence", x: slot.x, y: slot.y, rotation: slot.rotation };
     setGame((current) => ({ ...current, crafted: { ...current.crafted, fence: Math.max(0, current.crafted.fence - 1) }, placedCrafts: [...current.placedCrafts, placed] }));
-    if (game.crafted.fence <= 1) setSelectedCraftItem(null);
+    setSelectedCraftItem(null);
     const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length + 1;
     setMessage(`木围栏整齐地放好了！现在已经围上 ${fenceCount} 段；继续点击绿色位置可以把农田围完整。`);
     playTone(720);
@@ -1536,6 +1549,12 @@ export default function FarmGame() {
     }
     if (craft.type === "chest") {
       useChest();
+      return;
+    }
+    if (craft.type === "gate") {
+      setFarmGateOpen((open) => !open);
+      setMessage(farmGateOpen ? "把木围栏门关好了，小禾和小动物现在都不能从这里穿过。 " : "木围栏门打开了，小禾可以从门口进出；离开太远时要小心小动物钻进来。 ");
+      playTone(farmGateOpen ? 420 : 680);
       return;
     }
     if (craft.type === "bench") {
@@ -2466,6 +2485,21 @@ export default function FarmGame() {
         setMessage("请点击农田四周整齐的绿色位置来放木围栏。 ");
         return;
       }
+      if (selectedCraftItem === "gate") {
+        const oldGate = game.placedCrafts.find((craft) => craft.type === "gate");
+        if (oldGate) {
+          setSelectedCraftItem(null);
+          setMessage("农田围栏中间已经装有一扇木门了，点击它就能开关。 ");
+          return;
+        }
+        const gate: PlacedCraft = { id: `gate-${Date.now()}`, type: "gate", x: 49, y: 40, rotation: 0 };
+        setGame((current) => ({ ...current, crafted: { ...current.crafted, gate: Math.max(0, current.crafted.gate - 1) }, placedCrafts: [...current.placedCrafts, gate] }));
+        setSelectedCraftItem(null);
+        setFarmGateOpen(false);
+        setMessage("木围栏门已经自动装在农田上方围栏的中间。点击门就能打开或关上。 ");
+        playTone(760);
+        return;
+      }
       const placed: PlacedCraft = { id: `${selectedCraftItem}-${Date.now()}`, type: selectedCraftItem, x: Math.max(5, Math.min(94, percentX)), y: Math.max(18, Math.min(86, percentY)), rotation: craftRotation };
       setGame((current) => ({ ...current, crafted: { ...current.crafted, [selectedCraftItem]: Math.max(0, current.crafted[selectedCraftItem] - 1) }, placedCrafts: [...current.placedCrafts, placed] }));
       if (game.crafted[selectedCraftItem] <= 1) setSelectedCraftItem(null);
@@ -2474,6 +2508,18 @@ export default function FarmGame() {
       return;
     }
     const destination = { x: Math.max(0, Math.min(11, Math.round((percentX - 4) / 7.7))), y: Math.max(0, Math.min(7, Math.round((percentY - 8) / 10.5))) };
+    if (scene === "farm") {
+      const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length;
+      const hasGate = game.placedCrafts.some((craft) => craft.type === "gate");
+      const isInsideField = (position: { x: number; y: number }) => position.x >= 2 && position.x <= 9 && position.y >= 4;
+      if (fenceCount >= 8 && isInsideField(player) !== isInsideField(destination)) {
+        const canUseGate = hasGate && farmGateOpen && destination.x >= 5 && destination.x <= 6;
+        if (!canUseGate) {
+          setMessage(hasGate ? "木围栏挡住了路。先点击中间的围栏门把它打开。 " : "围栏挡住了路，制作一扇木围栏门才能进出。 ");
+          return;
+        }
+      }
+    }
     showWalking(destination.x - player.x, destination.y - player.y);
     setPlayer(destination);
     setMessage("小禾走到了你点击的位置。 ");
@@ -2615,7 +2661,7 @@ export default function FarmGame() {
                 {game.plantedTrees.map((tree) => <button key={tree.id} className={`planted-pine-tree pine-stage-${tree.stage} ${tree.watered ? "watered" : ""}`} style={{ left: `${tree.x}%`, top: `${tree.y}%` }} onClick={() => chopPlantedTree(tree)} aria-label={tree.stage >= 3 ? "松果种出的成熟松树" : `正在生长的松树苗，第 ${tree.stage + 1} 阶段，${tree.watered ? "今天已经浇水" : "今天还没浇水"}`}><i /><i /><b /><span>{tree.stage >= 3 ? "大树" : tree.watered ? "已浇水" : "需要浇水"}</span></button>)}
                 <div className="flowers flowers-a">✿ · ✿</div><div className="flowers flowers-b">· ✿ ·</div>
                 {selectedCraftItem === "fence" && FENCE_PLACEMENT_SLOTS.map((slot) => { const occupied = game.placedCrafts.some((craft) => craft.type === "fence" && Math.abs(craft.x - slot.x) < 1 && Math.abs(craft.y - slot.y) < 1); return <button key={slot.id} className={`fence-placement-slot ${slot.rotation === 90 ? "slot-vertical" : "slot-horizontal"} ${occupied ? "occupied" : ""}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={(event) => { event.stopPropagation(); placeFenceInSlot(slot); }} disabled={occupied} aria-label={occupied ? "这里已经放有围栏" : "点击在绿色位置放置木围栏"}><i /><span>{occupied ? "已放" : "+"}</span></button>; })}
-                {game.placedCrafts.map((craft) => <button key={craft.id} className={`placed-craft placed-${craft.type} ${craft.type === "fence" && craft.rotation === 90 ? "fence-vertical" : ""} ${craft.type === "lamp" && isNight ? "placed-lamp-lit" : ""}`} style={{ left: `${craft.x}%`, top: `${craft.y}%`, transform: `translate(-50%,-50%) rotate(${craft.rotation}deg)` }} onClick={(event) => { event.stopPropagation(); usePlacedCraft(craft); }} aria-label={`${CRAFT_RECIPES[craft.type].name}，${selected === "axe" ? "点击拆除" : "点击使用或查看"}`}><i /><i /><i /><b>{craft.type === "chest" ? Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0) : ""}</b></button>)}
+                {game.placedCrafts.map((craft) => <button key={craft.id} className={`placed-craft placed-${craft.type} ${craft.type === "fence" && craft.rotation === 90 ? "fence-vertical" : ""} ${craft.type === "gate" && farmGateOpen ? "gate-open" : ""} ${craft.type === "lamp" && isNight ? "placed-lamp-lit" : ""}`} style={{ left: `${craft.x}%`, top: `${craft.y}%`, transform: `translate(-50%,-50%) rotate(${craft.rotation}deg)` }} onClick={(event) => { event.stopPropagation(); usePlacedCraft(craft); }} aria-label={`${CRAFT_RECIPES[craft.type].name}，${craft.type === "gate" ? (farmGateOpen ? "现在打开，点击关门" : "现在关闭，点击开门") : selected === "axe" ? "点击拆除" : "点击使用或查看"}`}><i /><i /><i /><b>{craft.type === "chest" ? Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0) : ""}</b></button>)}
                 {game.farmVisitor === "crow" && <div className="farm-visitor crow-visitor" aria-label="乌鸦飞进农田"><i /><i /><span>嘎！</span></div>}
                 {game.farmVisitor === "animal" && <div className="farm-visitor animal-visitor" aria-label="小动物跑进农田"><i /><b /><span>偷吃幼苗</span></div>}
                 {game.upgrades.stoneWall > 0 && <div className="farm-stone-wall" aria-label="鲁师傅修建的农场石墙"><i /><i /><i /><i /></div>}
