@@ -17,6 +17,7 @@ type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "watermelonSeeds" |
 type CraftType = "chest" | "fence" | "scarecrow" | "lamp" | "bench" | "sign";
 type CraftRotation = 0 | 45 | 90;
 type PlacedCraft = { id: string; type: CraftType; x: number; y: number; rotation: CraftRotation };
+type PlantedTree = { id: string; x: number; y: number; stage: number };
 type FencePlacementSlot = { id: string; x: number; y: number; rotation: 0 | 90 };
 type ForestItem = "branch" | "pinecone" | "pineNut";
 type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
@@ -80,6 +81,7 @@ type GameState = {
   pinecones: number;
   pineNuts: number;
   treeStates: boolean[];
+  plantedTrees: PlantedTree[];
   rockStates: boolean[];
   crafted: Record<CraftType, number>;
   placedCrafts: PlacedCraft[];
@@ -235,6 +237,24 @@ const FENCE_PLACEMENT_SLOTS: FencePlacementSlot[] = [
 ];
 
 const SCHOOL_STUDENTS = ["小玲", "豆豆", "小满", "阿禾", "小树", "安安"];
+const PERSON_DIALOGUES: Record<string, string> = {
+  林婶: "林婶：我最喜欢清晨去果园看草莓，红透的那一颗总是最甜。",
+  鲁师傅: "鲁师傅：好木料要顺着纹路慢慢打磨，急不得，做出来才结实。",
+  叶老师: "叶老师：今天读到一个关于山风的故事，下次我讲给你听。",
+  白医生: "白医生：农活重要，按时吃饭和休息也一样重要，别把体力用光了。",
+  阿麦: "阿麦：刚烤好的面包要配一点山谷咖啡，香气会飘到街口。",
+  周镇长: "周镇长：镇上的新路和节日都安排好了，公告栏会提前告诉大家。",
+  沈馆长: "沈馆长：每件旧物都有自己的故事，我会把发现的地点也认真记下来。",
+  诊所助手: "诊所助手：我每天都整理药柜，白医生休息时也能放心把诊所交给我。",
+  红衣助手: "红衣助手：今天由我照看诊所，需要检查或拿药都可以来找我。",
+  许老师: "许老师：学会读书、计算和观察天气，也能让农场经营得更好。",
+  小玲: "小玲：我最喜欢语文课，想把青禾谷的花写进小作文里。",
+  豆豆: "豆豆：数学课算鱼获特别有趣，我已经会算今天钓了几条鱼。",
+  小满: "小满：我喜欢四季课，夏天的西瓜和秋天的南瓜都很好看。",
+  阿禾: "阿禾：英语里的 seed 是种子，我把这个单词记得最牢。",
+  小树: "小树：农场知识课说，松果种下后要等几天才会长成大树。",
+  安安: "安安：我在黑板上画了稻草人，老师说它能保护田里的种子。",
+};
 
 const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description: string }> = {
   qinghe: { name: "青禾村", farm: "青禾农场", description: "绿野、溪流与温暖的木屋" },
@@ -320,6 +340,7 @@ const makeNewGame = (): GameState => ({
   pinecones: 0,
   pineNuts: 0,
   treeStates: [true, true, true, true],
+  plantedTrees: [],
   rockStates: [true, true, true, true, true, true],
   crafted: { chest: 0, fence: 0, scarecrow: 0, lamp: 0, bench: 0, sign: 0 },
   placedCrafts: [],
@@ -459,6 +480,7 @@ export default function FarmGame() {
             pineNuts: parsed.pineNuts ?? 0,
             groundSupplies: defaults.groundSupplies.map((defaultVisible, index) => parsed.groundSupplies?.[index] ?? defaultVisible),
             treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
+            plantedTrees: parsed.plantedTrees ?? [],
             rockStates: defaults.rockStates.map((defaultStanding, index) => parsed.rockStates?.[index] ?? defaultStanding),
             crafted: { ...defaults.crafted, ...(parsed.crafted ?? {}) },
             placedCrafts: parsed.placedCrafts ?? [],
@@ -948,24 +970,8 @@ export default function FarmGame() {
   };
 
   const chopTree = (index: number) => {
-    if (!game.treeStates[index] && plantingPinecone) {
-      if (game.pinecones <= 0) {
-        setPlantingPinecone(false);
-        setMessage("背包里已经没有松果了。");
-        return;
-      }
-      setGame((current) => ({
-        ...current,
-        pinecones: Math.max(0, current.pinecones - 1),
-        treeStates: current.treeStates.map((tree, treeIndex) => treeIndex === index ? true : tree),
-      }));
-      setPlantingPinecone(false);
-      setMessage("把松果种进树桩旁的泥土里，一棵新松树长出来了！");
-      playTone(720);
-      return;
-    }
     if (selected !== "axe") {
-      setMessage(game.treeStates[index] ? "先选择斧头，再点击树木砍伐。" : "这里是树桩。可以选择背包里的松果，再点击这里种一棵树。");
+      setMessage(game.treeStates[index] ? "先选择斧头，再点击树木砍伐。" : "这里只剩树桩了。松果可以种在旁边任意绿色草地上。 ");
       playTone(250);
       return;
     }
@@ -990,6 +996,34 @@ export default function FarmGame() {
       daily: { ...current.daily, chopped: current.daily.chopped + 1 },
     }));
     setMessage(`砍下树木，获得 ${game.toolUpgrades.axe ? 6 : 4} 块木头、2 根树枝、1 个松果和 2 颗松子！松果能重新种树，松子可以吃。`);
+    playTone(330);
+  };
+
+  const chopPlantedTree = (tree: PlantedTree) => {
+    if (tree.stage < 3) {
+      setMessage(`这棵松树还在生长，现在是第 ${tree.stage + 1} 阶段，再等 ${3 - tree.stage} 天就会长成大树。`);
+      playTone(420);
+      return;
+    }
+    if (selected !== "axe") {
+      setMessage("这棵松果树已经长大了，选择斧头后可以砍伐。 ");
+      return;
+    }
+    if (game.energy < 4) {
+      setMessage("体力不够，明天再来砍这棵树吧。 ");
+      return;
+    }
+    setGame((current) => ({
+      ...current,
+      energy: current.energy - 4,
+      wood: current.wood + (current.toolUpgrades.axe ? 6 : 4),
+      branches: current.branches + 2,
+      pinecones: current.pinecones + 1,
+      pineNuts: current.pineNuts + 2,
+      plantedTrees: current.plantedTrees.filter((plantedTree) => plantedTree.id !== tree.id),
+      daily: { ...current.daily, chopped: current.daily.chopped + 1 },
+    }));
+    setMessage("长大的松树被砍下，获得木头、树枝、松果和松子。它空出的位置还能再种松果。 ");
     playTone(330);
   };
 
@@ -1069,9 +1103,8 @@ export default function FarmGame() {
     }
     setPlantingPinecone((selectedNow) => !selectedNow);
     setSelectedCraftItem(null);
-    setPlantingPinecone(false);
     setHeldItem(null);
-    setMessage(plantingPinecone ? "已经收起松果。" : "拿出松果了！点击农场里的树桩，就能重新种一棵松树。");
+    setMessage(plantingPinecone ? "已经收起松果。" : "拿出松果了！现在点击农场任意绿色草地，就会种下一棵小树苗。 ");
     playTone(620);
   };
 
@@ -1280,7 +1313,7 @@ export default function FarmGame() {
       playTone(300);
       return;
     }
-    setMessage(fallback);
+    setMessage(PERSON_DIALOGUES[person] ?? fallback);
     playTone(520);
   };
 
@@ -1968,7 +2001,7 @@ export default function FarmGame() {
       ? "早上七点醒来，小禾看起来没什么精神，嘴角变成了伤心的样子。"
       : remainsSick
         ? "早上七点了，小禾的表情仍然有些伤心。"
-        : `早上七点了！${game.day === 28 ? `新的${SEASONS[nextSeason]}开始了。` : ""}浇过水的作物长大了，也有一棵树重新长出。`;
+        : `早上七点了！${game.day === 28 ? `新的${SEASONS[nextSeason]}开始了。` : ""}浇过水的作物长大了，松果树苗也长高了一点。`;
     const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${visitorMessage}`;
     setGame((current) => {
       const treeStates = [...current.treeStates];
@@ -2018,6 +2051,7 @@ export default function FarmGame() {
         toolUpgradeDays,
         farmVisitor,
         treeStates,
+        plantedTrees: current.plantedTrees.map((tree) => ({ ...tree, stage: Math.min(3, tree.stage + 1) })),
         rockStates,
         groundBooks,
         groundArtifacts,
@@ -2054,6 +2088,7 @@ export default function FarmGame() {
     setChestOpen(false);
     setSelectedResource(null);
     setSelectedCraftItem(null);
+    setPlantingPinecone(false);
     setResidentHome(null);
     setMessage("新的农场生活开始了！");
     localStorage.setItem(saveStorageKey, JSON.stringify(fresh));
@@ -2299,6 +2334,33 @@ export default function FarmGame() {
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
     const percentY = ((event.clientY - bounds.top) / bounds.height) * 100;
+    if (plantingPinecone) {
+      if (scene !== "farm") {
+        setMessage("松果要种在自己的农场草地上，先回农场吧。 ");
+        return;
+      }
+      if ((event.target as HTMLElement).closest(".field, .path")) {
+        setMessage("这里不是绿色草地，请点击农田旁边的绿色位置。 ");
+        return;
+      }
+      if (game.pinecones <= 0) {
+        setPlantingPinecone(false);
+        setMessage("背包里的松果已经用完了。 ");
+        return;
+      }
+      const treeX = Math.max(6, Math.min(93, percentX));
+      const treeY = Math.max(24, Math.min(88, percentY));
+      if (game.plantedTrees.some((tree) => Math.hypot(tree.x - treeX, tree.y - treeY) < 7)) {
+        setMessage("这里离另一棵树太近了，换一块绿色草地吧。 ");
+        return;
+      }
+      const plantedTree: PlantedTree = { id: `pine-tree-${Date.now()}`, x: treeX, y: treeY, stage: 0 };
+      setGame((current) => ({ ...current, pinecones: Math.max(0, current.pinecones - 1), plantedTrees: [...current.plantedTrees, plantedTree] }));
+      if (game.pinecones <= 1) setPlantingPinecone(false);
+      setMessage("松果种进绿色草地里了！现在是一棵小树苗，每睡一天都会长大一点。 ");
+      playTone(720);
+      return;
+    }
     if (selectedCraftItem) {
       if (scene !== "farm") {
         setMessage("制作物只能摆在自己的农场，先回农场再摆放。 ");
@@ -2459,6 +2521,7 @@ export default function FarmGame() {
                 {game.treeStates.map((standing, index) => (
                   <button key={index} className={`tree tree-${["a", "b", "c", "d"][index]} ${standing ? "" : "stump"}`} onClick={() => chopTree(index)} aria-label={standing ? `砍伐第 ${index + 1} 棵树` : `第 ${index + 1} 个树桩`} />
                 ))}
+                {game.plantedTrees.map((tree) => <button key={tree.id} className={`planted-pine-tree pine-stage-${tree.stage}`} style={{ left: `${tree.x}%`, top: `${tree.y}%` }} onClick={() => chopPlantedTree(tree)} aria-label={tree.stage >= 3 ? "松果种出的成熟松树" : `正在生长的松树苗，第 ${tree.stage + 1} 阶段`}><i /><i /><b /><span>{tree.stage >= 3 ? "大树" : "树苗"}</span></button>)}
                 <div className="flowers flowers-a">✿ · ✿</div><div className="flowers flowers-b">· ✿ ·</div>
                 {selectedCraftItem === "fence" && FENCE_PLACEMENT_SLOTS.map((slot) => { const occupied = game.placedCrafts.some((craft) => craft.type === "fence" && Math.abs(craft.x - slot.x) < 1 && Math.abs(craft.y - slot.y) < 1); return <button key={slot.id} className={`fence-placement-slot ${slot.rotation === 90 ? "slot-vertical" : "slot-horizontal"} ${occupied ? "occupied" : ""}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={(event) => { event.stopPropagation(); placeFenceInSlot(slot); }} disabled={occupied} aria-label={occupied ? "这里已经放有围栏" : "点击在绿色位置放置木围栏"}><i /><span>{occupied ? "已放" : "+"}</span></button>; })}
                 {game.placedCrafts.map((craft) => <button key={craft.id} className={`placed-craft placed-${craft.type} ${craft.type === "fence" && craft.rotation === 90 ? "fence-vertical" : ""} ${craft.type === "lamp" && isNight ? "placed-lamp-lit" : ""}`} style={{ left: `${craft.x}%`, top: `${craft.y}%`, transform: `translate(-50%,-50%) rotate(${craft.rotation}deg)` }} onClick={(event) => { event.stopPropagation(); usePlacedCraft(craft); }} aria-label={`${CRAFT_RECIPES[craft.type].name}，${selected === "axe" ? "点击拆除" : "点击使用或查看"}`}><i /><i /><i /><b>{craft.type === "chest" ? Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0) : ""}</b></button>)}
