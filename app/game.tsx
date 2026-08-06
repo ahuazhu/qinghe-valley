@@ -103,6 +103,7 @@ type GameState = {
   toolUpgradeDays: { axe: number; rod: number };
   npcHealedDays: Record<string, number>;
   lastSchoolAttendance: string;
+  seasonExcursionCompleted: boolean;
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -378,6 +379,7 @@ const makeNewGame = (): GameState => ({
   toolUpgradeDays: { axe: 0, rod: 0 },
   npcHealedDays: {},
   lastSchoolAttendance: "",
+  seasonExcursionCompleted: false,
 });
 
 function PixelIcon({ type }: { type: Tool }) {
@@ -424,6 +426,7 @@ export default function FarmGame() {
   const [residentHome, setResidentHome] = useState<ResidentHomeOwner | null>(null);
   const [festivalDisplay, setFestivalDisplay] = useState<"wood" | null>(null);
   const [amusementOpen, setAmusementOpen] = useState(false);
+  const [busTraveling, setBusTraveling] = useState(false);
   const [festivalMusicPlaying, setFestivalMusicPlaying] = useState(false);
   const [heldItem, setHeldItem] = useState<CarriedItem | null>(null);
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -449,6 +452,7 @@ export default function FarmGame() {
   const herbClickTimerRef = useRef<number | null>(null);
   const forestClickTimerRef = useRef<number | null>(null);
   const walkTimerRef = useRef<number | null>(null);
+  const excursionTimerRef = useRef<number | null>(null);
   const lastMoveAtRef = useRef(0);
   const longPressTriggeredRef = useRef(false);
   const fishingWaitTimerRef = useRef<number | null>(null);
@@ -620,6 +624,7 @@ export default function FarmGame() {
   useEffect(() => () => {
     if (eatTimerRef.current) window.clearTimeout(eatTimerRef.current);
     if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
+    if (excursionTimerRef.current) window.clearTimeout(excursionTimerRef.current);
     if (fishingWaitTimerRef.current) window.clearTimeout(fishingWaitTimerRef.current);
     if (fishingBiteTimerRef.current) window.clearTimeout(fishingBiteTimerRef.current);
     if (fishingMarkerTimerRef.current) window.clearInterval(fishingMarkerTimerRef.current);
@@ -1936,7 +1941,10 @@ export default function FarmGame() {
   const leaveBuilding = () => {
     if (!activeBuilding) return;
     const building = BUILDING_INFO[activeBuilding];
+    if (excursionTimerRef.current) window.clearTimeout(excursionTimerRef.current);
+    excursionTimerRef.current = null;
     setAmusementOpen(false);
+    setBusTraveling(false);
     setActiveBuilding(null);
     setInspectedItem(null);
     setPlayer(building.exit);
@@ -1945,6 +1953,10 @@ export default function FarmGame() {
 
   const returnToFarm = () => {
     cancelFishing();
+    if (excursionTimerRef.current) window.clearTimeout(excursionTimerRef.current);
+    excursionTimerRef.current = null;
+    setBusTraveling(false);
+    setAmusementOpen(false);
     setActiveBuilding(null);
     setInspectedItem(null);
     setCraftingOpen(false);
@@ -2017,11 +2029,19 @@ export default function FarmGame() {
       setMessage("免费参观鲁师傅的手工作品：鸟屋、小木马和山谷木雕都摆在展示台上。 ");
       playTone(440);
     } else if (building === "school") {
-      if (isExcursionDay) {
-        setAmusementOpen(true);
+      if (isExcursionAvailable) {
+        setBusTraveling(true);
+        setAmusementOpen(false);
         setGame((current) => ({ ...current, hour: Math.min(24, current.hour + 1) }));
-        setMessage(`${game.season === 0 ? "春游" : "秋游"}出发啦！大家坐上学校大巴，来到了青禾游乐园。`);
+        setMessage(`${game.season === 0 ? "春游" : "秋游"}出发啦！许老师和同学们一起坐上学校大巴。`);
         playTone(880);
+        excursionTimerRef.current = window.setTimeout(() => {
+          setBusTraveling(false);
+          setAmusementOpen(true);
+          excursionTimerRef.current = null;
+          setMessage("大巴开了一会儿，终于到达青禾游乐园啦！ ");
+          playTone(940);
+        }, 3_200);
         return;
       }
       const weekdayIndex = (game.day - 1) % 7;
@@ -2147,6 +2167,7 @@ export default function FarmGame() {
         ...current,
         day: nextDayNumber,
         season: nextSeason,
+        seasonExcursionCompleted: game.day === 28 ? false : current.seasonExcursionCompleted,
         hour: 7,
         daily: { ...makeNewGame().daily, day: nextDayNumber },
         energy: remainsSick ? 65 : 100,
@@ -2416,11 +2437,22 @@ export default function FarmGame() {
   const activeBuildingGreeting = activeReliefWorker?.greeting ?? (activeBuilding ? BUILDING_INFO[activeBuilding].greeting : "");
   const supermarketReliefWorker = isNpcSick("林婶") ? RELIEF_WORKERS["林婶"] : null;
   const supermarketClerk = supermarketReliefWorker?.name ?? "林婶";
-  const isExcursionDay = (game.season === 0 || game.season === 2) && game.day === 10;
+  const isExcursionAvailable = (game.season === 0 || game.season === 2) && !game.seasonExcursionCompleted;
+  const excursionName = game.season === 0 ? "春游" : "秋游";
   const residentHomeInfo = residentHome ? RESIDENT_HOMES.find((home) => home.owner === residentHome) ?? null : null;
   const residentHomeGreeting = residentHome === "白医生" && doctorIsRestingAtHome
     ? "我今天生病了，所以留在自己的家里休息。谢谢你来看我，诊所由穿红色制服的助手代班。"
     : residentHomeInfo?.greeting ?? "";
+
+  const finishExcursion = () => {
+    if (excursionTimerRef.current) window.clearTimeout(excursionTimerRef.current);
+    excursionTimerRef.current = null;
+    setAmusementOpen(false);
+    setBusTraveling(false);
+    setGame((current) => ({ ...current, seasonExcursionCompleted: true, hour: Math.min(24, current.hour + 1) }));
+    setMessage(`${excursionName}结束了，老师和同学们坐大巴回到学校。下面已经恢复成正常的开始听课。`);
+    playTone(760);
+  };
 
   const goToFestival = () => {
     const festival = currentFestival ?? nextFestival;
@@ -2936,7 +2968,7 @@ export default function FarmGame() {
                     <div className="room-window"><i /><i /></div>
                     <div className="room-rug" />
                     <div className="room-furniture"><i /><i /><i /></div>
-                    {activeBuilding === "school" && <><div className="school-blackboard"><strong>{isExcursionDay ? (game.season === 0 ? "今日春游" : "今日秋游") : isSchoolDay ? "今日课堂" : "课程表"}</strong><span>{isExcursionDay ? "到校集合 · 坐大巴去青禾游乐园" : isSchoolDay ? ["A B C · 英语", "阅读与写字 · 语文", "加减乘除 · 数学", "种植与浇水 · 农场知识"][Math.floor((game.day - 1) / 2) % 4] : "周一 · 周三 · 周五 · 周日上课"}</span><i /></div>{isExcursionDay && <button className="school-bus" onClick={() => useBuildingService("school")}><i /><b /><span>春秋游大巴</span><small>点击上车</small></button>}<div className="school-desks" aria-label={isSchoolDay ? "同学们坐在课桌前听课" : "今天空着的课桌椅"}>{SCHOOL_STUDENTS.map((student, index) => <button key={student} style={personClothesStyle(student)} className={`classroom-seat seat-${index + 1} ${isSchoolDay ? "student-seated" : "empty-seat"}`} disabled={!isSchoolDay} onClick={(event) => { event.stopPropagation(); interactWithPerson(student, `${student}：我正在认真听许老师讲课，今天学到了很多新知识！`); }} aria-label={isSchoolDay ? `${student}坐在课桌前听课` : "空课桌"}><i /><em /><b /><span>{isSchoolDay ? student : "空座位"}</span></button>)}</div></>}
+                    {activeBuilding === "school" && <><div className="school-blackboard"><strong>{isExcursionAvailable ? `今日${excursionName}` : isSchoolDay ? "今日课堂" : "课程表"}</strong><span>{isExcursionAvailable ? `第一次到校可与同学一起去${excursionName}` : isSchoolDay ? ["A B C · 英语", "阅读与写字 · 语文", "加减乘除 · 数学", "种植与浇水 · 农场知识"][Math.floor((game.day - 1) / 2) % 4] : "周一 · 周三 · 周五 · 周日上课"}</span><i /></div>{isExcursionAvailable && <button className="school-bus" onClick={() => useBuildingService("school")}><i /><b /><span>{excursionName}大巴</span><small>与老师同学一起上车</small></button>}<div className="school-desks" aria-label={isSchoolDay ? "同学们坐在课桌前听课" : "今天空着的课桌椅"}>{SCHOOL_STUDENTS.map((student, index) => <button key={student} style={personClothesStyle(student)} className={`classroom-seat seat-${index + 1} ${isSchoolDay ? "student-seated" : "empty-seat"}`} disabled={!isSchoolDay} onClick={(event) => { event.stopPropagation(); interactWithPerson(student, `${student}：我正在认真听许老师讲课，今天学到了很多新知识！`); }} aria-label={isSchoolDay ? `${student}坐在课桌前听课` : "空课桌"}><i /><em /><b /><span>{isSchoolDay ? student : "空座位"}</span></button>)}</div></>}
                     <button style={personClothesStyle(activeBuildingOwner)} className={`npc-character ${activeReliefWorker ? "clinic-relief-assistant relief-worker" : ""}`} onClick={() => interactWithPerson(activeBuildingOwner, `${activeBuildingOwner}：${activeBuildingGreeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${activeBuildingOwner}` : `和${activeBuildingOwner}交谈`}><span className="npc-hair" /><span className="npc-face" /><span className="npc-body" /></button>
                     {activeReliefWorker && <div className="clinic-relief-note"><strong>{activeReliefWorker.name}代班</strong><span>{originalBuildingOwner}在家休息 · 两人平时住在一起</span></div>}
                     {((activeBuilding === "cafe" && currentFestival?.id === "coffee") || (activeBuilding === "workshop" && currentFestival?.id === "craft")) && <div className={`festival-indoor-guests guests-${activeBuilding}`} aria-label={`参加${currentFestival.name}的居民`}>{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`indoor-guest guest-${index + 1} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：${currentFestival.name}真热闹，屋里坐满了村民！`)}><i /><b /><span>{name}</span></button>)}</div>}
@@ -2954,7 +2986,7 @@ export default function FarmGame() {
                     <div className={`inspection-card ${inspectedArtifactIndex >= 0 ? "artifact-inspection-card" : ""}`}>{inspectedArtifactIndex >= 0 && <div className={`artifact-inspection-image artifact-preview-${inspectedArtifactIndex + 1}`}><img src="/museum-artifacts.png" alt={inspectedItem} draggable={false} /></div>}<div><strong>{inspectedItem}</strong><p>{inspectedItem === "药品柜" ? (!game.diagnosed ? `要先接受${activeBuildingOwner}的免费检查，才能查看药品。` : game.sick ? `里面放着${activeBuildingOwner}刚配好的处方药，价格 50 金币。` : "检查结果不需要用药。") : inspectedItem === "健康档案" && !game.diagnosed ? "还没有检查结果，档案暂时是空白的。" : LOST_BOOKS.find((book) => book.title === inspectedItem)?.content ?? RARE_ARTIFACTS.find((artifact) => artifact.title === inspectedItem)?.description ?? ITEM_DESCRIPTIONS[inspectedItem]}</p></div><button onClick={() => setInspectedItem(null)}>收起</button></div>
                   )}
                   <div className="service-actions">
-                    <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? (!game.diagnosed ? `接受${activeBuildingOwner}的免费检查` : game.sick ? `购买${activeBuildingOwner}开的药 · 50 金币` : "检查结果：没有生病") : activeBuilding === "cafe" ? (currentFestival?.id === "coffee" ? "免费领取咖啡和点心" : "购买咖啡套餐 · 35 金币") : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "免费参观手工作品" : activeBuilding === "museum" ? heldItem?.kind === "artifact" ? `捐赠${carriedItemName}` : `查看馆藏 · ${game.museumArtifacts.length}/3` : activeBuilding === "school" ? isExcursionDay ? `坐学校大巴去${game.season === 0 ? "春游" : "秋游"}` : ([0, 2, 4, 6].includes((game.day - 1) % 7) ? "开始听今天的课 · 奖励 50 金币" : "今天停课 · 参观教室") : "翻阅农事图鉴"}</button>
+                    <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? (!game.diagnosed ? `接受${activeBuildingOwner}的免费检查` : game.sick ? `购买${activeBuildingOwner}开的药 · 50 金币` : "检查结果：没有生病") : activeBuilding === "cafe" ? (currentFestival?.id === "coffee" ? "免费领取咖啡和点心" : "购买咖啡套餐 · 35 金币") : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "免费参观手工作品" : activeBuilding === "museum" ? heldItem?.kind === "artifact" ? `捐赠${carriedItemName}` : `查看馆藏 · ${game.museumArtifacts.length}/3` : activeBuilding === "school" ? isExcursionAvailable ? `与同学一起去${excursionName}` : ([0, 2, 4, 6].includes((game.day - 1) % 7) ? "开始听今天的课 · 奖励 50 金币" : "今天停课 · 参观教室") : "翻阅农事图鉴"}</button>
                     <button className="exit-action" onClick={leaveBuilding}>从门口出去</button>
                   </div>
                   <footer><span>{message}</span><small>按 Esc 也可以离开</small></footer>
@@ -2962,12 +2994,22 @@ export default function FarmGame() {
               </div>
             )}
 
+            {busTraveling && (
+              <div className="shop-overlay bus-trip-overlay" role="presentation">
+                <section className="bus-trip-panel" role="dialog" aria-modal="true" aria-labelledby="bus-trip-title">
+                  <header><span>青禾学校 · {excursionName}</span><h2 id="bus-trip-title">大巴正在前往游乐园</h2><small>沿着山谷公路再等一会儿……</small></header>
+                  <div className="bus-interior"><div className="bus-driver"><i /><span>司机</span></div><div className="bus-teacher" style={personClothesStyle(activeBuildingOwner || "许老师")}><i /><span>{activeBuildingOwner || "许老师"}</span></div><div className="bus-seats">{SCHOOL_STUDENTS.map((student) => <div key={`bus-${student}`} style={personClothesStyle(student)}><i /><b /><span>{student}</span></div>)}</div><div className="bus-player"><PlayerSprite facing="down" sick={game.sick} /><span>{displayName}</span></div><div className="moving-road"><i /><i /><i /></div></div>
+                  <footer><span>老师、同学们和小禾都已经坐好，大巴正在慢慢开往青禾游乐园。</span></footer>
+                </section>
+              </div>
+            )}
+
             {amusementOpen && (
               <div className="shop-overlay amusement-overlay" role="presentation">
                 <section className="amusement-panel" role="dialog" aria-modal="true" aria-labelledby="amusement-title">
-                  <header><div><span>{game.season === 0 ? "青禾学校春游" : "青禾学校秋游"}</span><h2 id="amusement-title">青禾游乐园</h2></div><button onClick={() => { setAmusementOpen(false); setMessage("坐学校大巴回到了青禾学校。 "); }}>×</button></header>
+                  <header><div><span>青禾学校{excursionName}</span><h2 id="amusement-title">青禾游乐园</h2></div><button onClick={finishExcursion}>×</button></header>
                   <div className="amusement-scene"><div className="ferris-wheel"><i /><i /><i /><i /></div><div className="carousel"><i /><i /><i /></div><div className="park-bus"><i /><b /><span>青禾学校</span></div><div className="park-students">{SCHOOL_STUDENTS.map((student) => <span key={student}>{student}</span>)}</div></div>
-                  <div className="amusement-actions"><button onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 10) })); setMessage("坐了一圈摩天轮，从高处看见了整个青禾谷，恢复 10 点体力！"); playTone(820); }}>乘坐摩天轮</button><button onClick={() => { setMessage("旋转木马慢慢转起来，同学们开心地挥手。 "); playTone(760); }}>玩旋转木马</button><button onClick={() => { setAmusementOpen(false); setMessage("春秋游结束，坐学校大巴回到了青禾学校。 "); }}>坐大巴回学校</button></div>
+                  <div className="amusement-actions"><button onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 10) })); setMessage("坐了一圈摩天轮，从高处看见了整个青禾谷，恢复 10 点体力！"); playTone(820); }}>乘坐摩天轮</button><button onClick={() => { setMessage("旋转木马慢慢转起来，同学们开心地挥手。 "); playTone(760); }}>玩旋转木马</button><button onClick={finishExcursion}>坐大巴回学校</button></div>
                 </section>
               </div>
             )}
