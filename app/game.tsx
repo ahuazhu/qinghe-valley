@@ -382,6 +382,45 @@ const makeNewGame = (): GameState => ({
   seasonExcursionCompleted: false,
 });
 
+const villageSaveKey = (village: VillageId) => village === "maple" ? "qinghe-farm-save-maple" : "qinghe-farm-save";
+
+const restoreVillageGame = (saved: string | null): GameState => {
+  const defaults = makeNewGame();
+  if (!saved) return defaults;
+  try {
+    const parsed = JSON.parse(saved) as Partial<GameState>;
+    if (!parsed.tiles || parsed.tiles.length < 32) return defaults;
+    return {
+      ...defaults,
+      ...parsed,
+      inventory: { ...defaults.inventory, ...(parsed.inventory ?? {}) },
+      chestStorage: { ...defaults.chestStorage, ...(parsed.chestStorage ?? {}) },
+      treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
+      plantedTrees: (parsed.plantedTrees ?? []).map((tree) => ({ ...tree, watered: tree.watered ?? false })),
+      rockStates: defaults.rockStates.map((standing, index) => parsed.rockStates?.[index] ?? standing),
+      crafted: { ...defaults.crafted, ...(parsed.crafted ?? {}) },
+      placedCrafts: parsed.placedCrafts ?? [],
+      upgrades: { ...defaults.upgrades, ...(parsed.upgrades ?? {}) },
+      builderSupplies: { ...defaults.builderSupplies, ...(parsed.builderSupplies ?? {}) },
+      equipment: { ...defaults.equipment, ...(parsed.equipment ?? {}) },
+      daily: parsed.daily?.day === parsed.day ? { ...defaults.daily, ...parsed.daily } : { ...defaults.daily, day: parsed.day ?? 1 },
+      groundBooks: defaults.groundBooks.map((visible, index) => parsed.groundBooks?.[index] ?? visible),
+      groundArtifacts: defaults.groundArtifacts.map((visible, index) => parsed.groundArtifacts?.[index] ?? visible),
+      groundSupplies: defaults.groundSupplies.map((visible, index) => parsed.groundSupplies?.[index] ?? visible),
+      toolUpgrades: { ...defaults.toolUpgrades, ...(parsed.toolUpgrades ?? {}) },
+      toolUpgradeDays: {
+        axe: parsed.toolUpgradeDays?.axe ?? (parsed.toolUpgrades?.axe ? 7 : 0),
+        rod: parsed.toolUpgradeDays?.rod ?? (parsed.toolUpgrades?.rod ? 7 : 0),
+      },
+      npcHealedDays: parsed.npcHealedDays ?? {},
+      lastSchoolAttendance: parsed.lastSchoolAttendance ?? "",
+      seasonExcursionCompleted: parsed.seasonExcursionCompleted ?? false,
+    };
+  } catch {
+    return defaults;
+  }
+};
+
 function PixelIcon({ type }: { type: Tool }) {
   return <span className={`tool-symbol tool-${type}`}>{TOOL_INFO[type].icon}</span>;
 }
@@ -468,7 +507,7 @@ export default function FarmGame() {
     const splitVillage = new URLSearchParams(window.location.search).get("splitVillage");
     const isEmbedded = splitVillage === "qinghe" || splitVillage === "maple";
     const village = splitVillage === "maple" ? "maple" : "qinghe";
-    const storageKey = village === "maple" && isEmbedded ? "qinghe-farm-save-maple" : "qinghe-farm-save";
+    const storageKey = villageSaveKey(village);
     setEmbeddedMode(isEmbedded);
     if (isEmbedded) setWorldVillage(village);
     setSaveStorageKey(storageKey);
@@ -522,7 +561,7 @@ export default function FarmGame() {
           });
         }
       } catch {
-        localStorage.removeItem("qinghe-farm-save");
+        localStorage.removeItem(storageKey);
       }
     }
     const savedSession = isEmbedded ? null : localStorage.getItem("qinghe-multiplayer-session");
@@ -535,6 +574,9 @@ export default function FarmGame() {
           setPlayerNameInput(parsed.playerName || "小禾");
           setPreferredVillage(parsed.village);
           setWorldVillage(parsed.village);
+          const accountKey = villageSaveKey(parsed.village);
+          setSaveStorageKey(accountKey);
+          setGame(restoreVillageGame(localStorage.getItem(accountKey)));
         }
       } catch {
         localStorage.removeItem("qinghe-multiplayer-session");
@@ -546,6 +588,27 @@ export default function FarmGame() {
   useEffect(() => {
     if (ready) localStorage.setItem(saveStorageKey, JSON.stringify(game));
   }, [game, ready, saveStorageKey]);
+
+  const switchVillage = useCallback((nextVillage: VillageId) => {
+    if (nextVillage === worldVillage) return;
+    localStorage.setItem(villageSaveKey(worldVillage), JSON.stringify(game));
+    const nextKey = villageSaveKey(nextVillage);
+    const nextGame = restoreVillageGame(localStorage.getItem(nextKey));
+    setSaveStorageKey(nextKey);
+    setGame(nextGame);
+    setWorldVillage(nextVillage);
+    setSelected("hoe");
+    setSelectedResource(null);
+    setSelectedCraftItem(null);
+    setPlantingPinecone(false);
+    setFarmGateOpen(false);
+    setHeldItem(null);
+    setChestOpen(false);
+    setCraftingOpen(false);
+    setActiveBuilding(null);
+    setNeighborInterior(null);
+    setResidentHome(null);
+  }, [game, worldVillage]);
 
   useEffect(() => {
     if (!ready || scene !== "farm" || game.farmVisitor) return;
@@ -738,7 +801,7 @@ export default function FarmGame() {
     }
     if (scene === "eastNeighbor" && dx > 0 && player.x === 11 && worldVillage === "qinghe") {
       const friend = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId && onlinePlayer.online && onlinePlayer.currentVillage === "maple");
-      setWorldVillage("maple");
+      switchVillage("maple");
       setScene(friend?.scene ?? "farm");
       setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x - 1)), y: friend.y } : { x: 0, y: 5 });
       setMessage(friend ? `沿着右边山路到了枫叶村，一进村就看见了${friend.playerName}！` : "沿着右边山路走到了枫叶村！朋友来到同一个场景后就会出现。 ");
@@ -746,7 +809,7 @@ export default function FarmGame() {
     }
     if (scene === "farm" && dx < 0 && player.x === 0 && worldVillage === "maple") {
       const friend = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId && onlinePlayer.online && onlinePlayer.currentVillage === "qinghe");
-      setWorldVillage("qinghe");
+      switchVillage("qinghe");
       setScene(friend?.scene ?? "farm");
       setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x + 1)), y: friend.y } : { x: 11, y: 5 });
       setMessage(friend ? `沿着左边山路到了青禾村，一进村就看见了${friend.playerName}！` : "沿着左边山路到了青禾村。朋友来到同一个场景后就会出现。 ");
@@ -799,7 +862,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, chestOpen, craftingOpen, farmGateOpen, game.day, game.npcHealedDays, game.placedCrafts, multiplayerSession?.deviceId, neighborInterior, onlinePlayers, player, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, chestOpen, craftingOpen, farmGateOpen, game.day, game.npcHealedDays, game.placedCrafts, multiplayerSession?.deviceId, neighborInterior, onlinePlayers, player, residentHome, scene, showWalking, switchVillage, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -2300,7 +2363,7 @@ export default function FarmGame() {
       setOnlinePlayers(result.players);
       setRoomCodeInput(normalizedCode);
       setPreferredVillage(result.village);
-      setWorldVillage(result.village);
+      switchVillage(result.village);
       localStorage.setItem("qinghe-multiplayer-session", JSON.stringify(session));
       setMessage(`已经住进${VILLAGE_INFO[result.village].name}，房间码是 ${normalizedCode}。`);
       setMultiplayerOpen(false);
@@ -2321,7 +2384,7 @@ export default function FarmGame() {
   const leaveMultiplayer = async () => {
     const session = multiplayerSession;
     setMultiplayerSession(null);
-    setWorldVillage("qinghe");
+    switchVillage("qinghe");
     setOnlinePlayers([]);
     setMultiplayerError("");
     localStorage.removeItem("qinghe-multiplayer-session");
@@ -2607,14 +2670,14 @@ export default function FarmGame() {
           <header><div><span>按照游戏实际道路绘制</span><h2 id="village-map-title">青禾谷实际地图</h2></div><button onClick={() => setMapOpen(false)} aria-label="关闭地图">×</button></header>
           <div className="village-map-canvas">
             <i className="map-river" /><i className="actual-route route-farm-town" /><i className="actual-route route-town-east" /><i className="actual-route route-east-maple" /><i className="actual-route route-town-culture" /><i className="actual-route route-culture-north" /><i className="actual-route route-culture-residential" /><i className="actual-route route-town-south" /><i className="map-tree-cluster tree-cluster-one" /><i className="map-tree-cluster tree-cluster-two" />
-            <button className={`map-place map-farm ${activeVillage === "qinghe" && scene === "farm" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("farm", { x: 8, y: 5 }, "青禾农场"); }}><i className="map-scene-picture picture-farm"><em /><em /><em /></i><b>青禾农场</b><span>农舍 · 农田 · 鱼塘</span></button>
-            <button className={`map-place map-town ${activeVillage === "qinghe" && scene === "town" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("town", { x: 5, y: 5 }, "中心街"); }}><i className="map-scene-picture picture-town"><em /><em /><em /></i><b>中心街</b><span>商店和居民建筑</span></button>
-            <button className={`map-place map-culture ${activeVillage === "qinghe" && scene === "cultureDistrict" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("cultureDistrict", { x: 6, y: 7 }, "清河文化街"); }}><i className="map-scene-picture picture-culture"><em /><em /><em /></i><b>清河文化街</b><span>镇公所 · 学校 · 博物馆</span></button>
-            <button className={`map-place map-east ${activeVillage === "qinghe" && scene === "eastNeighbor" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("eastNeighbor", { x: 3, y: 5 }, "林婶的果园小屋"); }}><i className="map-scene-picture picture-orchard"><em /><em /><em /></i><b>东郊果园</b><span>林婶家</span></button>
-            <button className={`map-place map-maple ${activeVillage === "maple" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("maple"); travelFromMap("farm", { x: 1, y: 5 }, "枫叶村"); }}><i className="map-scene-picture picture-maple"><em /><em /><em /></i><b>枫叶村</b><span>从东郊继续向右</span></button>
-            <button className={`map-place map-south ${activeVillage === "qinghe" && scene === "southNeighbor" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("southNeighbor", { x: 6, y: 3 }, "鲁师傅的院子"); }}><i className="map-scene-picture picture-workshop"><em /><em /><em /></i><b>南坡院子</b><span>鲁师傅家</span></button>
-            <button className={`map-place map-north ${activeVillage === "qinghe" && scene === "northNeighbor" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("northNeighbor", { x: 6, y: 5 }, "叶老师的书屋"); }}><i className="map-scene-picture picture-library"><em /><em /><em /></i><b>北林书屋</b><span>叶老师家</span></button>
-            <button className={`map-place map-residential ${activeVillage === "qinghe" && scene === "residentialDistrict" ? "you-are-here" : ""}`} onClick={() => { setWorldVillage("qinghe"); travelFromMap("residentialDistrict", { x: 2, y: 5 }, "青禾住宅坡"); }}><i className="map-scene-picture picture-residential"><em /><em /><em /></i><b>青禾住宅坡</b><span>白医生 · 阿麦 · 周镇长 · 沈馆长 · 助手 · 许老师</span></button>
+            <button className={`map-place map-farm ${activeVillage === "qinghe" && scene === "farm" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("farm", { x: 8, y: 5 }, "青禾农场"); }}><i className="map-scene-picture picture-farm"><em /><em /><em /></i><b>青禾农场</b><span>农舍 · 农田 · 鱼塘</span></button>
+            <button className={`map-place map-town ${activeVillage === "qinghe" && scene === "town" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("town", { x: 5, y: 5 }, "中心街"); }}><i className="map-scene-picture picture-town"><em /><em /><em /></i><b>中心街</b><span>商店和居民建筑</span></button>
+            <button className={`map-place map-culture ${activeVillage === "qinghe" && scene === "cultureDistrict" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("cultureDistrict", { x: 6, y: 7 }, "清河文化街"); }}><i className="map-scene-picture picture-culture"><em /><em /><em /></i><b>清河文化街</b><span>镇公所 · 学校 · 博物馆</span></button>
+            <button className={`map-place map-east ${activeVillage === "qinghe" && scene === "eastNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("eastNeighbor", { x: 3, y: 5 }, "林婶的果园小屋"); }}><i className="map-scene-picture picture-orchard"><em /><em /><em /></i><b>东郊果园</b><span>林婶家</span></button>
+            <button className={`map-place map-maple ${activeVillage === "maple" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("farm", { x: 1, y: 5 }, "枫叶村"); }}><i className="map-scene-picture picture-maple"><em /><em /><em /></i><b>枫叶村</b><span>从东郊继续向右</span></button>
+            <button className={`map-place map-south ${activeVillage === "qinghe" && scene === "southNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("southNeighbor", { x: 6, y: 3 }, "鲁师傅的院子"); }}><i className="map-scene-picture picture-workshop"><em /><em /><em /></i><b>南坡院子</b><span>鲁师傅家</span></button>
+            <button className={`map-place map-north ${activeVillage === "qinghe" && scene === "northNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("northNeighbor", { x: 6, y: 5 }, "叶老师的书屋"); }}><i className="map-scene-picture picture-library"><em /><em /><em /></i><b>北林书屋</b><span>叶老师家</span></button>
+            <button className={`map-place map-residential ${activeVillage === "qinghe" && scene === "residentialDistrict" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("residentialDistrict", { x: 2, y: 5 }, "青禾住宅坡"); }}><i className="map-scene-picture picture-residential"><em /><em /><em /></i><b>青禾住宅坡</b><span>白医生 · 阿麦 · 周镇长 · 沈馆长 · 助手 · 许老师</span></button>
             <div className="map-legend"><span><i />你现在的位置</span><small>点击地图上的场景图可以直接前往</small></div>
           </div>
           <footer><span>中心街向上到文化街；文化街向上去北林，向右就到每位居民都有独立院地的青禾住宅坡。</span><button onClick={() => setMapOpen(false)}>收起地图</button></footer>
@@ -2714,7 +2777,7 @@ export default function FarmGame() {
                 <button className="edge-gate farm-exit" onClick={() => { setScene("town"); setPlayer({ x: 0, y: 5 }); setMessage(`欢迎来到${activeVillageInfo.name}！超市在左上方。`); }} aria-label={`前往${activeVillageInfo.name}`}>
                   <span>{activeVillageInfo.name}</span><b>→</b><small>继续向右走</small>
                 </button>
-                {activeVillage === "maple" && <button className="edge-gate village-crossing crossing-left" onClick={() => { const friend = partner?.online && partner.currentVillage === "qinghe" ? partner : null; setWorldVillage("qinghe"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x + 1)), y: friend.y } : { x: 11, y: 5 }); setMessage(friend ? `到了青禾村，马上看见了${friend.playerName}！` : "沿着左边山路到了青禾村。 "); }}><b>←</b><span>前往青禾村</span><small>{partner?.online && partner.currentVillage === "qinghe" ? `去见${partner.playerName}` : "一直向左走"}</small></button>}
+                {activeVillage === "maple" && <button className="edge-gate village-crossing crossing-left" onClick={() => { const friend = partner?.online && partner.currentVillage === "qinghe" ? partner : null; switchVillage("qinghe"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x + 1)), y: friend.y } : { x: 11, y: 5 }); setMessage(friend ? `到了青禾村，马上看见了${friend.playerName}！` : "沿着左边山路到了青禾村。 "); }}><b>←</b><span>前往青禾村</span><small>{partner?.online && partner.currentVillage === "qinghe" ? `去见${partner.playerName}` : "一直向左走"}</small></button>}
               </>
             ) : scene === "town" ? (
               <>
@@ -2765,7 +2828,7 @@ export default function FarmGame() {
                 <button style={personClothesStyle(scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师")} className={`npc-villager npc-${scene} ${isNpcSick(scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师") ? "sick-npc" : ""}`} onClick={() => talkToNeighbor(scene as NeighborScene)} aria-label="和居民人机说话或送礼"><i className="npc-hair" /><i className="npc-head" /><i className="npc-body" /><span>{scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师"}<small>{heldItem ? `点击送出${carriedItemName}` : "点击交谈"}</small></span></button>
                 <div className="neighbor-decor"><i /><i /><i /></div>
                 <button className={`edge-gate neighbor-return return-${scene}`} onClick={() => { if (scene === "northNeighbor") { setScene("cultureDistrict"); setPlayer({ x: 6, y: 0 }); setMessage("从北林书屋回到清河文化街。 "); } else { setScene("town"); setPlayer(scene === "eastNeighbor" ? { x: 11, y: 5 } : { x: 6, y: 7 }); setMessage("回到青禾镇中心街。"); } }}><b>{scene === "eastNeighbor" ? "←" : scene === "southNeighbor" ? "↑" : "↓"}</b><span>{scene === "northNeighbor" ? "返回文化街" : "返回青禾镇"}</span><small>{scene === "northNeighbor" ? "北林在文化街后面" : "走到边缘也能返回"}</small></button>
-                {scene === "eastNeighbor" && activeVillage === "qinghe" && <button className="edge-gate village-crossing crossing-right" onClick={() => { const friend = partner?.online && partner.currentVillage === "maple" ? partner : null; setWorldVillage("maple"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x - 1)), y: friend.y } : { x: 0, y: 5 }); setMessage(friend ? `到了枫叶村，马上看见了${friend.playerName}！` : "沿着右边山路走到了枫叶村！"); }}><span>前往枫叶村</span><b>→</b><small>{partner?.online && partner.currentVillage === "maple" ? `去见${partner.playerName}` : "一直向右走"}</small></button>}
+                {scene === "eastNeighbor" && activeVillage === "qinghe" && <button className="edge-gate village-crossing crossing-right" onClick={() => { const friend = partner?.online && partner.currentVillage === "maple" ? partner : null; switchVillage("maple"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x - 1)), y: friend.y } : { x: 0, y: 5 }); setMessage(friend ? `到了枫叶村，马上看见了${friend.playerName}！` : "沿着右边山路走到了枫叶村！"); }}><span>前往枫叶村</span><b>→</b><small>{partner?.online && partner.currentVillage === "maple" ? `去见${partner.playerName}` : "一直向右走"}</small></button>}
               </>
             )}
 
