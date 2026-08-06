@@ -38,6 +38,87 @@
   transform: translateY(-3px);
 }
 
+/* The crafted items use the empty second row instead of crowding the right side. */
+.world-card > .toolbar {
+  align-items: flex-start;
+  overflow-x: hidden;
+}
+
+.toolbar-content {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 9px;
+}
+
+.toolbar-primary-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  overflow-x: auto;
+  padding-top: 2px;
+  scrollbar-width: thin;
+}
+
+.toolbar-content > .crafted-backpack {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 58px);
+  grid-auto-rows: 54px;
+  justify-content: start;
+  gap: 5px;
+  width: 100%;
+  max-height: none;
+  overflow: visible;
+  padding: 9px 0 0;
+  border-top: 1px solid #d9cdb2;
+  border-left: 0;
+}
+
+.planted-pine-tree.watered::after {
+  content: "水";
+  position: absolute;
+  z-index: 7;
+  right: -7px;
+  top: -7px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #e7fbff;
+  border-radius: 50% 50% 50% 15%;
+  color: white;
+  background: #54a9c5;
+  box-shadow: 0 3px 7px rgba(46,103,123,.3);
+  font-size: 7px;
+  font-weight: 900;
+  transform: rotate(12deg);
+}
+
+.home-storage-chest {
+  z-index: 12;
+  right: 30%;
+  top: 38%;
+}
+
+.home-storage-chest::after {
+  content: "收纳箱";
+  position: absolute;
+  left: 50%;
+  top: 31px;
+  transform: translateX(-50%);
+  padding: 2px 5px;
+  border-radius: 5px;
+  color: #fff9e8;
+  background: rgba(91,63,43,.9);
+  font-size: 6px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.school-bus { position: absolute; z-index: 12; right: 5%; top: 90px; width: 116px; height: 58px; padding: 5px 8px 5px 42px; border: 4px solid #9b5c2d; border-radius: 12px 12px 7px 7px; color: #684322; background: #f2b84b; box-shadow: inset 0 -10px #d88c35,0 6px rgba(71,50,31,.22); cursor: pointer; text-align: left; }.school-bus i { position: absolute; left: 9px; top: 9px; width: 27px; height: 20px; border-radius: 4px; background: #9ed0dd; border: 3px solid #6a4933; }.school-bus::before,.school-bus::after { content: ""; position: absolute; bottom: -10px; width: 17px; height: 17px; border-radius: 50%; background: #4e4b46; border: 4px solid #2f312f; }.school-bus::before { left: 15px; }.school-bus::after { right: 15px; }.school-bus span,.school-bus small { display: block; }.school-bus span { font-size: 8px; font-weight: 900; }.school-bus small { margin-top: 3px; font-size: 6px; }
+.amusement-overlay { z-index: 190; background: rgba(31,58,45,.32); }.amusement-panel { width: min(760px,94%); overflow: hidden; border: 6px solid #fff0c4; border-radius: 22px; background: #fff8df; box-shadow: 0 24px 60px rgba(36,57,42,.38); }.amusement-panel > header { height: 66px; padding: 11px 16px; display: flex; align-items: center; justify-content: space-between; color: white; background: #62995d; }.amusement-panel header span,.amusement-panel header h2 { display: block; margin: 0; }.amusement-panel header span { font-size: 8px; }.amusement-panel header h2 { margin-top: 2px; font-size: 20px; }.amusement-panel header button { width: 34px; height: 34px; border: 0; border-radius: 10px; cursor: pointer; color: #56704f; background: #fff3c8; font-size: 19px; }.amusement-scene { position: relative; height: 300px; overflow: hidden; background: linear-gradient(#8ed4ec 0 45%,#93c96c 45% 100%); }.ferris-wheel { position: absolute; left: 10%; top: 31px; width: 190px; height: 190px; border: 10px solid #d66d5d; border-radius: 50%; box-shadow: inset 0 0 0 5px #fff1b3; animation: ferrisSpin 12s linear infinite; }.ferris-wheel::before,.ferris-wheel::after { content: ""; position: absolute; left: 50%; top: 50%; width: 164px; height: 7px; transform: translate(-50%,-50%); background: #d66d5d; }.ferris-wheel::after { transform: translate(-50%,-50%) rotate(90deg); }.ferris-wheel i { position: absolute; width: 30px; height: 27px; border-radius: 8px; background: #ffe27c; border: 4px solid #76513c; }.ferris-wheel i:nth-child(1) { left: 50%; top: -16px; }.ferris-wheel i:nth-child(2) { right: -16px; top: 50%; }.ferris-wheel i:nth-child(3) { left: 50%; bottom: -16px; }.ferris-wheel i:nth-child(4) { left: -16px; top: 50%; }@keyframes ferrisSpin { to { transform: rotate(360deg); } }.carousel { position: absolute; right: 11%; bottom: 44px; width: 210px; height: 98px; border-radius: 50% 50% 14px 14px; background: #e9a84d; border: 7px solid #8c5b3b; box-shadow: inset 0 -18px #c67642; }.carousel::before { content: ""; position: absolute; left: 50%; top: -74px; width: 170px; height: 78px; transform: translateX(-50%); clip-path: polygon(50% 0,100% 100%,0 100%); background: repeating-linear-gradient(90deg,#e16862 0 22px,#fff0af 22px 44px); }.carousel i { position: absolute; bottom: 8px; width: 11px; height: 48px; background: #f6dc8d; border: 3px solid #7b543a; }.carousel i:nth-child(1) { left: 34px; }.carousel i:nth-child(2) { left: 94px; }.carousel i:nth-child(3) { right: 34px; }.park-bus { position: absolute; left: 39%; bottom: 18px; width: 118px; height: 58px; border-radius: 12px; background: #f1b143; border: 5px solid #8b5835; box-shadow: inset 0 -11px #d77f37; }.park-bus i { position: absolute; left: 9px; top: 8px; width: 55px; height: 20px; background: #a8d7e3; border: 3px solid #70503a; }.park-bus b { position: absolute; left: 16px; bottom: -12px; width: 17px; height: 17px; border-radius: 50%; background: #3f4140; box-shadow: 68px 0 #3f4140; }.park-bus span { position: absolute; right: 6px; top: 10px; width: 40px; font-size: 6px; font-weight: 900; }.park-students { position: absolute; left: 38%; top: 47px; width: 140px; display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; }.park-students span { padding: 5px 3px; border-radius: 9px; color: white; background: #67895f; border: 2px solid white; font-size: 6px; text-align: center; }.amusement-actions { padding: 12px; display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; }.amusement-actions button { padding: 10px; border: 0; border-radius: 10px; color: white; background: #628d5b; cursor: pointer; font-size: 9px; font-weight: 900; }.amusement-actions button:last-child { background: #bd7545; }
+
 * { box-sizing: border-box; }
 
 html, body { min-height: 100%; }

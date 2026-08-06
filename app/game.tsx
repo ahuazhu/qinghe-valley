@@ -17,7 +17,7 @@ type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "watermelonSeeds" |
 type CraftType = "chest" | "fence" | "scarecrow" | "lamp" | "bench" | "sign";
 type CraftRotation = 0 | 45 | 90;
 type PlacedCraft = { id: string; type: CraftType; x: number; y: number; rotation: CraftRotation };
-type PlantedTree = { id: string; x: number; y: number; stage: number };
+type PlantedTree = { id: string; x: number; y: number; stage: number; watered: boolean };
 type FencePlacementSlot = { id: string; x: number; y: number; rotation: 0 | 90 };
 type ForestItem = "pinecone" | "pineNut";
 type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
@@ -257,6 +257,7 @@ const PERSON_DIALOGUES: Record<string, string> = {
 const PERSON_CLOTHES: Record<string, string> = {
   林婶: "#b85c55", 鲁师傅: "#8a6848", 叶老师: "#77618e", 白医生: "#e8eee7", 阿麦: "#d68a45", 周镇长: "#526f91", 沈馆长: "#39766f", 诊所助手: "#c74646", 红衣助手: "#c74646", 许老师: "#4f7d66",
   小玲: "#dc7081", 豆豆: "#5f83b5", 小满: "#e29b45", 阿禾: "#6e9d58", 小树: "#8169a0", 安安: "#4d9c9a",
+  小桃: "#d9798b", 阿木: "#6f8d58", 小文: "#6d79a9", 小麦: "#d8a144", 小程: "#5e88a5", 小岚: "#499184", 小晴: "#9a6fa6",
 };
 const personClothesStyle = (name: string) => ({ "--npc-clothes": PERSON_CLOTHES[name] ?? "#6b8b68" } as CSSProperties);
 
@@ -284,6 +285,16 @@ const NPC_SICK_DAYS: Record<string, number[]> = {
   沈馆长: [15],
   诊所助手: [14],
   许老师: [21],
+};
+const RELIEF_WORKERS: Record<string, { name: string; greeting: string }> = {
+  林婶: { name: "小桃", greeting: "林婶今天在家休息，我来替她照看超市。平时我就和林婶住在果园小屋里。" },
+  鲁师傅: { name: "阿木", greeting: "鲁师傅今天在家休息，我来替他照看工坊。平时我们一起住在山脚院子里。" },
+  叶老师: { name: "小文", greeting: "叶老师今天在家休息，我来替他管理图书馆。平时我们一起住在北林书屋。" },
+  白医生: { name: "诊所助手", greeting: "白医生今天在家休息，我穿上红色制服来诊所代班。平时我和白医生住在同一个青草小院。" },
+  阿麦: { name: "小麦", greeting: "阿麦今天在家休息，我来替他准备咖啡和点心。平时我们一起住在麦香小屋。" },
+  周镇长: { name: "小程", greeting: "周镇长今天在家休息，我来替他处理镇务。平时我们一起住在石榴院。" },
+  沈馆长: { name: "小岚", greeting: "沈馆长今天在家休息，我来替他照看展柜。平时我们一起住在藏品小宅。" },
+  许老师: { name: "小晴", greeting: "许老师今天在家休息，我来替她给大家上课。平时我们一起住在书香小院。" },
 };
 const RESIDENT_HOMES: { owner: ResidentHomeOwner; home: string; greeting: string; items: string[] }[] = [
   { owner: "白医生", home: "白医生的青草小院", greeting: "下班后我会回到自己的小院。生病时也会留在家里休息。", items: ["医药书架", "草药茶桌", "白色床铺"] },
@@ -410,6 +421,7 @@ export default function FarmGame() {
   const [neighborInterior, setNeighborInterior] = useState<NeighborScene | null>(null);
   const [residentHome, setResidentHome] = useState<ResidentHomeOwner | null>(null);
   const [festivalDisplay, setFestivalDisplay] = useState<"wood" | null>(null);
+  const [amusementOpen, setAmusementOpen] = useState(false);
   const [festivalMusicPlaying, setFestivalMusicPlaying] = useState(false);
   const [heldItem, setHeldItem] = useState<CarriedItem | null>(null);
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -482,7 +494,7 @@ export default function FarmGame() {
             pineNuts: parsed.pineNuts ?? 0,
             groundSupplies: defaults.groundSupplies.map((defaultVisible, index) => parsed.groundSupplies?.[index] ?? defaultVisible),
             treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
-            plantedTrees: parsed.plantedTrees ?? [],
+            plantedTrees: (parsed.plantedTrees ?? []).map((tree) => ({ ...tree, watered: tree.watered ?? false })),
             rockStates: defaults.rockStates.map((defaultStanding, index) => parsed.rockStates?.[index] ?? defaultStanding),
             crafted: { ...defaults.crafted, ...(parsed.crafted ?? {}) },
             placedCrafts: parsed.placedCrafts ?? [],
@@ -530,6 +542,24 @@ export default function FarmGame() {
   }, [game, ready, saveStorageKey]);
 
   useEffect(() => {
+    if (!ready || scene !== "farm" || game.farmVisitor) return;
+    const youngCropIndex = game.tiles.findIndex((tile) => tile.state === "crop" && tile.stage <= 1);
+    if (youngCropIndex < 0) return;
+    const distanceFromField = Math.hypot(player.x - 6, player.y - 5);
+    if (distanceFromField < 5) return;
+    const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length;
+    const scarecrowCount = game.placedCrafts.filter((craft) => craft.type === "scarecrow").length;
+    if (fenceCount >= 8 || scarecrowCount >= 1 || game.upgrades.stoneWall > 0) return;
+    setGame((current) => ({
+      ...current,
+      farmVisitor: "animal",
+      tiles: current.tiles.map((tile, index) => index === youngCropIndex ? { state: "soil", stage: 0, watered: false } : tile),
+    }));
+    setMessage("小禾离农田超过五格，一只小动物马上跑进来偷吃了 1 株幼苗！围好 8 段围栏、放稻草人或修石墙就能保护它们。 ");
+    playTone(220);
+  }, [game.farmVisitor, game.placedCrafts, game.tiles, game.upgrades.stoneWall, player.x, player.y, ready, scene]);
+
+  useEffect(() => {
     multiplayerStatusRef.current = { player, game };
   }, [game, player]);
 
@@ -549,6 +579,7 @@ export default function FarmGame() {
           ...data.save,
           inventory: { ...defaults.inventory, ...(data.save.inventory ?? {}) },
           chestStorage: { ...defaults.chestStorage, ...(data.save.chestStorage ?? {}) },
+          plantedTrees: (data.save.plantedTrees ?? []).map((tree) => ({ ...tree, watered: tree.watered ?? false })),
           crafted: { ...defaults.crafted, ...(data.save.crafted ?? {}) },
           upgrades: { ...defaults.upgrades, ...(data.save.upgrades ?? {}) },
           builderSupplies: { ...defaults.builderSupplies, ...(data.save.builderSupplies ?? {}) },
@@ -1029,8 +1060,30 @@ export default function FarmGame() {
 
   const chopPlantedTree = (tree: PlantedTree) => {
     if (tree.stage < 3) {
-      setMessage(`这棵松树还在生长，现在是第 ${tree.stage + 1} 阶段，再等 ${3 - tree.stage} 天就会长成大树。`);
-      playTone(420);
+      if (selected !== "water") {
+        setMessage(`这棵松树还在生长，现在是第 ${tree.stage + 1} 阶段。选择洒水壶给它浇水，睡到明天才会长大。`);
+        playTone(420);
+        return;
+      }
+      if (game.water <= 0) {
+        setMessage("水壶空了，明早会自动装满，再来给松树苗浇水吧。 ");
+        playTone(220);
+        return;
+      }
+      if (tree.watered) {
+        setMessage("这棵松树苗今天已经喝饱水了，睡到明天就会长大一点。 ");
+        return;
+      }
+      setGame((current) => ({
+        ...current,
+        water: current.water - 1,
+        energy: Math.max(0, current.energy - 1),
+        wateredCount: current.wateredCount + 1,
+        daily: { ...current.daily, watered: current.daily.watered + 1 },
+        plantedTrees: current.plantedTrees.map((plantedTree) => plantedTree.id === tree.id ? { ...plantedTree, watered: true } : plantedTree),
+      }));
+      setMessage("给松树苗浇好水了！叶片上亮着水珠，睡到明天就会长高。 ");
+      playTone(620);
       return;
     }
     if (selected !== "axe") {
@@ -1864,6 +1917,7 @@ export default function FarmGame() {
   const leaveBuilding = () => {
     if (!activeBuilding) return;
     const building = BUILDING_INFO[activeBuilding];
+    setAmusementOpen(false);
     setActiveBuilding(null);
     setInspectedItem(null);
     setPlayer(building.exit);
@@ -1944,6 +1998,13 @@ export default function FarmGame() {
       setMessage("免费参观鲁师傅的手工作品：鸟屋、小木马和山谷木雕都摆在展示台上。 ");
       playTone(440);
     } else if (building === "school") {
+      if (isExcursionDay) {
+        setAmusementOpen(true);
+        setGame((current) => ({ ...current, hour: Math.min(24, current.hour + 1) }));
+        setMessage(`${game.season === 0 ? "春游" : "秋游"}出发啦！大家坐上学校大巴，来到了青禾游乐园。`);
+        playTone(880);
+        return;
+      }
       const weekdayIndex = (game.day - 1) % 7;
       const schoolDay = [0, 2, 4, 6].includes(weekdayIndex);
       const attendanceKey = `${game.season}-${game.day}`;
@@ -2028,7 +2089,7 @@ export default function FarmGame() {
       ? "早上七点醒来，小禾看起来没什么精神，嘴角变成了伤心的样子。"
       : remainsSick
         ? "早上七点了，小禾的表情仍然有些伤心。"
-        : `早上七点了！${game.day === 28 ? `新的${SEASONS[nextSeason]}开始了。` : ""}浇过水的作物长大了，松果树苗也长高了一点。`;
+        : `早上七点了！${game.day === 28 ? `新的${SEASONS[nextSeason]}开始了。` : ""}浇过水的作物和松果树苗都长大了一点。`;
     const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${visitorMessage}`;
     setGame((current) => {
       const treeStates = [...current.treeStates];
@@ -2078,7 +2139,7 @@ export default function FarmGame() {
         toolUpgradeDays,
         farmVisitor,
         treeStates,
-        plantedTrees: current.plantedTrees.map((tree) => ({ ...tree, stage: Math.min(3, tree.stage + 1) })),
+        plantedTrees: current.plantedTrees.map((tree) => ({ ...tree, stage: tree.watered ? Math.min(3, tree.stage + 1) : tree.stage, watered: false })),
         rockStates,
         groundBooks,
         groundArtifacts,
@@ -2330,10 +2391,13 @@ export default function FarmGame() {
   const sceneLabel = scene === "farm" ? activeVillageInfo.farm : scene === "town" ? `${activeVillageInfo.name} · 中心街` : scene === "cultureDistrict" ? `${activeVillageInfo.name} · 清河文化街` : scene === "residentialDistrict" ? `${activeVillageInfo.name} · 青禾住宅坡` : scene === "eastNeighbor" ? "东郊 · 林婶的果园小屋" : scene === "southNeighbor" ? "南坡 · 鲁师傅的院子" : "北林 · 叶老师的书屋";
   const isNpcSick = (name: string) => (NPC_SICK_DAYS[name]?.includes(game.day) ?? false) && game.npcHealedDays[name] !== game.day;
   const doctorIsRestingAtHome = isNpcSick("白医生");
-  const activeBuildingOwner = activeBuilding === "clinic" && doctorIsRestingAtHome ? "红衣助手" : activeBuilding ? BUILDING_INFO[activeBuilding].owner : "";
-  const activeBuildingGreeting = activeBuilding === "clinic" && doctorIsRestingAtHome
-    ? "白医生今天生病了，正在自己的家里休息。我穿红色制服来诊所代班，检查和开药都可以正常进行。"
-    : activeBuilding ? BUILDING_INFO[activeBuilding].greeting : "";
+  const originalBuildingOwner = activeBuilding ? BUILDING_INFO[activeBuilding].owner : "";
+  const activeReliefWorker = originalBuildingOwner && isNpcSick(originalBuildingOwner) ? RELIEF_WORKERS[originalBuildingOwner] : null;
+  const activeBuildingOwner = activeReliefWorker?.name ?? originalBuildingOwner;
+  const activeBuildingGreeting = activeReliefWorker?.greeting ?? (activeBuilding ? BUILDING_INFO[activeBuilding].greeting : "");
+  const supermarketReliefWorker = isNpcSick("林婶") ? RELIEF_WORKERS["林婶"] : null;
+  const supermarketClerk = supermarketReliefWorker?.name ?? "林婶";
+  const isExcursionDay = (game.season === 0 || game.season === 2) && game.day === 10;
   const residentHomeInfo = residentHome ? RESIDENT_HOMES.find((home) => home.owner === residentHome) ?? null : null;
   const residentHomeGreeting = residentHome === "白医生" && doctorIsRestingAtHome
     ? "我今天生病了，所以留在自己的家里休息。谢谢你来看我，诊所由穿红色制服的助手代班。"
@@ -2381,10 +2445,10 @@ export default function FarmGame() {
         setMessage("这里离另一棵树太近了，换一块绿色草地吧。 ");
         return;
       }
-      const plantedTree: PlantedTree = { id: `pine-tree-${Date.now()}`, x: treeX, y: treeY, stage: 0 };
+      const plantedTree: PlantedTree = { id: `pine-tree-${Date.now()}`, x: treeX, y: treeY, stage: 0, watered: false };
       setGame((current) => ({ ...current, pinecones: Math.max(0, current.pinecones - 1), plantedTrees: [...current.plantedTrees, plantedTree] }));
       if (game.pinecones <= 1) setPlantingPinecone(false);
-      setMessage("松果种进绿色草地里了！现在是一棵小树苗，每睡一天都会长大一点。 ");
+      setMessage("松果种进绿色草地里了！现在是一棵小树苗，记得用洒水壶浇水，睡到明天才会长大。 ");
       playTone(720);
       return;
     }
@@ -2543,11 +2607,12 @@ export default function FarmGame() {
                 {fishingPhase === "reeling" && <div className="fishing-challenge" onClick={(event) => event.stopPropagation()}><header><span>提竿小游戏</span><b>{fishingScore}/3</b></header><p>等红色游标进入绿色区域时，点击提竿！</p><div className="fishing-timing-bar"><i className={game.toolUpgrades.rod ? "lucky-zone" : ""} /><b style={{ left: `${fishingMarker}%` }} /></div><button onClick={attemptReel}>提竿！</button><small>{game.toolUpgrades.rod ? "幸运鱼竿：咬钩更快，成功区域更宽" : "连续命中 3 次才能把鱼钓上来"}</small></div>}
                 {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：钓鱼节开始啦，鱼塘边来了好多村民！`)}><i /><b /><span>{name}</span></button>)}</div>}
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" /><span className="sign">{displayName}的农舍{game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
+                <button className={`crafted-object crafted-chest home-storage-chest ${selectedResource ? "ready-to-store" : ""}`} onClick={() => { if (selected === "axe") { setMessage("这是农舍旁边固定的收纳木箱，不会被斧头拆掉。 "); return; } useChest(); }} aria-label={`农舍旁的木箱，内有 ${Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)} 件物品`}><i /><b>{Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)}</b></button>
                 {game.rockStates.map((standing, index) => <button key={`rock-${index}`} className={`farm-rock rock-${index + 1} ${standing ? "" : "broken"}`} onClick={() => breakRock(index)} aria-label={standing ? `敲碎第 ${index + 1} 块石头` : `第 ${index + 1} 处碎石`} />)}
                 {game.treeStates.map((standing, index) => (
                   <button key={index} className={`tree tree-${["a", "b", "c", "d"][index]} ${standing ? "" : "stump"}`} onClick={() => chopTree(index)} aria-label={standing ? `砍伐第 ${index + 1} 棵树` : `第 ${index + 1} 个树桩`} />
                 ))}
-                {game.plantedTrees.map((tree) => <button key={tree.id} className={`planted-pine-tree pine-stage-${tree.stage}`} style={{ left: `${tree.x}%`, top: `${tree.y}%` }} onClick={() => chopPlantedTree(tree)} aria-label={tree.stage >= 3 ? "松果种出的成熟松树" : `正在生长的松树苗，第 ${tree.stage + 1} 阶段`}><i /><i /><b /><span>{tree.stage >= 3 ? "大树" : "树苗"}</span></button>)}
+                {game.plantedTrees.map((tree) => <button key={tree.id} className={`planted-pine-tree pine-stage-${tree.stage} ${tree.watered ? "watered" : ""}`} style={{ left: `${tree.x}%`, top: `${tree.y}%` }} onClick={() => chopPlantedTree(tree)} aria-label={tree.stage >= 3 ? "松果种出的成熟松树" : `正在生长的松树苗，第 ${tree.stage + 1} 阶段，${tree.watered ? "今天已经浇水" : "今天还没浇水"}`}><i /><i /><b /><span>{tree.stage >= 3 ? "大树" : tree.watered ? "已浇水" : "需要浇水"}</span></button>)}
                 <div className="flowers flowers-a">✿ · ✿</div><div className="flowers flowers-b">· ✿ ·</div>
                 {selectedCraftItem === "fence" && FENCE_PLACEMENT_SLOTS.map((slot) => { const occupied = game.placedCrafts.some((craft) => craft.type === "fence" && Math.abs(craft.x - slot.x) < 1 && Math.abs(craft.y - slot.y) < 1); return <button key={slot.id} className={`fence-placement-slot ${slot.rotation === 90 ? "slot-vertical" : "slot-horizontal"} ${occupied ? "occupied" : ""}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={(event) => { event.stopPropagation(); placeFenceInSlot(slot); }} disabled={occupied} aria-label={occupied ? "这里已经放有围栏" : "点击在绿色位置放置木围栏"}><i /><span>{occupied ? "已放" : "+"}</span></button>; })}
                 {game.placedCrafts.map((craft) => <button key={craft.id} className={`placed-craft placed-${craft.type} ${craft.type === "fence" && craft.rotation === 90 ? "fence-vertical" : ""} ${craft.type === "lamp" && isNight ? "placed-lamp-lit" : ""}`} style={{ left: `${craft.x}%`, top: `${craft.y}%`, transform: `translate(-50%,-50%) rotate(${craft.rotation}deg)` }} onClick={(event) => { event.stopPropagation(); usePlacedCraft(craft); }} aria-label={`${CRAFT_RECIPES[craft.type].name}，${selected === "axe" ? "点击拆除" : "点击使用或查看"}`}><i /><i /><i /><b>{craft.type === "chest" ? Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0) : ""}</b></button>)}
@@ -2792,7 +2857,7 @@ export default function FarmGame() {
               <div className="shop-overlay" role="presentation">
                 <section className="shop-panel" role="dialog" aria-modal="true" aria-labelledby="shop-title">
                   <header><div><span>青禾镇杂货</span><h2 id="shop-title">青禾超市</h2></div><div className="shop-wallet"><small>你的金币</small><strong>● {game.coins}</strong></div><button onClick={leaveBuilding} aria-label="离开商店">×</button></header>
-                  <div className="shopkeeper"><button className={`shopkeeper-face ${isNpcSick("林婶") ? "sick-npc" : ""}`} onClick={() => interactWithPerson("林婶", "林婶：欢迎呀，小禾！今天想带点什么回农场？")} aria-label={heldItem ? `把${carriedItemName}送给林婶` : "和林婶交谈"}><i /><b /></button><p><strong>林婶</strong>{heldItem ? `小禾正举着${carriedItemName}，点击林婶就能送给她。` : isNpcSick("林婶") ? "今天有点不舒服，正在柜台后休息。" : game.day === 3 ? "种子分享日快乐！今天所有水果和蔬菜种子都免费。" : "欢迎呀，小禾！今天想带点什么回农场？"}</p><div className={`player indoor-player indoor-shop-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: "0" }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div></div>
+                  <div className="shopkeeper"><button style={personClothesStyle(supermarketClerk)} className={`shopkeeper-face ${supermarketReliefWorker ? "relief-worker" : ""}`} onClick={() => interactWithPerson(supermarketClerk, `${supermarketClerk}：${supermarketReliefWorker?.greeting ?? "欢迎呀，小禾！今天想带点什么回农场？"}`)} aria-label={heldItem ? `把${carriedItemName}送给${supermarketClerk}` : `和${supermarketClerk}交谈`}><i /><b /></button><p><strong>{supermarketClerk}{supermarketReliefWorker ? " · 今日代班" : ""}</strong>{heldItem ? `小禾正举着${carriedItemName}，点击${supermarketClerk}就能送给他。` : supermarketReliefWorker?.greeting ?? (game.day === 3 ? "种子分享日快乐！今天所有水果和蔬菜种子都免费。" : "欢迎呀，小禾！今天想带点什么回农场？")}</p><div className={`player indoor-player indoor-shop-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: "0" }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div></div>
                   {game.day === 3 && <><div className="free-seed-festival"><strong>种子分享日 · 全部免费</strong><span>西瓜、番茄、土豆、南瓜、蓝莓等 8 种种子</span><button onClick={takeFreeSeedBundle}>免费领取 8 种种子大礼包</button></div><div className="shop-festival-guests" aria-label="参加种子分享日的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={isNpcSick(name) ? "sick-npc" : ""} onClick={() => interactWithPerson(name, `${name}：种子分享日真热闹，大家都领到了喜欢的种子！`)}><i /><b /><span>{name}</span></button>)}</div></>}
                   <div className="product-grid">
                     {CROP_TYPES.map((crop) => <article className="product-card" key={crop}><span className={`product-icon ${crop}-seeds`}>{CROP_INFO[crop].short}</span><div><strong>{CROP_INFO[crop].name}种子包</strong><small>内含 5 颗种子</small></div><button className={game.day === 3 ? "free-shop-button" : ""} onClick={() => buyItem(CROP_INFO[crop].seedField)}>{game.day === 3 ? "免费" : <><span>●</span>{CROP_INFO[crop].seedPrice}</>}</button></article>)}
@@ -2825,9 +2890,9 @@ export default function FarmGame() {
                     <div className="room-window"><i /><i /></div>
                     <div className="room-rug" />
                     <div className="room-furniture"><i /><i /><i /></div>
-                    {activeBuilding === "school" && <><div className="school-blackboard"><strong>{isSchoolDay ? "今日课堂" : "课程表"}</strong><span>{isSchoolDay ? ["A B C · 英语", "阅读与写字 · 语文", "加减乘除 · 数学", "种植与浇水 · 农场知识"][Math.floor((game.day - 1) / 2) % 4] : "周一 · 周三 · 周五 · 周日上课"}</span><i /></div><div className="school-desks" aria-label={isSchoolDay ? "同学们坐在课桌前听课" : "今天空着的课桌椅"}>{SCHOOL_STUDENTS.map((student, index) => <button key={student} style={personClothesStyle(student)} className={`classroom-seat seat-${index + 1} ${isSchoolDay ? "student-seated" : "empty-seat"}`} disabled={!isSchoolDay} onClick={(event) => { event.stopPropagation(); interactWithPerson(student, `${student}：我正在认真听许老师讲课，今天学到了很多新知识！`); }} aria-label={isSchoolDay ? `${student}坐在课桌前听课` : "空课桌"}><i /><em /><b /><span>{isSchoolDay ? student : "空座位"}</span></button>)}</div></>}
-                    <button style={personClothesStyle(activeBuildingOwner)} className={`npc-character ${activeBuilding === "clinic" && doctorIsRestingAtHome ? "clinic-relief-assistant" : isNpcSick(BUILDING_INFO[activeBuilding].owner) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(activeBuildingOwner, `${activeBuildingOwner}：${activeBuildingGreeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${activeBuildingOwner}` : `和${activeBuildingOwner}交谈`}><span className="npc-hair" /><span className="npc-face" /><span className="npc-body" /></button>
-                    {activeBuilding === "clinic" && doctorIsRestingAtHome && <div className="clinic-relief-note"><strong>助手代班</strong><span>白医生在自己家休息</span></div>}
+                    {activeBuilding === "school" && <><div className="school-blackboard"><strong>{isExcursionDay ? (game.season === 0 ? "今日春游" : "今日秋游") : isSchoolDay ? "今日课堂" : "课程表"}</strong><span>{isExcursionDay ? "到校集合 · 坐大巴去青禾游乐园" : isSchoolDay ? ["A B C · 英语", "阅读与写字 · 语文", "加减乘除 · 数学", "种植与浇水 · 农场知识"][Math.floor((game.day - 1) / 2) % 4] : "周一 · 周三 · 周五 · 周日上课"}</span><i /></div>{isExcursionDay && <button className="school-bus" onClick={() => useBuildingService("school")}><i /><b /><span>春秋游大巴</span><small>点击上车</small></button>}<div className="school-desks" aria-label={isSchoolDay ? "同学们坐在课桌前听课" : "今天空着的课桌椅"}>{SCHOOL_STUDENTS.map((student, index) => <button key={student} style={personClothesStyle(student)} className={`classroom-seat seat-${index + 1} ${isSchoolDay ? "student-seated" : "empty-seat"}`} disabled={!isSchoolDay} onClick={(event) => { event.stopPropagation(); interactWithPerson(student, `${student}：我正在认真听许老师讲课，今天学到了很多新知识！`); }} aria-label={isSchoolDay ? `${student}坐在课桌前听课` : "空课桌"}><i /><em /><b /><span>{isSchoolDay ? student : "空座位"}</span></button>)}</div></>}
+                    <button style={personClothesStyle(activeBuildingOwner)} className={`npc-character ${activeReliefWorker ? "clinic-relief-assistant relief-worker" : ""}`} onClick={() => interactWithPerson(activeBuildingOwner, `${activeBuildingOwner}：${activeBuildingGreeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${activeBuildingOwner}` : `和${activeBuildingOwner}交谈`}><span className="npc-hair" /><span className="npc-face" /><span className="npc-body" /></button>
+                    {activeReliefWorker && <div className="clinic-relief-note"><strong>{activeReliefWorker.name}代班</strong><span>{originalBuildingOwner}在家休息 · 两人平时住在一起</span></div>}
                     {((activeBuilding === "cafe" && currentFestival?.id === "coffee") || (activeBuilding === "workshop" && currentFestival?.id === "craft")) && <div className={`festival-indoor-guests guests-${activeBuilding}`} aria-label={`参加${currentFestival.name}的居民`}>{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`indoor-guest guest-${index + 1} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：${currentFestival.name}真热闹，屋里坐满了村民！`)}><i /><b /><span>{name}</span></button>)}</div>}
                     <div className="interior-counter" />
                     <div className="interior-sign">{activeBuilding === "townhall" ? "公告" : activeBuilding === "clinic" ? "健康" : activeBuilding === "cafe" ? "今日菜单" : activeBuilding === "workshop" ? "制作台" : activeBuilding === "museum" ? "山谷馆藏" : activeBuilding === "school" ? "今日课堂" : "农事图鉴"}</div>
@@ -2838,15 +2903,25 @@ export default function FarmGame() {
                     </div>
                     <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在房子里面">{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
-                  <div className={`service-dialogue ${activeBuilding === "clinic" && doctorIsRestingAtHome ? "relief-dialogue" : ""}`}><strong>{activeBuildingOwner}</strong><p>{activeBuildingGreeting}</p></div>
+                  <div className={`service-dialogue ${activeReliefWorker ? "relief-dialogue" : ""}`}><strong>{activeBuildingOwner}{activeReliefWorker ? " · 代班" : ""}</strong><p>{activeBuildingGreeting}</p></div>
                   {inspectedItem && (
                     <div className={`inspection-card ${inspectedArtifactIndex >= 0 ? "artifact-inspection-card" : ""}`}>{inspectedArtifactIndex >= 0 && <div className={`artifact-inspection-image artifact-preview-${inspectedArtifactIndex + 1}`}><img src="/museum-artifacts.png" alt={inspectedItem} draggable={false} /></div>}<div><strong>{inspectedItem}</strong><p>{inspectedItem === "药品柜" ? (!game.diagnosed ? `要先接受${activeBuildingOwner}的免费检查，才能查看药品。` : game.sick ? `里面放着${activeBuildingOwner}刚配好的处方药，价格 50 金币。` : "检查结果不需要用药。") : inspectedItem === "健康档案" && !game.diagnosed ? "还没有检查结果，档案暂时是空白的。" : LOST_BOOKS.find((book) => book.title === inspectedItem)?.content ?? RARE_ARTIFACTS.find((artifact) => artifact.title === inspectedItem)?.description ?? ITEM_DESCRIPTIONS[inspectedItem]}</p></div><button onClick={() => setInspectedItem(null)}>收起</button></div>
                   )}
                   <div className="service-actions">
-                    <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? (!game.diagnosed ? `接受${activeBuildingOwner}的免费检查` : game.sick ? `购买${activeBuildingOwner}开的药 · 50 金币` : "检查结果：没有生病") : activeBuilding === "cafe" ? (currentFestival?.id === "coffee" ? "免费领取咖啡和点心" : "购买咖啡套餐 · 35 金币") : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "免费参观手工作品" : activeBuilding === "museum" ? heldItem?.kind === "artifact" ? `捐赠${carriedItemName}` : `查看馆藏 · ${game.museumArtifacts.length}/3` : activeBuilding === "school" ? ([0, 2, 4, 6].includes((game.day - 1) % 7) ? "开始听今天的课 · 奖励 50 金币" : "今天停课 · 参观教室") : "翻阅农事图鉴"}</button>
+                    <button onClick={() => useBuildingService(activeBuilding)}>{activeBuilding === "clinic" ? (!game.diagnosed ? `接受${activeBuildingOwner}的免费检查` : game.sick ? `购买${activeBuildingOwner}开的药 · 50 金币` : "检查结果：没有生病") : activeBuilding === "cafe" ? (currentFestival?.id === "coffee" ? "免费领取咖啡和点心" : "购买咖啡套餐 · 35 金币") : activeBuilding === "townhall" ? "查看公告栏" : activeBuilding === "workshop" ? "免费参观手工作品" : activeBuilding === "museum" ? heldItem?.kind === "artifact" ? `捐赠${carriedItemName}` : `查看馆藏 · ${game.museumArtifacts.length}/3` : activeBuilding === "school" ? isExcursionDay ? `坐学校大巴去${game.season === 0 ? "春游" : "秋游"}` : ([0, 2, 4, 6].includes((game.day - 1) % 7) ? "开始听今天的课 · 奖励 50 金币" : "今天停课 · 参观教室") : "翻阅农事图鉴"}</button>
                     <button className="exit-action" onClick={leaveBuilding}>从门口出去</button>
                   </div>
                   <footer><span>{message}</span><small>按 Esc 也可以离开</small></footer>
+                </section>
+              </div>
+            )}
+
+            {amusementOpen && (
+              <div className="shop-overlay amusement-overlay" role="presentation">
+                <section className="amusement-panel" role="dialog" aria-modal="true" aria-labelledby="amusement-title">
+                  <header><div><span>{game.season === 0 ? "青禾学校春游" : "青禾学校秋游"}</span><h2 id="amusement-title">青禾游乐园</h2></div><button onClick={() => { setAmusementOpen(false); setMessage("坐学校大巴回到了青禾学校。 "); }}>×</button></header>
+                  <div className="amusement-scene"><div className="ferris-wheel"><i /><i /><i /><i /></div><div className="carousel"><i /><i /><i /></div><div className="park-bus"><i /><b /><span>青禾学校</span></div><div className="park-students">{SCHOOL_STUDENTS.map((student) => <span key={student}>{student}</span>)}</div></div>
+                  <div className="amusement-actions"><button onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 10) })); setMessage("坐了一圈摩天轮，从高处看见了整个青禾谷，恢复 10 点体力！"); playTone(820); }}>乘坐摩天轮</button><button onClick={() => { setMessage("旋转木马慢慢转起来，同学们开心地挥手。 "); playTone(760); }}>玩旋转木马</button><button onClick={() => { setAmusementOpen(false); setMessage("春秋游结束，坐学校大巴回到了青禾学校。 "); }}>坐大巴回学校</button></div>
                 </section>
               </div>
             )}
@@ -2854,17 +2929,21 @@ export default function FarmGame() {
 
           <div className="toolbar" aria-label="农具栏">
             <div className="inventory-note"><strong>{scene === "farm" ? "背包" : "小镇背包"}</strong><span>{scene === "farm" ? "选择工具，再点击田地" : "超市可以买到农场补给"}</span></div>
-            {(Object.keys(TOOL_INFO) as Tool[]).map((tool) => (
-              <button key={tool} className={selected === tool && !selectedResource ? "tool-button selected" : "tool-button"} onClick={() => chooseTool(tool)} aria-pressed={selected === tool && !selectedResource}>
-                <kbd>{TOOL_INFO[tool].key}</kbd><PixelIcon type={tool} /><span>{tool === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : tool === "water" && game.toolUpgrades.water ? "大号洒水壶" : tool === "axe" && game.toolUpgrades.axe ? `精铁斧头 · ${game.toolUpgradeDays.axe}天` : tool === "rod" && game.toolUpgrades.rod ? `幸运鱼竿 · ${game.toolUpgradeDays.rod}天` : TOOL_INFO[tool].name}</span>
-                {tool === "seed" && <b>{game[CROP_INFO[selectedCrop].seedField]}</b>}
-                {tool === "water" && <b>{game.water}</b>}
-                {tool === "rod" && <b>{game.inventory.fish}</b>}
-                {tool === "axe" && <b>{game.wood}</b>}
-              </button>
-            ))}
-            <div className="crafted-backpack" aria-label="制作物和松果背包"><button className={plantingPinecone ? "crafted-bag-item pinecone-bag-item selected" : "crafted-bag-item pinecone-bag-item"} onClick={clickPinecone} onDoubleClick={doubleClickPinecone} disabled={game.pinecones <= 0} aria-label={`松果 ${game.pinecones} 个，点击选择种树，双击拿起`}><span>果</span><small>松果·种树</small><b>{game.pinecones}</b></button>{(Object.keys(CRAFT_RECIPES) as CraftType[]).map((item) => <button key={`crafted-bag-${item}`} className={selectedCraftItem === item ? "crafted-bag-item selected" : "crafted-bag-item"} onClick={() => chooseCraftForPlacement(item)} disabled={game.crafted[item] <= 0} aria-label={`${CRAFT_RECIPES[item].name} ${game.crafted[item]} 个，点击选择摆放`}><span>{CRAFT_RECIPES[item].short}</span><small>{CRAFT_RECIPES[item].name}</small><b>{game.crafted[item]}</b></button>)}</div>
-            <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? plantingPinecone ? "拿着松果 · 点击树桩种树" : selectedResource ? `拿着${RESOURCE_INFO[selectedResource].name}` : selected === "rod" ? `鱼竿 · 鱼饵 ${game.bait}` : selected === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : TOOL_INFO[selected].name : sceneLabel}</strong></div>
+            <div className="toolbar-content">
+              <div className="toolbar-primary-row">
+                {(Object.keys(TOOL_INFO) as Tool[]).map((tool) => (
+                  <button key={tool} className={selected === tool && !selectedResource ? "tool-button selected" : "tool-button"} onClick={() => chooseTool(tool)} aria-pressed={selected === tool && !selectedResource}>
+                    <kbd>{TOOL_INFO[tool].key}</kbd><PixelIcon type={tool} /><span>{tool === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : tool === "water" && game.toolUpgrades.water ? "大号洒水壶" : tool === "axe" && game.toolUpgrades.axe ? `精铁斧头 · ${game.toolUpgradeDays.axe}天` : tool === "rod" && game.toolUpgrades.rod ? `幸运鱼竿 · ${game.toolUpgradeDays.rod}天` : TOOL_INFO[tool].name}</span>
+                    {tool === "seed" && <b>{game[CROP_INFO[selectedCrop].seedField]}</b>}
+                    {tool === "water" && <b>{game.water}</b>}
+                    {tool === "rod" && <b>{game.inventory.fish}</b>}
+                    {tool === "axe" && <b>{game.wood}</b>}
+                  </button>
+                ))}
+                <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? plantingPinecone ? "拿着松果 · 点击树桩种树" : selectedResource ? `拿着${RESOURCE_INFO[selectedResource].name}` : selected === "rod" ? `鱼竿 · 鱼饵 ${game.bait}` : selected === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : TOOL_INFO[selected].name : sceneLabel}</strong></div>
+              </div>
+              <div className="crafted-backpack" aria-label="制作物和松果背包"><button className={plantingPinecone ? "crafted-bag-item pinecone-bag-item selected" : "crafted-bag-item pinecone-bag-item"} onClick={clickPinecone} onDoubleClick={doubleClickPinecone} disabled={game.pinecones <= 0} aria-label={`松果 ${game.pinecones} 个，点击选择种树，双击拿起`}><span>果</span><small>松果·种树</small><b>{game.pinecones}</b></button>{(Object.keys(CRAFT_RECIPES) as CraftType[]).map((item) => <button key={`crafted-bag-${item}`} className={selectedCraftItem === item ? "crafted-bag-item selected" : "crafted-bag-item"} onClick={() => chooseCraftForPlacement(item)} disabled={game.crafted[item] <= 0} aria-label={`${CRAFT_RECIPES[item].name} ${game.crafted[item]} 个，点击选择摆放`}><span>{CRAFT_RECIPES[item].short}</span><small>{CRAFT_RECIPES[item].name}</small><b>{game.crafted[item]}</b></button>)}</div>
+            </div>
           </div>
         </section>
       </section>
