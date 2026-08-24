@@ -104,6 +104,13 @@ type GameState = {
   npcHealedDays: Record<string, number>;
   lastSchoolAttendance: string;
   seasonExcursionCompleted: boolean;
+  animalPen: boolean;
+  chickens: number;
+  sheep: number;
+  eggs: number;
+  milk: number;
+  lastEggDay: number;
+  lastMilkDay: number;
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -380,6 +387,13 @@ const makeNewGame = (): GameState => ({
   npcHealedDays: {},
   lastSchoolAttendance: "",
   seasonExcursionCompleted: false,
+  animalPen: false,
+  chickens: 0,
+  sheep: 0,
+  eggs: 0,
+  milk: 0,
+  lastEggDay: 0,
+  lastMilkDay: 0,
 });
 
 const villageSaveKey = (village: VillageId) => village === "maple" ? "qinghe-farm-save-maple" : "qinghe-farm-save";
@@ -469,6 +483,7 @@ export default function FarmGame() {
   const [festivalMusicPlaying, setFestivalMusicPlaying] = useState(false);
   const [heldItem, setHeldItem] = useState<CarriedItem | null>(null);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [ranchOpen, setRanchOpen] = useState(false);
   const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
   const [inspectedItem, setInspectedItem] = useState<string | null>(null);
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
@@ -606,6 +621,7 @@ export default function FarmGame() {
     setHeldItem(null);
     setChestOpen(false);
     setCraftingOpen(false);
+    setRanchOpen(false);
     setActiveBuilding(null);
     setNeighborInterior(null);
     setResidentHome(null);
@@ -722,8 +738,64 @@ export default function FarmGame() {
     walkTimerRef.current = window.setTimeout(() => setIsWalking(false), 520);
   }, []);
 
+  const crossSceneBoundary = useCallback((destination: { x: number; y: number }, dx: number, dy: number) => {
+    if (scene === "farm" && worldVillage === "maple" && dx < 0 && destination.x === 0) {
+      const friend = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId && onlinePlayer.online && onlinePlayer.currentVillage === "qinghe");
+      switchVillage("qinghe");
+      setScene(friend?.scene ?? "farm");
+      setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x + 1)), y: friend.y } : { x: 11, y: 5 });
+      setMessage(friend ? `沿着左边山路到了青禾村，一进村就看见了${friend.playerName}！` : "沿着左边山路到了青禾村。朋友来到同一个场景后就会出现。 ");
+      return true;
+    }
+    if (scene === "farm" && dx > 0 && destination.x === 11) {
+      setScene("town"); setPlayer({ x: 0, y: 5 }); setMessage(`欢迎来到${VILLAGE_INFO[worldVillage].name}！走到道路边缘就能继续前往其他地方。`); return true;
+    }
+    if (scene === "town" && dx < 0 && destination.x === 0) {
+      setScene("farm"); setPlayer({ x: 11, y: 5 }); setMessage("回到农场啦。今天还想种些什么？"); return true;
+    }
+    if (scene === "town" && dx > 0 && destination.x === 11) {
+      setScene("eastNeighbor"); setPlayer({ x: 0, y: 5 }); setMessage("来到林婶的果园小屋，林婶正在门口散步。 "); return true;
+    }
+    if (scene === "town" && dy > 0 && destination.y === 7) {
+      setScene("southNeighbor"); setPlayer({ x: 6, y: 0 }); setMessage("来到鲁师傅的山脚院子，木料堆得整整齐齐。 "); return true;
+    }
+    if (scene === "town" && dy < 0 && destination.y === 0) {
+      setScene("cultureDistrict"); setPlayer({ x: 6, y: 7 }); setMessage("来到清河文化街，镇公所在左边，青禾博物馆在右边。 "); return true;
+    }
+    if (scene === "cultureDistrict" && dy < 0 && destination.y === 0) {
+      setScene("northNeighbor"); setPlayer({ x: 6, y: 7 }); setMessage("穿过文化街后面的林间小路，来到叶老师的北林书屋。 "); return true;
+    }
+    if (scene === "cultureDistrict" && dy > 0 && destination.y === 7) {
+      setScene("town"); setPlayer({ x: 6, y: 0 }); setMessage("沿着石板路回到青禾镇中心街。 "); return true;
+    }
+    if (scene === "cultureDistrict" && dx > 0 && destination.x === 11) {
+      setScene("residentialDistrict"); setPlayer({ x: 0, y: 5 }); setMessage("沿着文化街右侧的小路来到青禾住宅坡。 "); return true;
+    }
+    if (scene === "residentialDistrict" && dx < 0 && destination.x === 0) {
+      setScene("cultureDistrict"); setPlayer({ x: 11, y: 5 }); setMessage("从青禾住宅坡回到清河文化街。 "); return true;
+    }
+    if (scene === "eastNeighbor" && worldVillage === "qinghe" && dx > 0 && destination.x === 11) {
+      const friend = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId && onlinePlayer.online && onlinePlayer.currentVillage === "maple");
+      switchVillage("maple");
+      setScene(friend?.scene ?? "farm");
+      setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x - 1)), y: friend.y } : { x: 0, y: 5 });
+      setMessage(friend ? `沿着右边山路到了枫叶村，一进村就看见了${friend.playerName}！` : "沿着右边山路走到了枫叶村！");
+      return true;
+    }
+    if (scene === "eastNeighbor" && dx < 0 && destination.x === 0) {
+      setScene("town"); setPlayer({ x: 11, y: 5 }); setMessage("回到青禾镇中心街。"); return true;
+    }
+    if (scene === "southNeighbor" && dy < 0 && destination.y === 0) {
+      setScene("town"); setPlayer({ x: 6, y: 7 }); setMessage("回到青禾镇中心街。"); return true;
+    }
+    if (scene === "northNeighbor" && dy > 0 && destination.y === 7) {
+      setScene("cultureDistrict"); setPlayer({ x: 6, y: 0 }); setMessage("从北林书屋回到清河文化街。 "); return true;
+    }
+    return false;
+  }, [multiplayerSession?.deviceId, onlinePlayers, scene, switchVillage, worldVillage]);
+
   const move = useCallback((dx: number, dy: number) => {
-    if (craftingOpen || chestOpen) return;
+    if (craftingOpen || chestOpen || ranchOpen) return;
     const now = Date.now();
     if (now - lastMoveAtRef.current < 230) return;
     lastMoveAtRef.current = now;
@@ -745,88 +817,6 @@ export default function FarmGame() {
       return;
     }
 
-    if (scene === "farm" && dx > 0 && player.x === 11) {
-      setScene("town");
-      setPlayer({ x: 0, y: 5 });
-      setMessage("欢迎来到青禾镇！超市在左上方，走到门口就能进去。");
-      return;
-    }
-
-    if (scene === "town" && dx < 0 && player.x === 0) {
-      setScene("farm");
-      setPlayer({ x: 11, y: 5 });
-      setMessage("回到农场啦。今天还想种些什么？");
-      return;
-    }
-
-    if (scene === "town" && dx > 0 && player.x === 11) {
-      setScene("eastNeighbor");
-      setPlayer({ x: 0, y: 5 });
-      setMessage("来到林婶的果园小屋，林婶正在门口散步。 ");
-      return;
-    }
-    if (scene === "town" && dy > 0 && player.y === 7) {
-      setScene("southNeighbor");
-      setPlayer({ x: 6, y: 0 });
-      setMessage("来到鲁师傅的山脚院子，木料堆得整整齐齐。 ");
-      return;
-    }
-    if (scene === "town" && dy < 0 && player.y === 0) {
-      setScene("cultureDistrict");
-      setPlayer({ x: 6, y: 7 });
-      setMessage("来到清河文化街，镇公所在左边，青禾博物馆在右边。继续向上可以去北林书屋。 ");
-      return;
-    }
-    if (scene === "cultureDistrict" && dy < 0 && player.y === 0) {
-      setScene("northNeighbor");
-      setPlayer({ x: 6, y: 7 });
-      setMessage("穿过文化街后面的林间小路，来到叶老师的北林书屋。 ");
-      return;
-    }
-    if (scene === "cultureDistrict" && dy > 0 && player.y === 7) {
-      setScene("town");
-      setPlayer({ x: 6, y: 0 });
-      setMessage("沿着石板路回到青禾镇中心街。 ");
-      return;
-    }
-    if (scene === "cultureDistrict" && dx > 0 && player.x === 11) {
-      setScene("residentialDistrict");
-      setPlayer({ x: 0, y: 5 });
-      setMessage("沿着文化街右侧的小路来到青禾住宅坡，每位居民都有自己的院地和房子。 ");
-      return;
-    }
-    if (scene === "residentialDistrict" && dx < 0 && player.x === 0) {
-      setScene("cultureDistrict");
-      setPlayer({ x: 11, y: 5 });
-      setMessage("从青禾住宅坡回到清河文化街。 ");
-      return;
-    }
-    if (scene === "eastNeighbor" && dx > 0 && player.x === 11 && worldVillage === "qinghe") {
-      const friend = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId && onlinePlayer.online && onlinePlayer.currentVillage === "maple");
-      switchVillage("maple");
-      setScene(friend?.scene ?? "farm");
-      setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x - 1)), y: friend.y } : { x: 0, y: 5 });
-      setMessage(friend ? `沿着右边山路到了枫叶村，一进村就看见了${friend.playerName}！` : "沿着右边山路走到了枫叶村！朋友来到同一个场景后就会出现。 ");
-      return;
-    }
-    if (scene === "farm" && dx < 0 && player.x === 0 && worldVillage === "maple") {
-      const friend = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId && onlinePlayer.online && onlinePlayer.currentVillage === "qinghe");
-      switchVillage("qinghe");
-      setScene(friend?.scene ?? "farm");
-      setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x + 1)), y: friend.y } : { x: 11, y: 5 });
-      setMessage(friend ? `沿着左边山路到了青禾村，一进村就看见了${friend.playerName}！` : "沿着左边山路到了青禾村。朋友来到同一个场景后就会出现。 ");
-      return;
-    }
-    if (scene === "eastNeighbor" && dx < 0 && player.x === 0) {
-      setScene("town"); setPlayer({ x: 11, y: 5 }); setMessage("回到青禾镇中心街。"); return;
-    }
-    if (scene === "southNeighbor" && dy < 0 && player.y === 0) {
-      setScene("town"); setPlayer({ x: 6, y: 7 }); setMessage("回到青禾镇中心街。"); return;
-    }
-    if (scene === "northNeighbor" && dy > 0 && player.y === 7) {
-      setScene("cultureDistrict"); setPlayer({ x: 6, y: 0 }); setMessage("从北林书屋回到清河文化街。 "); return;
-    }
-
     const next = {
       x: Math.max(0, Math.min(11, player.x + dx)),
       y: Math.max(0, Math.min(7, player.y + dy)),
@@ -842,6 +832,7 @@ export default function FarmGame() {
         return;
       }
     }
+    if (crossSceneBoundary(next, dx, dy)) return;
     setPlayer(next);
 
     if (scene === "town" || scene === "cultureDistrict") {
@@ -864,7 +855,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, chestOpen, craftingOpen, farmGateOpen, game.day, game.npcHealedDays, game.placedCrafts, multiplayerSession?.deviceId, neighborInterior, onlinePlayers, player, residentHome, scene, showWalking, switchVillage, worldVillage]);
+  }, [activeBuilding, chestOpen, craftingOpen, crossSceneBoundary, farmGateOpen, game.day, game.npcHealedDays, game.placedCrafts, neighborInterior, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -878,6 +869,11 @@ export default function FarmGame() {
       if (key === "escape" && builderOpen) {
         setBuilderOpen(false);
         setMessage("收起鲁师傅的扩建委托。 ");
+        return;
+      }
+      if (key === "escape" && ranchOpen) {
+        setRanchOpen(false);
+        setMessage("离开青禾动物牧场。 ");
         return;
       }
       if (key === "escape" && neighborInterior) {
@@ -924,7 +920,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, builderOpen, chestOpen, craftingOpen, embeddedMode, move, neighborInterior, residentHome, splitScreen]);
+  }, [activeBuilding, builderOpen, chestOpen, craftingOpen, embeddedMode, move, neighborInterior, ranchOpen, residentHome, splitScreen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -1231,6 +1227,53 @@ export default function FarmGame() {
     }));
     setMessage(`制作完成：${recipe.name}！已经放进下方背包，选中后再点击农场位置摆放。`);
     playTone(700);
+  };
+
+  const buildAnimalPen = () => {
+    if (game.animalPen) {
+      setMessage("动物围栏已经建在农场旁边了。 ");
+      return;
+    }
+    if (game.wood < 12 || game.stone < 4) {
+      setMessage("建动物围栏需要 12 块木头和 4 块石材。 ");
+      playTone(220);
+      return;
+    }
+    setGame((current) => ({ ...current, wood: current.wood - 12, stone: current.stone - 4, animalPen: true }));
+    setMessage("动物围栏建好了！现在可以去牧场买鸡和羊。 ");
+    playTone(760);
+  };
+
+  const buyFarmAnimal = (animal: "chicken" | "sheep") => {
+    if (!game.animalPen) {
+      setMessage("先在牧场委托建一个动物围栏，动物才有安全的家。 ");
+      playTone(220);
+      return;
+    }
+    const price = animal === "chicken" ? 180 : 350;
+    if (game.coins < price) {
+      setMessage(`金币不够，买${animal === "chicken" ? "鸡" : "羊"}需要 ${price} 金币。`);
+      playTone(220);
+      return;
+    }
+    setGame((current) => ({ ...current, coins: current.coins - price, [animal === "chicken" ? "chickens" : "sheep"]: current[animal === "chicken" ? "chickens" : "sheep"] + 1 }));
+    setMessage(`买到一只${animal === "chicken" ? "小鸡" : "小羊"}，它已经住进农场旁的围栏。`);
+    playTone(820);
+  };
+
+  const collectAnimalProduct = (animal: "chicken" | "sheep") => {
+    if (animal === "chicken") {
+      if (game.chickens <= 0) { setMessage("围栏里还没有鸡，可以去牧场购买。 "); return; }
+      if (game.lastEggDay === game.day) { setMessage("今天的鸡蛋已经收过了，明早再来吧。 "); return; }
+      setGame((current) => ({ ...current, eggs: current.eggs + current.chickens, lastEggDay: current.day }));
+      setMessage(`从鸡窝收到了 ${game.chickens} 枚鸡蛋！`);
+    } else {
+      if (game.sheep <= 0) { setMessage("围栏里还没有羊，可以去牧场购买。 "); return; }
+      if (game.lastMilkDay === game.day) { setMessage("今天已经挤过羊奶了，明早再来吧。 "); return; }
+      setGame((current) => ({ ...current, milk: current.milk + current.sheep, lastMilkDay: current.day }));
+      setMessage(`给羊挤奶，得到 ${game.sheep} 瓶新鲜羊奶！`);
+    }
+    playTone(760);
   };
 
   const pickUpMaterial = (material: "wood" | "stone") => {
@@ -2580,7 +2623,7 @@ export default function FarmGame() {
   };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeBuilding || neighborInterior || residentHome || craftingOpen || chestOpen || multiplayerOpen || builderOpen || festivalDisplay) return;
+    if (activeBuilding || neighborInterior || residentHome || craftingOpen || chestOpen || multiplayerOpen || builderOpen || ranchOpen || festivalDisplay) return;
     if ((event.target as HTMLElement).closest("button, input, .shop-overlay")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
@@ -2662,6 +2705,9 @@ export default function FarmGame() {
       }
     }
     showWalking(destination.x - player.x, destination.y - player.y);
+    const pointerDx = destination.x - player.x;
+    const pointerDy = destination.y - player.y;
+    if (crossSceneBoundary(destination, Math.abs(pointerDx) >= Math.abs(pointerDy) ? pointerDx : 0, Math.abs(pointerDy) > Math.abs(pointerDx) ? pointerDy : 0)) return;
     setPlayer(destination);
     setMessage("小禾走到了你点击的位置。 ");
   };
@@ -2757,6 +2803,8 @@ export default function FarmGame() {
               <button className={heldItem?.kind === "material" && heldItem.id === "stone" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("stone")} title="双击拿起石材"><span className="harvest-icon stone-icon">石</span><p>石材<strong>{game.stone}</strong><small>双击拿起</small></p></button>
               <button className={heldItem?.kind === "forest" && heldItem.id === "pineNut" ? "resource-item held-material" : "resource-item"} onClick={clickPineNut} onDoubleClick={doubleClickPineNut} title="单击吃掉恢复体力，双击拿起"><span className="harvest-icon pine-nut-icon">子</span><p>松子<strong>{game.pineNuts}</strong><small>单击吃 · 双击拿</small></p></button>
               <button className={heldItem?.kind === "herb" ? "resource-item herb-record held-material" : "resource-item herb-record"} onClick={clickHerb} onDoubleClick={pickUpHerb} aria-label={`药材 ${game.herbs} 份，生病时单击使用，双击拿起送人`} title="生病时单击使用，双击拿起送人"><span className="harvest-icon herb-icon">药</span><p>药材<strong>{game.herbs}</strong><small>{game.sick ? "单击用 · 双击拿" : "双击拿起"}</small></p></button>
+              <button className="resource-item animal-product-item" onClick={() => setMessage(`农场鸡蛋共有 ${game.eggs} 枚。每天点击围栏里的鸡可以收取新鸡蛋。`)}><span className="harvest-icon egg-icon">蛋</span><p>鸡蛋<strong>{game.eggs}</strong><small>动物牧场产物</small></p></button>
+              <button className="resource-item animal-product-item" onClick={() => setMessage(`新鲜羊奶共有 ${game.milk} 瓶。每天点击围栏里的羊可以挤一次奶。`)}><span className="harvest-icon milk-icon">奶</span><p>羊奶<strong>{game.milk}</strong><small>动物牧场产物</small></p></button>
               {game.bookBag.map((bookId) => <button key={`bag-book-${bookId}`} className={heldItem?.kind === "book" && heldItem.id === bookId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${LOST_BOOKS[bookId].title}：${LOST_BOOKS[bookId].content}`)} onDoubleClick={() => carryLostBook(bookId)} title="点击阅读，双击拿起来送给叶老师"><span className="harvest-icon book-icon">书</span><p>{LOST_BOOKS[bookId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
               {game.artifactBag.map((artifactId) => <button key={`bag-artifact-${artifactId}`} className={heldItem?.kind === "artifact" && heldItem.id === artifactId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${RARE_ARTIFACTS[artifactId].title}：${RARE_ARTIFACTS[artifactId].description}`)} onDoubleClick={() => carryArtifact(artifactId)} title="点击查看，双击拿起来送到博物馆"><span className={`harvest-icon artifact-icon artifact-icon-${artifactId + 1}`}>{RARE_ARTIFACTS[artifactId].short}</span><p>{RARE_ARTIFACTS[artifactId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
             </div>
@@ -2786,7 +2834,7 @@ export default function FarmGame() {
             {selectedCraftItem && scene === "farm" && <div className="placement-controls" onClick={(event) => event.stopPropagation()}><strong>正在摆放：{CRAFT_RECIPES[selectedCraftItem].name}</strong>{(selectedCraftItem === "sign" || selectedCraftItem === "bench") && <div><button className={craftRotation === 0 ? "selected" : ""} onClick={() => setCraftRotation(0)}>横着</button><button className={craftRotation === 90 ? "selected" : ""} onClick={() => setCraftRotation(90)}>竖着</button><button className={craftRotation === 45 ? "selected" : ""} onClick={() => setCraftRotation(45)}>斜着</button></div>}<span>{selectedCraftItem === "fence" ? "点击农田四周的绿色位置，围栏会自动对齐" : "选好方向后，点击农场空地"}</span><button className="cancel-placement" onClick={() => setSelectedCraftItem(null)}>取消</button></div>}
 
             {scene === "farm" ? (
-              <>
+              <div className="farm-camera-layer" style={{ "--farm-camera-x": `${(6 - player.x) * 2.7}%`, "--farm-camera-y": `${(4 - player.y) * 1.8}%` } as CSSProperties}>
                 <div className="path path-one" /><div className="path path-two" />
                 <button className={`pond ${isFishing ? "fishing" : ""} ${currentFestival?.id === "fishing" ? "fishing-festival-pond" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
                   <i /><i /><i /><b className="fishing-float" />{fishingPhase === "bite" && <strong className="bite-question">?</strong>}<span className="pond-label">{fishingPhase === "waiting" ? "等待鱼儿咬钩…" : fishingPhase === "bite" ? "快点！点击问号" : currentFestival?.id === "fishing" ? "钓鱼节会场 · 鱼获 +2" : "钓鱼池"}</span>
@@ -2807,6 +2855,11 @@ export default function FarmGame() {
                 {game.farmVisitor === "animal" && <div className="farm-visitor animal-visitor" aria-label="小动物跑进农田"><i /><b /><span>偷吃幼苗</span></div>}
                 {game.upgrades.stoneWall > 0 && <div className="farm-stone-wall" aria-label="鲁师傅修建的农场石墙"><i /><i /><i /><i /></div>}
 
+                <button className="farm-cave" onClick={() => setMessage("山洞里吹出凉凉的风，岩壁上闪着矿石的光。以后可以继续向深处探险。 ")} aria-label="查看青禾山洞"><i /><b /><span>青禾山洞<small>矿石与探险</small></span></button>
+                <button className="farm-camp" onClick={() => setMessage("溪边露营地搭着两顶帐篷，晚上可以在这里看星星、听虫鸣。 ")} aria-label="查看溪边露营地"><i /><i /><b /><span>溪边露营地</span></button>
+                <button className="animal-ranch" onClick={() => { setRanchOpen(true); setMessage("来到青禾动物牧场，这里可以买鸡和羊，也能委托修建动物围栏。 "); }} aria-label="进入青禾动物牧场"><i className="ranch-roof" /><i className="ranch-wall" /><i className="ranch-door" /><b>青禾动物牧场</b><small>鸡 · 羊 · 围栏</small></button>
+                {game.animalPen && <div className="animal-pen" aria-label={`动物围栏，${game.chickens}只鸡，${game.sheep}只羊`}><span className="pen-rail rail-top" /><span className="pen-rail rail-bottom" /><span className="pen-post post-one" /><span className="pen-post post-two" /><span className="pen-post post-three" /><span className="pen-post post-four" />{Array.from({ length: game.chickens }).map((_, index) => <button key={`chicken-${index}`} className={`farm-animal chicken chicken-${index + 1}`} onClick={() => collectAnimalProduct("chicken")} aria-label="小鸡，点击收鸡蛋"><i /><b /><em /></button>)}{Array.from({ length: game.sheep }).map((_, index) => <button key={`sheep-${index}`} className={`farm-animal sheep sheep-${index + 1}`} onClick={() => collectAnimalProduct("sheep")} aria-label="小羊，点击挤羊奶"><i /><b /><em /></button>)}<strong>{game.chickens || game.sheep ? `鸡 ${game.chickens} · 羊 ${game.sheep}` : "动物围栏已建好"}</strong><small>点击鸡收蛋 · 点击羊挤奶</small></div>}
+
                 <div className={`field ${game.tiles.length > 32 ? "expanded-field" : ""}`} aria-label={`${game.tiles.length} 格农田`}>
                   {game.tiles.map((tile, index) => (
                     <button
@@ -2824,7 +2877,7 @@ export default function FarmGame() {
                   <span>{activeVillageInfo.name}</span><b>→</b><small>继续向右走</small>
                 </button>
                 {activeVillage === "maple" && <button className="edge-gate village-crossing crossing-left" onClick={() => { const friend = partner?.online && partner.currentVillage === "qinghe" ? partner : null; switchVillage("qinghe"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x + 1)), y: friend.y } : { x: 11, y: 5 }); setMessage(friend ? `到了青禾村，马上看见了${friend.playerName}！` : "沿着左边山路到了青禾村。 "); }}><b>←</b><span>前往青禾村</span><small>{partner?.online && partner.currentVillage === "qinghe" ? `去见${partner.playerName}` : "一直向左走"}</small></button>}
-              </>
+              </div>
             ) : scene === "town" ? (
               <>
                 <div className="town-road road-horizontal" /><div className="town-road road-vertical" />
@@ -2897,7 +2950,7 @@ export default function FarmGame() {
               return <button key={`ground-supply-${supplyId}`} className={`ground-supply supply-${supply.kind} ground-supply-${supplyId + 1}`} onClick={(event) => { event.stopPropagation(); setMessage(`地上掉着${supply.name}：${supply.description} 双击可以捡起来。`); playTone(540); }} onDoubleClick={(event) => { event.stopPropagation(); pickUpGroundSupply(supplyId); }} aria-label={`${supply.name}，双击捡起`}><i>{supply.short}</i><span>{supply.name}<small>双击捡起</small></span></button>;
             })}
 
-            <div className={`player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${4 + player.x * 7.7}%`, top: `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
+            <div className={`player facing-${facing} ${isWalking ? "walking" : ""} ${scene === "farm" ? "farm-centered-player" : ""}`} style={{ left: scene === "farm" ? "50%" : `${4 + player.x * 7.7}%`, top: scene === "farm" ? "55%" : `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
               {renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
             </div>
             {partner?.online && partner.currentVillage === activeVillage && partner.scene === scene && <div className="online-partner" style={{ left: `${4 + partner.x * 7.7}%`, top: `${8 + partner.y * 10.5}%` }} aria-label={`${partner.playerName}也在这里`}><span>{partner.playerName}<small>朋友</small></span><i className="player-shadow" /><img src={partner.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>}
@@ -2959,7 +3012,7 @@ export default function FarmGame() {
             )}
 
             {multiplayerOpen && (
-              <div className="shop-overlay" role="presentation">
+              <div className="shop-overlay crafting-overlay" role="presentation">
                 <section className="multiplayer-panel" role="dialog" aria-modal="true" aria-labelledby="multiplayer-title">
                   <header><div><span>两个设备 · 两个村庄</span><h2 id="multiplayer-title">双人联机</h2></div><button onClick={() => setMultiplayerOpen(false)} aria-label="关闭双人联机">×</button></header>
                   {multiplayerSession ? (
@@ -2997,6 +3050,17 @@ export default function FarmGame() {
                     {(Object.keys(CRAFT_RECIPES) as CraftType[]).map((item) => { const recipe = CRAFT_RECIPES[item]; return <article className="recipe-card" key={item}><span className={`recipe-icon ${item}-recipe`}>{recipe.short}</span><div><strong>{recipe.name}</strong><small>{recipe.description}</small><em>背包里 {game.crafted[item]} 个 · 已摆 {game.placedCrafts.filter((placed) => placed.type === item).length} 个</em></div><button onClick={() => craftItem(item)}><span>木</span>{recipe.wood}{recipe.stone > 0 && <> · <span>石</span>{recipe.stone}</>}</button></article>; })}
                   </div>
                   <footer><span>{message}</span><button onClick={() => setCraftingOpen(false)}>收起手册</button></footer>
+                </section>
+              </div>
+            )}
+
+            {ranchOpen && (
+              <div className="shop-overlay ranch-overlay" role="presentation">
+                <section className="ranch-panel" role="dialog" aria-modal="true" aria-labelledby="ranch-title">
+                  <header><div><span>青禾农场北坡</span><h2 id="ranch-title">青禾动物牧场</h2></div><div className="ranch-wallet"><small>现有金币</small><strong>● {game.coins}</strong></div><button onClick={() => setRanchOpen(false)} aria-label="离开动物牧场">×</button></header>
+                  <div className="ranch-scene"><div className="pixel-rancher" style={personClothesStyle("小桃")}><i /><b /><em /></div><div><strong>牧场管理员小桃</strong><p>先给动物建好围栏，再把鸡和羊带回农场。每天点击它们，就能收鸡蛋和挤羊奶。</p></div></div>
+                  <div className="ranch-products"><article><span className="ranch-product-icon pen-icon">栏</span><div><strong>动物木围栏</strong><small>12 木 · 4 石 · 建在农田旁边</small></div><button onClick={buildAnimalPen} disabled={game.animalPen}>{game.animalPen ? "已经建好" : "委托修建"}</button></article><article><span className="ranch-product-icon chicken-icon">鸡</span><div><strong>小鸡</strong><small>每天可以收 1 枚鸡蛋</small></div><button onClick={() => buyFarmAnimal("chicken")} disabled={!game.animalPen}>● 180</button></article><article><span className="ranch-product-icon sheep-icon">羊</span><div><strong>小羊</strong><small>每天可以挤 1 瓶羊奶</small></div><button onClick={() => buyFarmAnimal("sheep")} disabled={!game.animalPen}>● 350</button></article></div>
+                  <footer><span>{message}</span><button onClick={() => setRanchOpen(false)}>回到大农场</button></footer>
                 </section>
               </div>
             )}
