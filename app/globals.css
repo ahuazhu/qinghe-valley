@@ -710,14 +710,14 @@ button { font: inherit; }
 @media(max-width:760px){.anan-beach-scene{height:390px}.anan-beach-travel-panel h2,.anan-beach-panel h2{font-size:13px}.passing-ship{transform:scale(.65);transform-origin:right center}.coast-bus{transform:scale(.72);transform-origin:left top}.drifting-boat{left:38%;transform:scale(.72)}.anan-beach-actions button{min-width:44%;font-size:7px}.bulk-chest-prompt>strong{font-size:13px}.fishing-festival-crowd{transform:scale(.82);transform-origin:center}}
 
 /* Keep the beach controls above the farm toolbar so they can never be covered. */
-.anan-beach-quick-actions{position:absolute;z-index:45;top:12px;right:12px;display:grid;grid-template-columns:repeat(3,minmax(105px,1fr));gap:7px;max-width:440px;padding:7px;border:4px solid rgba(49,73,77,.88);border-radius:13px;background:rgba(255,245,204,.94);box-shadow:0 7px 0 rgba(42,63,68,.28);backdrop-filter:blur(3px)}
+.anan-beach-quick-actions{position:absolute;z-index:25;top:12px;left:16px;right:auto;width:min(440px,calc(100% - 32px));display:grid;grid-template-columns:repeat(3,minmax(105px,1fr));gap:7px;padding:7px;border:4px solid rgba(49,73,77,.88);border-radius:13px;background:rgba(255,245,204,.97);box-shadow:0 7px 0 rgba(42,63,68,.28);backdrop-filter:blur(3px)}
 .anan-beach-quick-actions button{min-height:48px;padding:6px 8px;border:4px solid #3c6471;border-radius:9px;color:white;background:#44889b;font-size:8px;font-weight:1000;cursor:pointer;box-shadow:inset 0 -5px rgba(31,75,89,.28)}
 .anan-beach-quick-actions button b,.anan-beach-quick-actions button small{display:block}
 .anan-beach-quick-actions button b{font-size:9px}
 .anan-beach-quick-actions button small{margin-top:2px;font-size:6px;opacity:.9}
 .anan-beach-quick-actions .crab-catch-action{background:#d26952;border-color:#873f35}
 .anan-beach-quick-actions .beach-dive-action{background:#476aa3;border-color:#304a78}
-@media(max-width:760px){.anan-beach-quick-actions{top:8px;left:8px;right:8px;grid-template-columns:repeat(3,1fr);max-width:none;padding:5px;gap:4px}.anan-beach-quick-actions button{min-width:0;min-height:43px;padding:5px 3px;border-width:3px}.anan-beach-quick-actions button b{font-size:8px}.anan-beach-quick-actions button small{font-size:5px}.anan-beach-actions{padding:7px 10px}.anan-beach-actions button{padding:7px}}
+@media(max-width:760px){.anan-beach-quick-actions{top:8px;left:8px;right:auto;width:calc(100% - 16px);grid-template-columns:repeat(3,1fr);max-width:none;padding:5px;gap:4px}.anan-beach-quick-actions button{min-width:0;min-height:43px;padding:5px 3px;border-width:3px}.anan-beach-quick-actions button b{font-size:8px}.anan-beach-quick-actions button small{font-size:5px}.anan-beach-actions{padding:7px 10px}.anan-beach-actions button{padding:7px}}
 
 .anan-beach-quick-actions button:disabled{opacity:.66;cursor:not-allowed;filter:grayscale(.2)}
 .beach-small-boat.boat-sailing-with-anan{left:42%;top:43%;transform:scale(.88);transform-origin:center;animation:boatSailAcross 5s ease-in-out infinite alternate}
