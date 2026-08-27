@@ -52,6 +52,7 @@ type FarmTile = {
 };
 
 type GameState = {
+  year: number;
   day: number;
   season: number;
   hour: number;
@@ -113,6 +114,7 @@ type GameState = {
   milk: number;
   lastEggDay: number;
   lastMilkDay: number;
+  birthdayCakeYear: number;
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -273,7 +275,13 @@ const PERSON_CLOTHES: Record<string, string> = {
   小玲: "#dc7081", 豆豆: "#5f83b5", 小满: "#e29b45", 阿禾: "#6e9d58", 小树: "#8169a0", 安安: "#4d9c9a",
   小桃: "#d9798b", 阿木: "#6f8d58", 小文: "#6d79a9", 小麦: "#d8a144", 小程: "#5e88a5", 小岚: "#499184", 小晴: "#9a6fa6",
 };
-const personClothesStyle = (name: string) => ({ "--npc-clothes": PERSON_CLOTHES[name] ?? "#6b8b68" } as CSSProperties);
+const BIRTHDAY_GUESTS = Object.keys(PERSON_DIALOGUES);
+const NPC_HAIR_COLORS = ["#4a3328", "#6b432d", "#342f35", "#765230", "#3e4b46", "#6d3d46"];
+const NPC_SKIN_COLORS = ["#efbd95", "#e7ad82", "#d99b72", "#f2c7a1"];
+const personClothesStyle = (name: string) => {
+  const nameCode = [...name].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), 0);
+  return { "--npc-clothes": PERSON_CLOTHES[name] ?? "#6b8b68", "--npc-hair": NPC_HAIR_COLORS[nameCode % NPC_HAIR_COLORS.length], "--npc-skin": NPC_SKIN_COLORS[nameCode % NPC_SKIN_COLORS.length] } as CSSProperties;
+};
 
 const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description: string }> = {
   qinghe: { name: "青禾村", farm: "青禾农场", description: "绿野、溪流与温暖的木屋" },
@@ -340,6 +348,7 @@ const makeTiles = (count = 32): FarmTile[] =>
   Array.from({ length: count }, () => ({ state: "grass", stage: 0, watered: false }));
 
 const makeNewGame = (): GameState => ({
+  year: 1,
   day: 1,
   season: 0,
   hour: 7,
@@ -401,6 +410,7 @@ const makeNewGame = (): GameState => ({
   milk: 0,
   lastEggDay: 0,
   lastMilkDay: 0,
+  birthdayCakeYear: 0,
 });
 
 const villageSaveKey = (village: VillageId) => village === "maple" ? "qinghe-farm-save-maple" : "qinghe-farm-save";
@@ -485,6 +495,8 @@ export default function FarmGame() {
   const [stoveLit, setStoveLit] = useState(false);
   const [neighborInterior, setNeighborInterior] = useState<NeighborScene | null>(null);
   const [residentHome, setResidentHome] = useState<ResidentHomeOwner | null>(null);
+  const [friendHomeOpen, setFriendHomeOpen] = useState(false);
+  const [playingWithAnan, setPlayingWithAnan] = useState(false);
   const [festivalDisplay, setFestivalDisplay] = useState<"wood" | null>(null);
   const [amusementOpen, setAmusementOpen] = useState(false);
   const [busTraveling, setBusTraveling] = useState(false);
@@ -641,6 +653,7 @@ export default function FarmGame() {
     setActiveBuilding(null);
     setNeighborInterior(null);
     setResidentHome(null);
+    setFriendHomeOpen(false);
   }, [game, worldVillage]);
 
   useEffect(() => {
@@ -823,7 +836,7 @@ export default function FarmGame() {
     if (now - lastMoveAtRef.current < 230) return;
     lastMoveAtRef.current = now;
     showWalking(dx, dy);
-    if (neighborInterior || residentHome) {
+    if (neighborInterior || residentHome || friendHomeOpen) {
       setIndoorPlayer((current) => ({
         x: Math.max(20, Math.min(80, current.x + dx * 5)),
         y: Math.max(62, Math.min(76, current.y + dy * 4)),
@@ -878,7 +891,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, chestOpen, craftingOpen, crossSceneBoundary, farmGateOpen, farmInterior, game.day, game.npcHealedDays, game.placedCrafts, neighborInterior, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, chestOpen, craftingOpen, crossSceneBoundary, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, neighborInterior, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -915,6 +928,11 @@ export default function FarmGame() {
         setMessage("从居民自己的房子里出来了。 ");
         return;
       }
+      if (key === "escape" && friendHomeOpen) {
+        setFriendHomeOpen(false);
+        setMessage("从安安的林边小屋出来了。 ");
+        return;
+      }
       if (key === "escape" && chestOpen) {
         setChestOpen(false);
         setMessage("关上木箱。");
@@ -949,7 +967,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, builderOpen, chestOpen, craftingOpen, embeddedMode, farmInterior, move, neighborInterior, ranchOpen, residentHome, splitScreen]);
+  }, [activeBuilding, builderOpen, chestOpen, craftingOpen, embeddedMode, farmInterior, friendHomeOpen, move, neighborInterior, ranchOpen, residentHome, splitScreen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -1618,6 +1636,14 @@ export default function FarmGame() {
       playTone(300);
       return;
     }
+    if (person === "安安" && Math.random() < .5) {
+      setPlayingWithAnan(true);
+      setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) }));
+      setMessage("安安笑着拉住小禾，两个人追着跑、拍拍手，又绕着桌子嬉戏了一会儿！开心玩耍恢复了 5 点体力。 ");
+      playTone(820);
+      window.setTimeout(() => setPlayingWithAnan(false), 1_600);
+      return;
+    }
     setMessage(PERSON_DIALOGUES[person] ?? fallback);
     playTone(520);
   };
@@ -2220,6 +2246,7 @@ export default function FarmGame() {
     setBuilderOpen(false);
     setNeighborInterior(null);
     setResidentHome(null);
+    setFriendHomeOpen(false);
     setHeldItem(null);
     setScene("farm");
     setPlayer({ x: 10, y: 5 });
@@ -2231,6 +2258,7 @@ export default function FarmGame() {
     setActiveBuilding(null);
     setNeighborInterior(null);
     setResidentHome(null);
+    setFriendHomeOpen(false);
     setCraftingOpen(false);
     setChestOpen(false);
     setMapOpen(false);
@@ -2358,6 +2386,7 @@ export default function FarmGame() {
     cancelFishing();
     const nextDayNumber = game.day === 28 ? 1 : game.day + 1;
     const nextSeason = game.day === 28 ? (game.season + 1) % SEASONS.length : game.season;
+    const nextYear = game.day === 28 && game.season === SEASONS.length - 1 ? game.year + 1 : game.year;
     const expiringTools = [
       game.toolUpgrades.axe && game.toolUpgradeDays.axe <= 1 ? "精铁斧头" : "",
       game.toolUpgrades.rod && game.toolUpgradeDays.rod <= 1 ? "幸运鱼竿" : "",
@@ -2385,7 +2414,8 @@ export default function FarmGame() {
       : remainsSick
         ? "早上七点了，小禾的表情仍然有些伤心。"
         : `早上七点了！${game.day === 28 ? `新的${SEASONS[nextSeason]}开始了。` : ""}浇过水的作物和松果树苗都长大了一点。`;
-    const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${visitorMessage}`;
+    const birthdayMessage = nextSeason === 0 && nextDayNumber === 19 ? ` 今天是第 ${nextYear} 年春天第十九天，也是小禾的二月十九日生日！大家已经带着蛋糕来到农舍，回家就能开生日派对。` : "";
+    const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${visitorMessage}${birthdayMessage}`;
     setGame((current) => {
       const treeStates = [...current.treeStates];
       const emptySpot = treeStates.indexOf(false);
@@ -2421,6 +2451,7 @@ export default function FarmGame() {
       };
       return {
         ...current,
+        year: nextYear,
         day: nextDayNumber,
         season: nextSeason,
         seasonExcursionCompleted: game.day === 28 ? false : current.seasonExcursionCompleted,
@@ -2457,6 +2488,16 @@ export default function FarmGame() {
     setPlayer(BUILDING_INFO.farmhouse.exit);
   };
 
+  const eatBirthdayCake = () => {
+    if (game.birthdayCakeYear === game.year) {
+      setMessage("今年的生日蛋糕已经和大家一起吃完了，明年春天第十九天还会再举办派对。 ");
+      return;
+    }
+    setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 40), birthdayCakeYear: current.year }));
+    setMessage("小禾和大家一起切开草莓生日蛋糕，吃下一大块，恢复了 40 点体力！大家一起说：生日快乐！ ");
+    playTone(940);
+  };
+
   const resetGame = () => {
     if (!window.confirm("要清空当前进度，重新开始吗？")) return;
     const fresh = makeNewGame();
@@ -2474,6 +2515,7 @@ export default function FarmGame() {
     setSelectedCraftItem(null);
     setPlantingPinecone(false);
     setResidentHome(null);
+    setFriendHomeOpen(false);
     setMessage("新的农场生活开始了！");
     localStorage.setItem(saveStorageKey, JSON.stringify(fresh));
   };
@@ -2684,8 +2726,11 @@ export default function FarmGame() {
   const nextFestival = FESTIVAL_SCHEDULE.find((festival) => festival.day >= game.day) ?? FESTIVAL_SCHEDULE[0];
   const daysUntilFestival = nextFestival.day >= game.day ? nextFestival.day - game.day : 28 - game.day + nextFestival.day;
   const displayName = multiplayerSession?.playerName ?? "小禾";
+  const isBirthday = game.season === 0 && game.day === 19;
+  const calendarMonth = [2, 5, 8, 11][game.season];
   const sceneLabel = scene === "farm" ? activeVillageInfo.farm : scene === "westFriendFarm" ? "西边 · 安安的小农场" : scene === "town" ? `${activeVillageInfo.name} · 中心街` : scene === "cultureDistrict" ? `${activeVillageInfo.name} · 清河文化街` : scene === "residentialDistrict" ? `${activeVillageInfo.name} · 青禾住宅坡` : scene === "eastNeighbor" ? "东郊 · 林婶的果园小屋" : scene === "southNeighbor" ? "南坡 · 鲁师傅的院子" : "北林 · 叶老师的书屋";
-  const wildFriendVisit: "cave" | "camp" | null = game.day % 4 === 0 ? "cave" : game.day % 4 === 2 ? "camp" : null;
+  const wildFriendVisit: "cave" | "camp" | null = game.day % 5 === 0 ? "cave" : game.day % 5 === 2 ? "camp" : null;
+  const wildFriendAtPlayerHome = game.day % 5 === 3;
   const isNpcSick = (name: string) => (NPC_SICK_DAYS[name]?.includes(game.day) ?? false) && game.npcHealedDays[name] !== game.day;
   const doctorIsRestingAtHome = isNpcSick("白医生");
   const originalBuildingOwner = activeBuilding ? BUILDING_INFO[activeBuilding].owner : "";
@@ -2728,7 +2773,7 @@ export default function FarmGame() {
   };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeBuilding || neighborInterior || residentHome || craftingOpen || chestOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay) return;
+    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay) return;
     if ((event.target as HTMLElement).closest("button, input, .shop-overlay")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
@@ -2854,7 +2899,7 @@ export default function FarmGame() {
         </div>
         <div className="day-card">
           <span className={`season-dot season-dot-${game.season}`}>{SEASON_SHORT[game.season]}</span>
-          <div><strong>{SEASONS[game.season]}第 {game.day} 天 · {WEEKDAYS[(game.day - 1) % 7]}</strong><span>{String(clockHour).padStart(2, "0")}:{String(clockMinute).padStart(2, "0")}</span></div>
+          <div><strong>第 {game.year} 年 · {SEASONS[game.season]}第 {game.day} 天 · {WEEKDAYS[(game.day - 1) % 7]}</strong><span>{calendarMonth}月{game.day}日 · {String(clockHour).padStart(2, "0")}:{String(clockMinute).padStart(2, "0")}</span></div>
         </div>
         <div className="top-stats">
           <div className={`weather ${isNight ? "night-weather" : ""}`}><span className={isNight ? "moon-icon" : "sun-icon"} />{isNight ? "月夜" : "晴朗"} <small>{isNight ? "12°C" : "18°C"}</small></div>
@@ -2894,6 +2939,7 @@ export default function FarmGame() {
             <div><span>新手农夫</span><strong>{displayName}</strong></div>
           </div>
           {multiplayerSession && <div className="multiplayer-status-card"><div><span>双人村庄</span><button onClick={() => setMultiplayerOpen(true)}>查看</button></div><strong>{activeVillageInfo.name} · {multiplayerSession.roomCode}</strong><small>{partner ? `${partner.online ? "● 在线" : "○ 离线"} ${partner.playerName}住在${VILLAGE_INFO[partner.village].name}` : "等待另一位玩家加入"}</small></div>}
+          {isBirthday && <button className="birthday-card" onClick={() => { setScene("farm"); setActiveBuilding("farmhouse"); setIndoorPlayer({ x: 34, y: 70 }); setMessage(`今天是${displayName}的生日！大家已经来到农舍，点击生日蛋糕可以一起分享。`); }}><span>二月十九日 · 今日活动</span><strong>{displayName}的生日派对</strong><small>大家都在农舍 · 点击回家庆祝</small></button>}
           <button className={`festival-card ${currentFestival ? "festival-open" : ""}`} onClick={() => { if (currentFestival) goToFestival(); else setMessage(`下一场是${nextFestival.name}，第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]}在${nextFestival.place}举行，还有 ${daysUntilFestival} 天。`); }}><span>{currentFestival ? "今日活动" : "下一场活动"}</span><strong>{(currentFestival ?? nextFestival).name}</strong><small>{currentFestival ? `正在${currentFestival.place}举行 · 点击前往` : `第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]} · 还有 ${daysUntilFestival} 天`}</small></button>
           <div className="meter-block">
             <div className="meter-label"><span>体力</span><b>{game.energy}/100</b></div>
@@ -2936,7 +2982,7 @@ export default function FarmGame() {
         </aside>
 
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
-          <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome ? "interior-open" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
+          <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome || friendHomeOpen ? "interior-open" : ""} ${playingWithAnan ? "playing-with-anan" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
@@ -2998,8 +3044,8 @@ export default function FarmGame() {
                 <div className="friend-mini-field" aria-label="安安的十二格小农田">{Array.from({ length: 12 }).map((_, index) => <i key={`friend-plot-${index}`} className={index % 3 === 0 ? "friend-plot-grown" : ""} />)}</div>
                 <div className="friend-wild-garden"><i /><i /><i /><b>野菜和香草</b></div>
                 <div className="friend-water-barrel"><i /><b>雨水桶</b></div>
-                <div className="friend-farm-shelter"><i className="friend-shelter-roof" /><i className="friend-shelter-wall" /><i className="friend-shelter-door" /><strong>安安的林边小屋<small>喜欢野外生活的朋友</small></strong></div>
-                {wildFriendVisit ? <button className="friend-away-note" onClick={() => setMessage(`安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}，回青禾农场就能找到她。`)}>安安出去玩了<small>今天在{wildFriendVisit === "cave" ? "山洞" : "帐篷"}</small></button> : <button style={personClothesStyle("安安")} className="wild-friend-npc" onClick={() => interactWithPerson("安安", PERSON_DIALOGUES["安安"])} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和朋友安安聊天"}><i /><b /><span>安安<small>{heldItem ? `送出${carriedItemName}` : "你的野外朋友"}</small></span></button>}
+                <button className="friend-farm-shelter" onClick={(event) => { event.stopPropagation(); setFriendHomeOpen(true); setIndoorPlayer({ x: 34, y: 70 }); setMessage("走进安安的林边小屋，屋里摆着登山装备和野外收藏。 "); }} aria-label="进入安安的林边小屋"><i className="friend-shelter-roof" /><i className="friend-shelter-wall" /><i className="friend-shelter-door" /><strong>安安的林边小屋<small>点击进入拜访</small></strong></button>
+                {wildFriendVisit || wildFriendAtPlayerHome ? <button className="friend-away-note" onClick={() => setMessage(wildFriendAtPlayerHome ? `安安今天去${displayName}的农舍找你了，回自己家就能见到她。` : `安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}。`)}>安安出去玩了<small>今天在{wildFriendAtPlayerHome ? `${displayName}的农舍` : wildFriendVisit === "cave" ? "山洞" : "帐篷"}</small></button> : <button style={personClothesStyle("安安")} className="wild-friend-npc" onClick={() => interactWithPerson("安安", PERSON_DIALOGUES["安安"])} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和朋友安安聊天"}><i /><b /><span>安安<small>{heldItem ? `送出${carriedItemName}` : "你的野外朋友"}</small></span></button>}
                 <div className="friend-farm-trees"><i /><i /><i /></div>
                 <button className="edge-gate friend-farm-return" onClick={() => { setScene("farm"); setPlayer({ x: 0, y: 5 }); setMessage("从安安的小农场回到青禾农场。 "); }}><span>返回青禾农场</span><b>→</b><small>一直向右走</small></button>
               </>
@@ -3087,6 +3133,26 @@ export default function FarmGame() {
             {festivalDisplay === "wood" && (
               <div className="shop-overlay festival-exhibit-overlay" role="presentation">
                 <section className="festival-exhibit" role="dialog" aria-modal="true" aria-labelledby="wood-exhibit-title"><header><div><span>木匠工坊 · 每日轮换展览</span><h2 id="wood-exhibit-title">鲁师傅的木工作品</h2></div><button onClick={() => setFestivalDisplay(null)}>×</button></header><div className={`wood-exhibit-stage daily-craft-${dailyWoodcraftIndex}`}><div className="woodcraft-window"><img src="/woodcraft-showcase.png" alt={dailyWoodcraft.name} draggable={false} /></div><div className="daily-craft-copy"><small>第 {game.day} 天 · 今日展品</small><strong>{dailyWoodcraft.name}</strong><p>{dailyWoodcraft.description}</p></div></div><p>鲁师傅每天早上都会换一件木雕。每件作品都用青禾谷的木材手工打磨，可以每天来看看。</p><footer><button onClick={() => setFestivalDisplay(null)}>看完今日展品</button></footer></section>
+              </div>
+            )}
+
+            {friendHomeOpen && (
+              <div className="shop-overlay neighbor-home-interior anan-home-interior" role="presentation">
+                <section className="service-panel neighbor-home-panel anan-home-panel" role="dialog" aria-modal="true" aria-labelledby="anan-home-title">
+                  <header><div><span>青禾农场西边 · 朋友的家</span><h2 id="anan-home-title">安安的林边小屋</h2></div><button onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }} aria-label="离开安安的家">×</button></header>
+                  <div className="interior-room neighbor-room anan-home-room" onClick={walkInsidePointer}>
+                    <div className="room-window"><i /><i /></div><div className="room-rug" />
+                    <div className="anan-home-gear"><i /><i /><i /><span>登山包 · 绳索 · 地图</span></div>
+                    <button className="neighbor-bed anan-bed" onClick={() => setMessage("这是安安的床，床头放着一本写满山洞路线的探险笔记。 ")}><i /><b /><span>安安的床</span></button>
+                    <div className="neighbor-home-items anan-home-items">{["山谷地图", "水晶收藏", "露营相册"].map((item) => <button key={item} onClick={() => setMessage(item === "山谷地图" ? "地图上画着安安走过的山路、帐篷营地和青禾山洞。" : item === "水晶收藏" ? "架子上放着安安从山洞带回来的彩色小水晶。" : "相册里有安安和小禾一起在野外玩的照片。 ")}><i />{item}</button>)}</div>
+                    {!wildFriendVisit && !wildFriendAtPlayerHome ? <button style={personClothesStyle("安安")} className="neighbor-indoor-npc anan-home-npc" onClick={() => interactWithPerson("安安", "安安：欢迎来我家！我们可以看看地图，再决定今天去哪里探险。 ")} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和安安聊天"}><i className="npc-hair" /><i className="npc-face" /><i className="npc-body" /><span>安安</span></button> : <button className="anan-indoor-away-note" onClick={() => setMessage(wildFriendAtPlayerHome ? `纸条上写着：我去${displayName}家找你啦！——安安` : `纸条上写着：我去${wildFriendVisit === "cave" ? "山洞" : "帐篷"}玩一会儿，晚点回来！——安安`)}><i />安安留下的纸条<small>点击查看去向</small></button>}
+                    <button className="house-door neighbor-home-door" onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }}><span>出口</span></button>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                  </div>
+                  <div className="service-dialogue"><strong>{wildFriendVisit || wildFriendAtPlayerHome ? "安安出门了" : "安安"}</strong><p>{wildFriendAtPlayerHome ? `安安今天去${displayName}的农舍找你。她在桌上留了一张纸条。` : wildFriendVisit ? `安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}，小屋里留下了她的去向。` : "欢迎来我家！屋里有登山装备、地图、水晶收藏和安安自己的床。"}</p></div>
+                  <div className="service-actions"><button onClick={() => wildFriendVisit || wildFriendAtPlayerHome ? setMessage("安安不在家，但她把今天的去向写在纸条上了。 ") : interactWithPerson("安安", "安安：下次我也会直接去你家找你，我们可以从农舍一起出发。 ")}>{wildFriendVisit || wildFriendAtPlayerHome ? "查看安安留下的纸条" : heldItem ? `把${carriedItemName}送给安安` : "和安安聊天"}</button><button className="exit-action" onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }}>从门口出去</button></div>
+                  <footer><span>{message}</span><small>屋里可以移动 · 按 Esc 出去</small></footer>
+                </section>
               </div>
             )}
 
@@ -3224,17 +3290,19 @@ export default function FarmGame() {
                   <header><div><span>{activeVillageInfo.farm}室内</span><h2 id="farmhouse-title">{displayName}的农舍</h2></div><button onClick={leaveBuilding} aria-label={`离开${displayName}的农舍`}>×</button></header>
                   <div className={`interior-room farmhouse-room ${game.upgrades.house ? "expanded-farmhouse-room" : ""} farmhouse-level-${game.upgrades.house} ${isNight ? "night-room" : ""} ${isNight && stoveLit ? "stove-lit-room" : ""} ${isNight && game.equipment.lampOn ? "lamp-lit-room" : ""}`} onClick={walkInsidePointer}>
                     <div className="room-window"><i /><i /></div>
+                    {isBirthday && <><div className="birthday-banner">二月十九日 · {displayName}生日快乐！</div><div className="birthday-house-guests" aria-label="来农舍参加生日派对的所有朋友">{BIRTHDAY_GUESTS.map((name, index) => <button key={`birthday-${name}`} style={personClothesStyle(name)} className={`birthday-guest birthday-guest-${index + 1}`} onClick={() => interactWithPerson(name, `${name}：生日快乐！大家一起吃蛋糕、唱歌和玩游戏吧！`)} aria-label={`和参加生日派对的${name}聊天`}><i /><b /><span>{name}</span></button>)}</div><button className={`birthday-cake ${game.birthdayCakeYear === game.year ? "cake-eaten" : ""}`} onClick={eatBirthdayCake} aria-label="分享生日蛋糕恢复体力"><i /><b /><em /><span>{game.birthdayCakeYear === game.year ? "蛋糕已经分享完" : "点击吃生日蛋糕 · 恢复40体力"}</span></button></>}
                     <button className="house-bed" onClick={sleepAtHome} aria-label="点击床睡到第二天"><i /><b /><span>点击睡觉</span></button>
                     <div className="house-table"><i /><i /></div>
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     {game.upgrades.house >= 1 && <button className={`house-equipment house-lamp ${game.equipment.lampOn ? "active" : ""}`} onClick={() => { setGame((current) => ({ ...current, equipment: { ...current.equipment, lampOn: !current.equipment.lampOn } })); setMessage(game.equipment.lampOn ? "关掉了暖光灯。" : "暖光灯亮起来，夜晚的房间变得明亮了！"); }}><i />暖光灯</button>}
                     {game.upgrades.house >= 2 && <button className="house-equipment house-water-tank" onClick={() => { setGame((current) => ({ ...current, water: current.toolUpgrades.water ? 18 : 12 })); setMessage("自动水箱把洒水壶补满了！"); playTone(620); }}><i />自动水箱</button>}
                     {game.upgrades.house >= 3 && <button className="house-equipment house-kitchen" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 20) })); setMessage("在料理台吃了一份热饭，恢复 20 点体力！"); playTone(740); }}><i />料理台</button>}
+                    {wildFriendAtPlayerHome && <button style={personClothesStyle("安安")} className="neighbor-indoor-npc anan-farmhouse-visitor" onClick={() => interactWithPerson("安安", `安安：我直接跑来${displayName}家找你啦！今天一起去农场、帐篷或者山洞玩吧。`)} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和来家里找你的安安聊天"}><i className="npc-hair" /><i className="npc-face" /><i className="npc-body" /><span>安安<small>来找你玩</small></span></button>}
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
                     <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
-                  <div className="service-dialogue"><strong>回到家啦</strong><p>床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。</p></div>
+                  <div className="service-dialogue"><strong>{isBirthday ? `${displayName}的生日派对` : wildFriendAtPlayerHome ? "安安来找你啦" : "回到家啦"}</strong><p>{isBirthday ? "每一年的春天第十九天，大家都会来到农舍庆祝二月十九日生日。点击朋友可以聊天，点击蛋糕能恢复体力。" : wildFriendAtPlayerHome ? "安安有时会从西边的小农场直接跑来你家。点击她可以聊天，也可以把头顶举着的礼物送给她。" : "床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。"}</p></div>
                   <div className="service-actions">
                     <button onClick={sleepAtHome}>在床上睡到明天</button>
                     <button className="exit-action" onClick={leaveBuilding}>从门口出去</button>
