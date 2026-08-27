@@ -148,6 +148,7 @@ const CROP_TYPES = Object.keys(CROP_INFO) as CropType[];
 const BEACH_CRABS = [
   { x: 22, y: 67 }, { x: 36, y: 58 }, { x: 49, y: 72 },
   { x: 63, y: 61 }, { x: 77, y: 76 }, { x: 86, y: 55 },
+  { x: 30, y: 78 }, { x: 58, y: 54 }, { x: 73, y: 68 },
 ];
 
 const RESOURCE_INFO: Record<StorableResource, { name: string; energy: number; price: number }> = {
@@ -519,6 +520,7 @@ export default function FarmGame() {
   const [beachPlayer, setBeachPlayer] = useState({ x: 48, y: 72 });
   const [beachCrabs, setBeachCrabs] = useState(() => BEACH_CRABS.map(() => true));
   const [divingAtSea, setDivingAtSea] = useState(false);
+  const [sailingWithAnan, setSailingWithAnan] = useState(false);
   const [seaCreatures, setSeaCreatures] = useState(() => BEACH_CRABS.map(() => true));
   const [festivalDisplay, setFestivalDisplay] = useState<"wood" | null>(null);
   const [amusementOpen, setAmusementOpen] = useState(false);
@@ -561,6 +563,7 @@ export default function FarmGame() {
   const fishingMarkerTimerRef = useRef<number | null>(null);
   const fishingMarkerDirectionRef = useRef(1);
   const fishingBaitUsedRef = useRef(false);
+  const beachRespawnTimersRef = useRef<number[]>([]);
   const multiplayerStatusRef = useRef({ player, game });
   const splitLeftRef = useRef<HTMLIFrameElement | null>(null);
   const splitRightRef = useRef<HTMLIFrameElement | null>(null);
@@ -762,6 +765,8 @@ export default function FarmGame() {
     if (fishingWaitTimerRef.current) window.clearTimeout(fishingWaitTimerRef.current);
     if (fishingBiteTimerRef.current) window.clearTimeout(fishingBiteTimerRef.current);
     if (fishingMarkerTimerRef.current) window.clearInterval(fishingMarkerTimerRef.current);
+    beachRespawnTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    beachRespawnTimersRef.current = [];
   }, []);
 
   useEffect(() => {
@@ -1690,6 +1695,7 @@ export default function FarmGame() {
     setBeachCrabs(BEACH_CRABS.map(() => true));
     setSeaCreatures(BEACH_CRABS.map(() => true));
     setDivingAtSea(false);
+    setSailingWithAnan(false);
     setMessage("安安背上雨水桶和小船，拉着小禾坐上去海边的巴士。出发旅行恢复了 10 点体力！ ");
     playTone(860);
     window.setTimeout(() => {
@@ -1726,7 +1732,13 @@ export default function FarmGame() {
     }
     setBeachCrabs((current) => current.map((visible, index) => index === nearest ? false : visible));
     setGame((current) => ({ ...current, crabs: current.crabs + 1 }));
-    setMessage("夹住一只横着跑的小螃蟹！它已经装进背包，可以点击食用。 ");
+    const caughtIndex = nearest;
+    const respawnTimer = window.setTimeout(() => {
+      setBeachCrabs((current) => current.map((visible, index) => index === caughtIndex ? true : visible));
+      setMessage("一只新的小螃蟹从沙滩边横着跑出来了！ ");
+    }, 4_000 + Math.round(Math.random() * 2_000));
+    beachRespawnTimersRef.current.push(respawnTimer);
+    setMessage("夹住一只横着跑的小螃蟹！它已经装进背包。等一小会儿，还会有新的螃蟹跑出来。 ");
     playTone(880);
   };
 
@@ -1746,7 +1758,8 @@ export default function FarmGame() {
     let nearestDistance = Number.POSITIVE_INFINITY;
     BEACH_CRABS.forEach((creature, index) => {
       if (!seaCreatures[index]) return;
-      const distance = Math.hypot(creature.x - beachPlayer.x, creature.y - beachPlayer.y);
+      const seaY = Math.max(26, creature.y - 18);
+      const distance = Math.hypot(creature.x - beachPlayer.x, seaY - beachPlayer.y);
       if (distance < nearestDistance) { nearest = index; nearestDistance = distance; }
     });
     if (nearest < 0 || nearestDistance > 16) {
@@ -1754,12 +1767,20 @@ export default function FarmGame() {
       playTone(250);
       return;
     }
-    const caughtFish = nearest % 2 === 0;
+    const caughtKind = nearest % 3;
+    const caughtFish = caughtKind === 0;
+    const caughtShrimp = caughtKind === 1;
     setSeaCreatures((current) => current.map((visible, index) => index === nearest ? false : visible));
     setGame((current) => caughtFish
       ? { ...current, fishCaught: current.fishCaught + 1, inventory: { ...current.inventory, fish: current.inventory.fish + 1 } }
-      : { ...current, shrimp: current.shrimp + 1 });
-    setMessage(caughtFish ? "在水下抓到一条闪亮的小海鱼，放进背包啦！ " : "用潜水夹抓到一只小虾，放进背包啦！ ");
+      : caughtShrimp ? { ...current, shrimp: current.shrimp + 1 } : { ...current, crabs: current.crabs + 1 });
+    const caughtIndex = nearest;
+    const respawnTimer = window.setTimeout(() => {
+      setSeaCreatures((current) => current.map((visible, index) => index === caughtIndex ? true : visible));
+      setMessage(caughtFish ? "一条新的小鱼从海草后游出来了！ " : caughtShrimp ? "一只新的小虾从珊瑚旁游出来了！ " : "一只新的小海蟹从礁石后爬出来了！ ");
+    }, 4_000 + Math.round(Math.random() * 2_000));
+    beachRespawnTimersRef.current.push(respawnTimer);
+    setMessage(caughtFish ? "在水下抓到一条闪亮的小海鱼，放进背包啦！等一会儿还会游来新的。 " : caughtShrimp ? "用潜水夹抓到一只小虾，放进背包啦！等一会儿还会游来新的。 " : "抓到一只小海蟹，放进背包啦！等一会儿还会爬来新的。 ");
     playTone(900);
   };
 
@@ -3648,14 +3669,19 @@ export default function FarmGame() {
             {ananBeachOpen && (
               <div className="shop-overlay anan-beach-overlay" role="presentation">
                 <section className={`anan-beach-panel ${divingAtSea ? "underwater-mode" : "shore-mode"}`} role="dialog" aria-modal="true" aria-labelledby="anan-beach-title" data-testid="anan-beach-panel">
-                  <header><div><span>安安的每季海边旅行</span><h2 id="anan-beach-title">{divingAtSea ? "穿上潜水服 · 海底探索" : "青禾海岸 · 沙滩与浅海"}</h2></div><button onClick={() => { setAnanBeachOpen(false); setDivingAtSea(false); setMessage("和安安坐巴士回到了青禾农场。 "); }}>×</button></header>
-                  <div className="anan-beach-scene" data-testid="anan-beach-scene" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; const bounds = event.currentTarget.getBoundingClientRect(); const nextBeachY = Math.max(divingAtSea ? 22 : 30, Math.min(86, ((event.clientY - bounds.top) / bounds.height) * 100)); setBeachPlayer({ x: Math.max(7, Math.min(93, ((event.clientX - bounds.left) / bounds.width) * 100)), y: nextBeachY }); setMessage(divingAtSea ? "小禾穿着潜水服游到了你点击的位置。 " : nextBeachY < 61 ? "小禾走进海水里游泳啦！ " : "小禾走到了海滩上你点击的位置。 "); }}>
+                  <header><div><span>安安的每季海边旅行</span><h2 id="anan-beach-title">{divingAtSea ? "穿上潜水服 · 海底探索" : sailingWithAnan ? "安安的小船 · 海上漂流" : "青禾海岸 · 沙滩与浅海"}</h2></div><button onClick={() => { setAnanBeachOpen(false); setDivingAtSea(false); setSailingWithAnan(false); setMessage("和安安坐巴士回到了青禾农场。 "); }}>×</button></header>
+                  <div className="anan-beach-scene" data-testid="anan-beach-scene" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; if (sailingWithAnan && !divingAtSea) { setMessage("小禾正在安安的小船上。点击上方“潜水跳下去”，或者让小船开回沙滩。 "); return; } const bounds = event.currentTarget.getBoundingClientRect(); const nextBeachY = Math.max(divingAtSea ? 22 : 30, Math.min(86, ((event.clientY - bounds.top) / bounds.height) * 100)); setBeachPlayer({ x: Math.max(7, Math.min(93, ((event.clientX - bounds.left) / bounds.width) * 100)), y: nextBeachY }); setMessage(divingAtSea ? "小禾穿着潜水服游到了你点击的位置。 " : nextBeachY < 61 ? "小禾走进海水里游泳啦！ " : "小禾走到了海滩上你点击的位置。 "); }}>
+                    <div className="anan-beach-quick-actions" aria-label="海边抓取和下水操作">
+                      <button className="crab-catch-action" data-testid="beach-catch-button" disabled={sailingWithAnan && !divingAtSea} onClick={() => divingAtSea ? catchSeaCreature() : catchBeachCrab()}><b>{sailingWithAnan && !divingAtSea ? "先跳下船" : "抓起"}</b><small>靠近螃蟹或小鱼小虾</small></button>
+                      {!divingAtSea && !sailingWithAnan && <button data-testid="beach-swim-button" onClick={() => { const goingSwimming = beachPlayer.y >= 61; setBeachPlayer({ x: 48, y: goingSwimming ? 45 : 72 }); setMessage(goingSwimming ? "小禾走进海水里游泳啦！ " : "小禾从浅海游回了沙滩。 "); }}><b>{beachPlayer.y >= 61 ? "走进海水" : "游回沙滩"}</b><small>点击直接切换</small></button>}
+                      <button className="beach-dive-action" data-testid="beach-dive-button" onClick={() => { if (divingAtSea) { setDivingAtSea(false); setBeachPlayer({ x: sailingWithAnan ? 48 : 48, y: sailingWithAnan ? 45 : 72 }); setMessage(sailingWithAnan ? "小禾抓住船边，重新爬上安安的小船啦！ " : "脱下潜水服回到沙滩。 "); } else { setDivingAtSea(true); setBeachPlayer({ x: 48, y: 48 }); setMessage(sailingWithAnan ? "小禾从安安的小船上跳进海里，穿着潜水服去抓小虾和小海蟹！ " : "安安把潜水服递给小禾。穿好后直接潜进海里啦！ "); } }}><b>{divingAtSea ? (sailingWithAnan ? "上船" : "返回沙滩") : (sailingWithAnan ? "潜水跳下去" : "穿潜水服")}</b><small>{divingAtSea ? (sailingWithAnan ? "回到安安身边" : "回到岸上") : "下海探索"}</small></button>
+                    </div>
                     <div className="beach-sky" /><div className="beach-sea"><i /><i /><i /></div><div className="beach-sand" />
-                    {!divingAtSea && <><div className="beach-small-boat"><i /><b /><span>安安的小船</span></div>{(game.day + game.season) % 2 === 0 && <div className="beach-big-ship"><i /><i /><b>远处的大船</b></div>}<div className="anan-beach-bucket"><i /><b /><span>雨水桶</span></div><button style={personClothesStyle("安安")} className="anan-beach-friend anan-character" onClick={() => interactWithPerson("安安", "安安：海风好舒服！我们可以抓螃蟹、游泳，也可以坐在船边钓鱼。 ")}><i /><em className="anan-pigtails" /><b /><span>安安</span></button>{BEACH_CRABS.map((crab, index) => beachCrabs[index] && <button key={`beach-crab-${index}`} className={`beach-crab crab-${index + 1}`} style={{ left: `${crab.x}%`, top: `${crab.y}%` }} onClick={(event) => { event.stopPropagation(); catchBeachCrab(index); }} aria-label={`第 ${index + 1} 只沙滩螃蟹，靠近后点击抓起`}><i /><i /><b /></button>)}</>}
-                    {divingAtSea && <><div className="underwater-rays"><i /><i /><i /></div><div className="coral coral-one"><i /><i /><i /></div><div className="coral coral-two"><i /><i /></div>{BEACH_CRABS.map((creature, index) => seaCreatures[index] && <button key={`sea-creature-${index}`} className={`sea-creature ${index % 2 === 0 ? "tiny-fish" : "tiny-shrimp"}`} style={{ left: `${creature.x}%`, top: `${Math.max(26, creature.y - 18)}%` }} onClick={(event) => { event.stopPropagation(); setMessage(index % 2 === 0 ? "一条小鱼从海草旁游过，靠近后可以抓起。 " : "一只小虾藏在珊瑚边，靠近后可以抓起。 "); }}><i /><b /></button>)}</>}
-                    <div className={`beach-player facing-${facing} ${isWalking ? "walking" : ""} ${divingAtSea ? "diving-player" : beachPlayer.y < 61 ? "swimming-player" : ""}`} data-testid="beach-player" style={{ left: `${beachPlayer.x}%`, top: `${beachPlayer.y}%` }}><span className="player-shadow" /><PlayerSprite facing={facing} sick={game.sick} />{divingAtSea && <i className="diving-mask" />}</div>
+                    {!divingAtSea && <><div className={`beach-small-boat ${sailingWithAnan ? "boat-sailing-with-anan" : ""}`}><i /><b /><em className="boat-second-passenger" /><span>{sailingWithAnan ? "安安和小禾在海上" : "安安的小船"}</span></div>{(game.day + game.season) % 2 === 0 && <div className="beach-big-ship"><i /><i /><b>远处的大船</b></div>}<div className="anan-beach-bucket"><i /><b /><span>雨水桶</span></div>{!sailingWithAnan && <button style={personClothesStyle("安安")} className="anan-beach-friend anan-character" onClick={() => interactWithPerson("安安", "安安：海风好舒服！我们可以抓螃蟹、游泳，也可以坐小船去海上。 ")}><i /><em className="anan-pigtails" /><b /><span>安安</span></button>}{!sailingWithAnan && BEACH_CRABS.map((crab, index) => beachCrabs[index] && <button key={`beach-crab-${index}`} className={`beach-crab crab-${index + 1}`} style={{ left: `${crab.x}%`, top: `${crab.y}%` }} onClick={(event) => { event.stopPropagation(); catchBeachCrab(index); }} aria-label={`第 ${index + 1} 只沙滩螃蟹，靠近后点击抓起`}><i /><i /><b /></button>)}</>}
+                    {divingAtSea && <><div className="underwater-rays"><i /><i /><i /></div><div className="coral coral-one"><i /><i /><i /></div><div className="coral coral-two"><i /><i /></div>{BEACH_CRABS.map((creature, index) => { const creatureKind = index % 3; const creatureName = creatureKind === 0 ? "小海鱼" : creatureKind === 1 ? "小虾" : "小海蟹"; return seaCreatures[index] && <button key={`sea-creature-${index}`} className={`sea-creature ${creatureKind === 0 ? "tiny-fish" : creatureKind === 1 ? "tiny-shrimp" : "tiny-sea-crab"}`} style={{ left: `${creature.x}%`, top: `${Math.max(26, creature.y - 18)}%` }} onClick={(event) => { event.stopPropagation(); const seaY = Math.max(26, creature.y - 18); setBeachPlayer({ x: Math.max(7, creature.x - 7), y: seaY }); setMessage(`小禾已经游到${creatureName}旁边了，现在点击上方“抓起”！`); }} aria-label={`${creatureName}，靠近后点击抓起`}><i /><b /></button>; })}</>}
+                    {!(sailingWithAnan && !divingAtSea) && <div className={`beach-player facing-${facing} ${isWalking ? "walking" : ""} ${divingAtSea ? "diving-player" : beachPlayer.y < 61 ? "swimming-player" : ""}`} data-testid="beach-player" style={{ left: `${beachPlayer.x}%`, top: `${beachPlayer.y}%` }}><span className="player-shadow" /><PlayerSprite facing={facing} sick={game.sick} />{divingAtSea && <i className="diving-mask" />}</div>}
                   </div>
-                  <div className="anan-beach-actions"><button className="crab-catch-action" data-testid="beach-catch-button" onClick={() => divingAtSea ? catchSeaCreature() : catchBeachCrab()}>抓起</button>{!divingAtSea && <button data-testid="beach-swim-button" onClick={() => { const goingSwimming = beachPlayer.y >= 61; setBeachPlayer({ x: 48, y: goingSwimming ? 45 : 72 }); setMessage(goingSwimming ? "小禾走进海水里游泳啦！ " : "小禾从浅海游回了沙滩。 "); }}>{beachPlayer.y >= 61 ? "走进海水游泳" : "游回沙滩"}</button>}<button onClick={() => { setDivingAtSea((current) => !current); setBeachPlayer({ x: 48, y: divingAtSea ? 72 : 64 }); setMessage(divingAtSea ? "脱下潜水服回到沙滩。 " : "安安把潜水服递给小禾。穿好后直接潜进海里啦！ "); }}>{divingAtSea ? "返回沙滩" : "穿潜水服下海"}</button><button onClick={fishAtSea}>在小船旁海钓</button><button onClick={() => { setAnanBeachOpen(false); setDivingAtSea(false); setMessage("和安安坐巴士回到了青禾农场。 "); }}>坐巴士回家</button></div>
+                  <div className="anan-beach-actions"><button data-testid="beach-boat-button" onClick={() => { if (divingAtSea) { setMessage("先点击上方“上船”，再让小船开动。 "); return; } setSailingWithAnan((current) => !current); setBeachPlayer({ x: 48, y: sailingWithAnan ? 72 : 45 }); setMessage(sailingWithAnan ? "安安把小船开回沙滩，小禾跳回岸上啦！ " : "小禾坐上安安的小船，两个人一起向海上漂去啦！现在可以点上方“潜水跳下去”。 "); }}>{sailingWithAnan ? "小船开回沙滩" : "乘坐安安的小船"}</button><button onClick={fishAtSea}>在小船旁海钓</button><button onClick={() => { setAnanBeachOpen(false); setDivingAtSea(false); setSailingWithAnan(false); setMessage("和安安坐巴士回到了青禾农场。 "); }}>坐巴士回家</button></div>
                   <footer><span>{message}</span><small>键盘、方向按钮或点击画面都能移动</small></footer>
                 </section>
               </div>
