@@ -12,6 +12,8 @@ type CropType = "radish" | "strawberry" | "corn" | "pineapple" | "watermelon" | 
 type StorableResource = CropType | "fish";
 type VillageId = "qinghe" | "maple";
 type Facing = "down" | "up" | "left" | "right";
+type Weather = "sunny" | "cloudy" | "rain" | "thunder";
+type MallItem = "redCoat" | "blueOutfit" | "umbrella" | "seedBox";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft" | "springFestival" | "lantern" | "dragonBoat" | "midAutumn";
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
 type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "matches";
@@ -126,6 +128,10 @@ type GameState = {
   birthdayCakeYear: number;
   driverLicense: boolean;
   ownsCar: boolean;
+  weather: Weather;
+  mallItems: Record<MallItem, number>;
+  equippedOutfit: "default" | "redCoat" | "blueOutfit";
+  umbrellaOpen: boolean;
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -221,6 +227,17 @@ const ITEM_DESCRIPTIONS: Record<string, string> = {
 const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 const SEASONS = ["春天", "夏天", "秋天", "冬天"];
 const SEASON_SHORT = ["春", "夏", "秋", "冬"];
+const WEATHER_INFO: Record<Weather, { name: string; temperature: string }> = {
+  sunny: { name: "晴朗", temperature: "18°C" },
+  cloudy: { name: "阴天", temperature: "16°C" },
+  rain: { name: "下雨", temperature: "14°C" },
+  thunder: { name: "雷雨", temperature: "13°C" },
+};
+
+const weatherForDate = (year: number, season: number, day: number): Weather => {
+  const pattern: Weather[] = ["sunny", "cloudy", "rain", "sunny", "sunny", "thunder", "cloudy", "rain", "sunny"];
+  return pattern[(year * 5 + season * 3 + day) % pattern.length];
+};
 
 const LOST_BOOKS = [
   { title: "《青禾溪的萤火》", short: "萤", content: "夏夜里，小禾沿着青禾溪寻找迟归的萤火虫。她发现溪边的灯光不是星星掉进水里，而是一群萤火虫在为迷路的小鹿照亮回家的石桥。" },
@@ -477,6 +494,10 @@ const makeNewGame = (): GameState => ({
   birthdayCakeYear: 0,
   driverLicense: false,
   ownsCar: false,
+  weather: "sunny",
+  mallItems: { redCoat: 0, blueOutfit: 0, umbrella: 0, seedBox: 0 },
+  equippedOutfit: "default",
+  umbrellaOpen: false,
 });
 
 const villageSaveKey = (village: VillageId) => village === "maple" ? "qinghe-farm-save-maple" : "qinghe-farm-save";
@@ -514,6 +535,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       lastSchoolAttendance: parsed.lastSchoolAttendance ?? "",
       seasonExcursionCompleted: parsed.seasonExcursionCompleted ?? false,
       cows: parsed.cows ?? parsed.sheep ?? 0,
+      mallItems: { ...defaults.mallItems, ...(parsed.mallItems ?? {}) },
     };
   } catch {
     return defaults;
@@ -588,6 +610,9 @@ export default function FarmGame() {
   const [drivingQuizStep, setDrivingQuizStep] = useState(0);
   const [drivingPracticeStep, setDrivingPracticeStep] = useState(0);
   const [carTraveling, setCarTraveling] = useState(false);
+  const [carRouteTarget, setCarRouteTarget] = useState<"district" | "farm">("district");
+  const [carRouteStep, setCarRouteStep] = useState(0);
+  const [carHeading, setCarHeading] = useState<"forward" | "left" | "right" | "back">("forward");
   const [mallOpen, setMallOpen] = useState(false);
   const [interiorFireLit, setInteriorFireLit] = useState(false);
   const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
@@ -686,6 +711,7 @@ export default function FarmGame() {
             lastIllnessDay: parsed.lastIllnessDay ?? 0,
             npcHealedDays: parsed.npcHealedDays ?? {},
             lastSchoolAttendance: parsed.lastSchoolAttendance ?? "",
+            mallItems: { ...defaults.mallItems, ...(parsed.mallItems ?? {}) },
           });
         }
       } catch {
@@ -1655,6 +1681,7 @@ export default function FarmGame() {
   const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "forest" ? forestItemName(heldItem.id) : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : heldItem.kind === "herb" ? "药材" : heldItem.kind === "resin" ? "树脂" : heldItem.kind === "matches" ? "火柴" : heldItem.kind === "product" ? (heldItem.id === "egg" ? "鸡蛋" : "牛奶") : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].title : RARE_ARTIFACTS[heldItem.id].title : "";
   const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "forest" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : heldItem.kind === "seed" ? `${heldItem.id}-seeds` : heldItem.kind === "herb" ? "herb" : heldItem.kind === "resin" ? "resin" : heldItem.kind === "matches" ? "matches" : heldItem.kind === "product" ? heldItem.id : heldItem.kind === "book" ? "book" : "artifact" : "";
   const renderCarriedItem = () => heldItem ? <span className={`held-overhead held-${carriedItemClass}`} title={carriedItemName} aria-label={`举着${carriedItemName}`}><i className="held-pixel-object" aria-hidden="true" /><span className="held-item-name">{carriedItemName}</span></span> : null;
+  const renderWearables = () => <>{game.equippedOutfit !== "default" && <span className={`worn-outfit worn-${game.equippedOutfit}`} aria-label={game.equippedOutfit === "redCoat" ? "穿着红色节日外套" : "穿着蓝色旅行套装"} />}{game.umbrellaOpen && <span className="player-umbrella" aria-label="撑着彩色雨伞"><i /></span>}</>;
 
   const giveHeldItem = (person: string) => {
     if (!heldItem) return false;
@@ -2761,6 +2788,8 @@ export default function FarmGame() {
     const nextDayNumber = game.day === 28 ? 1 : game.day + 1;
     const nextSeason = game.day === 28 ? (game.season + 1) % SEASONS.length : game.season;
     const nextYear = game.day === 28 && game.season === SEASONS.length - 1 ? game.year + 1 : game.year;
+    const nextWeather = weatherForDate(nextYear, nextSeason, nextDayNumber);
+    const rainyMorning = nextWeather === "rain" || nextWeather === "thunder";
     const expiringTools = [
       game.toolUpgrades.axe && game.toolUpgradeDays.axe <= 1 ? "精铁斧头" : "",
       game.toolUpgrades.rod && game.toolUpgradeDays.rod <= 1 ? "幸运鱼竿" : "",
@@ -2790,7 +2819,8 @@ export default function FarmGame() {
         : `早上七点了！${game.day === 28 ? `新的${SEASONS[nextSeason]}开始了。` : ""}浇过水的作物和松果树苗都长大了一点。`;
     const birthdayMessage = nextSeason === 0 && nextDayNumber === 19 ? ` 今天是第 ${nextYear} 年春天第十九天，也是小禾的二月十九日生日！大家已经带着蛋糕来到农舍，回家就能开生日派对。` : "";
     const shippingMessage = shippedItemCount > 0 ? ` 昨晚大号出货箱卖出了 ${shippedItemCount} 件东西，赚到 ${shippedEarnings} 金币！` : "";
-    const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${shippingMessage}${visitorMessage}${birthdayMessage}`;
+    const weatherMessage = nextWeather === "sunny" ? " 今天阳光很好。" : nextWeather === "cloudy" ? " 今天是阴天，云层把太阳遮住了。" : nextWeather === "rain" ? " 今天下雨，农田和树苗会自动浇水。" : " 今天有雷雨，天空偶尔会打雷闪电，出门记得撑伞。";
+    const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${weatherMessage}${shippingMessage}${visitorMessage}${birthdayMessage}`;
     setShippingReport(shippedItemCount > 0 ? { itemCount: shippedItemCount, earnings: shippedEarnings } : null);
     setGame((current) => {
       const treeStates = [...current.treeStates];
@@ -2830,6 +2860,7 @@ export default function FarmGame() {
         year: nextYear,
         day: nextDayNumber,
         season: nextSeason,
+        weather: nextWeather,
         seasonExcursionCompleted: game.day === 28 ? false : current.seasonExcursionCompleted,
         hour: 7,
         coins: current.coins + shippedEarnings,
@@ -2844,7 +2875,7 @@ export default function FarmGame() {
         toolUpgradeDays,
         farmVisitor,
         treeStates,
-        plantedTrees: current.plantedTrees.map((tree) => ({ ...tree, stage: tree.watered ? Math.min(3, tree.stage + 1) : tree.stage, watered: false })),
+        plantedTrees: current.plantedTrees.map((tree) => ({ ...tree, stage: tree.watered ? Math.min(3, tree.stage + 1) : tree.stage, watered: rainyMorning })),
         rockStates,
         groundBooks,
         groundArtifacts,
@@ -2852,7 +2883,7 @@ export default function FarmGame() {
         tiles: current.tiles.map((tile, index) => index === eatenCropIndex
           ? { state: "soil", stage: 0, watered: false }
           : tile.state === "crop"
-            ? { ...tile, stage: tile.watered || current.upgrades.greenhouse ? Math.min(3, tile.stage + 1) : tile.stage, watered: false }
+            ? { ...tile, stage: tile.watered || current.upgrades.greenhouse ? Math.min(3, tile.stage + 1) : tile.stage, watered: rainyMorning }
             : tile),
       };
     });
@@ -3096,6 +3127,7 @@ export default function FarmGame() {
   const isSchoolDay = [0, 2, 4, 6].includes((game.day - 1) % 7);
   const clockHour = Math.floor(game.hour) % 24;
   const clockMinute = Math.round((game.hour - Math.floor(game.hour)) * 60) % 60;
+  const weatherInfo = WEATHER_INFO[game.weather];
   const activeVillage = worldVillage;
   const activeVillageInfo = VILLAGE_INFO[activeVillage];
   const partner = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId);
@@ -3235,24 +3267,89 @@ export default function FarmGame() {
       return;
     }
     setCarTraveling(true);
-    setMessage("和安安挥挥手，小禾驾驶汽车沿着新公路出发了……");
-    window.setTimeout(() => {
-      setCarTraveling(false);
-      setScene("mysteryRoad");
-      setPlayer({ x: 6, y: 5 });
-      setMessage("汽车到达远方新区。这里先建好了青禾大商场，其他地方以后继续建设。 ");
-    }, 1400);
+    setCarRouteTarget("district");
+    setCarRouteStep(0);
+    setCarHeading("forward");
+    setMessage("汽车发动了！请看道路指示牌，自己控制前进和转弯。 ");
   };
 
-  const buyMallItem = (name: string, price: number, energy = 0) => {
+  const driveCar = (action: "forward" | "left" | "right" | "uturn") => {
+    if (!carTraveling) return;
+    if (action === "uturn") {
+      setCarHeading("back");
+      setCarTraveling(false);
+      const returnScene = carRouteTarget === "district" ? "westFriendFarm" : "mysteryRoad";
+      setScene(returnScene);
+      setPlayer({ x: 6, y: 5 });
+      setMessage(carRouteTarget === "district" ? "小禾在安全位置掉头，回到了安安的小农场。 " : "小禾掉头回到了远方新区。 ");
+      playTone(420);
+      return;
+    }
+    const route = carRouteTarget === "district" ? ["forward", "right", "forward", "left", "forward"] : ["forward", "left", "forward", "right", "forward"];
+    const expected = route[carRouteStep];
+    setCarHeading(action);
+    if (action !== expected) {
+      setMessage(action === "forward" ? "前面不能直行，请看路口指示牌选择转弯。 " : `这个路口不能${action === "left" ? "左转" : "右转"}，请看指示牌再操作。`);
+      playTone(220);
+      return;
+    }
+    const nextStep = carRouteStep + 1;
+    setCarRouteStep(nextStep);
+    playTone(560 + nextStep * 45);
+    if (nextStep < route.length) {
+      const nextAction = route[nextStep];
+      setMessage(`行驶顺利。下一个路口请${nextAction === "forward" ? "继续前进" : nextAction === "left" ? "向左转" : "向右转"}。`);
+      return;
+    }
+    setCarTraveling(false);
+    if (carRouteTarget === "district") {
+      setScene("mysteryRoad");
+      setPlayer({ x: 6, y: 5 });
+      setMessage("你亲自驾驶汽车到达了远方新区！这里先建好了青禾大商场。 ");
+    } else {
+      setScene("westFriendFarm");
+      setPlayer({ x: 6, y: 4 });
+      setMessage("你亲自驾驶汽车回到了安安的小农场。 ");
+    }
+    playTone(900);
+  };
+
+  const buyMallItem = (name: string, price: number, energy = 0, item?: MallItem) => {
     if (game.coins < price) {
       setMessage(`${name}需要 ${price} 金币，现在的钱不够。`);
       playTone(210);
       return;
     }
-    setGame((current) => ({ ...current, coins: current.coins - price, energy: Math.min(100, current.energy + energy) }));
-    setMessage(energy ? `买下${name}并品尝了，恢复 ${energy} 点体力。` : `买下了${name}，商场店员已经帮你装好。`);
+    setGame((current) => ({
+      ...current,
+      coins: current.coins - price,
+      energy: Math.min(100, current.energy + energy),
+      mallItems: item ? { ...current.mallItems, [item]: current.mallItems[item] + 1 } : current.mallItems,
+    }));
+    setMessage(energy ? `买下${name}并品尝了，恢复 ${energy} 点体力。` : `买下了${name}，已经放进左边的商场物品背包。`);
     playTone(720);
+  };
+
+  const wearMallOutfit = (outfit: "redCoat" | "blueOutfit") => {
+    if (game.mallItems[outfit] <= 0) return;
+    const removing = game.equippedOutfit === outfit;
+    setGame((current) => ({ ...current, equippedOutfit: removing ? "default" : outfit }));
+    setMessage(removing ? "换回了原来的农夫服装。" : `换上了${outfit === "redCoat" ? "红色节日外套" : "蓝色旅行套装"}！`);
+    playTone(680);
+  };
+
+  const toggleUmbrella = () => {
+    if (game.mallItems.umbrella <= 0) return;
+    setGame((current) => ({ ...current, umbrellaOpen: !current.umbrellaOpen }));
+    setMessage(game.umbrellaOpen ? "把彩色雨伞收起来了。" : game.weather === "rain" || game.weather === "thunder" ? "撑开彩色雨伞，雨水不会打湿小禾了。" : "撑开彩色雨伞，现在虽然没有下雨，也可以遮阳。 ");
+    playTone(640);
+  };
+
+  const openMallSeedBox = () => {
+    if (game.mallItems.seedBox <= 0) return;
+    setGame((current) => ({ ...current, mallItems: { ...current.mallItems, seedBox: current.mallItems.seedBox - 1 }, seeds: current.seeds + 5, strawberrySeeds: current.strawberrySeeds + 5, cornSeeds: current.cornSeeds + 5, watermelonSeeds: current.watermelonSeeds + 5 }));
+    setMessage("打开家庭种子礼盒，获得萝卜、草莓、玉米和西瓜种子各 5 颗！");
+    playTone(820);
   };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
@@ -3386,7 +3483,7 @@ export default function FarmGame() {
           <div><strong>第 {game.year} 年 · {SEASONS[game.season]}第 {game.day} 天 · {WEEKDAYS[(game.day - 1) % 7]}</strong><span>{calendarMonth}月{game.day}日 · {String(clockHour).padStart(2, "0")}:{String(clockMinute).padStart(2, "0")}</span></div>
         </div>
         <div className="top-stats">
-          <div className={`weather ${isNight ? "night-weather" : ""}`}><span className={isNight ? "moon-icon" : "sun-icon"} />{isNight ? "月夜" : "晴朗"} <small>{isNight ? "12°C" : "18°C"}</small></div>
+          <div className={`weather weather-${game.weather} ${isNight ? "night-weather" : ""}`}><span className={isNight && game.weather === "sunny" ? "moon-icon" : `weather-icon weather-icon-${game.weather}`} />{isNight && game.weather === "sunny" ? "月夜" : isNight ? `${weatherInfo.name}夜` : weatherInfo.name} <small>{isNight ? `${Number.parseInt(weatherInfo.temperature) - 3}°C` : weatherInfo.temperature}</small></div>
           <button className="multiplayer-button" onClick={() => setSplitScreen(true)}>双人模式</button>
           <button className="cloud-transfer-button" onClick={transferSaveToWeb} disabled={transferringSave}>{transferringSave ? "转移中…" : "转移到网页版"}</button>
           <button className="round-button home-button" onClick={returnToFarm} aria-label="回到农场" title="回到农场">⌂</button>
@@ -3419,9 +3516,9 @@ export default function FarmGame() {
 
       {drivingSchoolOpen && <div className="driving-school-overlay" role="dialog" aria-modal="true" aria-label="青禾驾驶学校"><section className="driving-school-panel"><header><div><span>青禾谷安全驾驶中心</span><h2>青禾驾驶学校</h2></div><button onClick={() => setDrivingSchoolOpen(false)} aria-label="离开驾校">×</button></header>{game.driverLicense ? <div className="license-earned"><i>驾</i><strong>青禾谷驾驶证</strong><span>持证人：{displayName}</span><p>理论考试和驾驶练习都已通过。秋天道路通车后，就可以买车出发了。</p><button onClick={() => { setGame((current) => ({ ...current, driverLicense: false })); setDrivingQuizStep(0); setDrivingPracticeStep(0); setMessage("开始重新练习驾照考试。 "); }}>重新练习考试</button></div> : drivingQuizStep < DRIVING_QUESTIONS.length ? <div className="driving-theory"><span>理论考试 · 第 {drivingQuizStep + 1}/{DRIVING_QUESTIONS.length} 题</span><strong>{DRIVING_QUESTIONS[drivingQuizStep].question}</strong><div>{DRIVING_QUESTIONS[drivingQuizStep].answers.map((answer, index) => <button key={answer} onClick={() => answerDrivingQuestion(index)}>{answer}</button>)}</div><small>答错会从第一题重新开始，认真想一想。</small></div> : <div className="driving-practice"><span>驾驶练习 · 小汽车绕桩</span><div className={`practice-road practice-step-${drivingPracticeStep}`}><i className="practice-car" /><b /><b /><b /></div><strong>{drivingPracticeStep === 0 ? "第一步：向左转" : drivingPracticeStep === 1 ? "第二步：向右绕桩" : drivingPracticeStep === 2 ? "第三步：停进停车框" : "练习完成"}</strong><div><button onClick={() => doDrivingPractice(0)}>← 左转</button><button onClick={() => doDrivingPractice(1)}>右转 →</button><button onClick={() => doDrivingPractice(2)}>▣ 停车</button></div></div>}<footer><span>{game.driverLicense ? "已经取得驾照" : "先通过理论，再完成驾驶练习"}</span><button onClick={() => setDrivingSchoolOpen(false)}>离开驾校</button></footer></section></div>}
 
-      {mallOpen && <div className="mall-overlay" role="dialog" aria-modal="true" aria-label="青禾大商场"><section className="mall-panel"><header><div><span>远方新区购物中心</span><h2>青禾大商场</h2></div><div className="mall-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setMallOpen(false)} aria-label="离开商场">×</button></header><div className="mall-aisles"><article><h3>服装区</h3><button onClick={() => buyMallItem("红色节日外套", 260)}><i className="mall-coat red-coat" /><span><b>红色节日外套</b><small>260 金币</small></span></button><button onClick={() => buyMallItem("蓝色旅行套装", 320)}><i className="mall-coat blue-coat" /><span><b>蓝色旅行套装</b><small>320 金币</small></span></button></article><article><h3>食品区</h3><button onClick={() => buyMallItem("奶油蛋糕", 80, 30)}><i className="mall-cake" /><span><b>奶油蛋糕</b><small>80 金币 · 体力 +30</small></span></button><button onClick={() => buyMallItem("水果便当", 55, 20)}><i className="mall-lunch" /><span><b>水果便当</b><small>55 金币 · 体力 +20</small></span></button></article><article><h3>百货区</h3><button onClick={() => buyMallItem("彩色雨伞", 120)}><i className="mall-umbrella" /><span><b>彩色雨伞</b><small>120 金币</small></span></button><button onClick={() => buyMallItem("家庭种子礼盒", 180)}><i className="mall-seed-box" /><span><b>家庭种子礼盒</b><small>180 金币</small></span></button></article></div><footer><span>以后还可以在这里增加更多店铺和楼层。</span><button onClick={() => setMallOpen(false)}>走出商场</button></footer></section></div>}
+      {mallOpen && <div className="mall-overlay" role="dialog" aria-modal="true" aria-label="青禾大商场"><section className="mall-panel"><header><div><span>远方新区购物中心</span><h2>青禾大商场</h2></div><div className="mall-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setMallOpen(false)} aria-label="离开商场">×</button></header><div className="mall-aisles"><article><h3>服装区</h3><button onClick={() => buyMallItem("红色节日外套", 260, 0, "redCoat")}><i className="mall-coat red-coat" /><span><b>红色节日外套</b><small>260 金币 · 可穿着</small></span></button><button onClick={() => buyMallItem("蓝色旅行套装", 320, 0, "blueOutfit")}><i className="mall-coat blue-coat" /><span><b>蓝色旅行套装</b><small>320 金币 · 可穿着</small></span></button></article><article><h3>食品区</h3><button onClick={() => buyMallItem("奶油蛋糕", 80, 30)}><i className="mall-cake" /><span><b>奶油蛋糕</b><small>80 金币 · 体力 +30</small></span></button><button onClick={() => buyMallItem("水果便当", 55, 20)}><i className="mall-lunch" /><span><b>水果便当</b><small>55 金币 · 体力 +20</small></span></button></article><article><h3>百货区</h3><button onClick={() => buyMallItem("彩色雨伞", 120, 0, "umbrella")}><i className="mall-umbrella" /><span><b>彩色雨伞</b><small>120 金币 · 可以撑开</small></span></button><button onClick={() => buyMallItem("家庭种子礼盒", 180, 0, "seedBox")}><i className="mall-seed-box" /><span><b>家庭种子礼盒</b><small>180 金币 · 可打开</small></span></button></article></div><footer><span>衣服、雨伞和礼盒买完会进入商场物品背包。</span><button onClick={() => setMallOpen(false)}>走出商场</button></footer></section></div>}
 
-      {carTraveling && <div className="car-travel-overlay" aria-label="正在驾驶汽车"><div className="travel-sky"><i /><i /></div><div className="travel-road"><span className="travel-car"><i /><i /></span></div><strong>小禾正在安全驾驶……</strong></div>}
+      {carTraveling && <div className="car-travel-overlay" role="dialog" aria-modal="true" aria-label="自己驾驶汽车"><div className="travel-sky"><i /><i /></div><div className={`travel-road route-step-${carRouteStep}`}><span className={`travel-car car-heading-${carHeading}`}><i /><i /></span><div className="road-intersection" /><div className="driving-road-sign"><span>下一个动作</span><strong>{(carRouteTarget === "district" ? ["前进", "右转", "前进", "左转", "前进"] : ["前进", "左转", "前进", "右转", "前进"])[carRouteStep] ?? "到达"}</strong><small>{carRouteTarget === "district" ? "远方新区方向" : "安安农场方向"}</small></div></div><strong>你正在亲自驾驶 · 路程 {carRouteStep}/5</strong><div className="car-driving-controls"><button onClick={() => driveCar("left")}>↶<span>左转</span></button><button onClick={() => driveCar("forward")}>↑<span>前进</span></button><button onClick={() => driveCar("right")}>↷<span>右转</span></button><button className="uturn-control" onClick={() => driveCar("uturn")}>↩<span>掉头返回</span></button></div></div>}
 
       {bulkChestPrompt && (
         <div className="bulk-chest-prompt" role="dialog" aria-modal="true" aria-label={`是否把所有${RESOURCE_INFO[bulkChestPrompt].name}放进收纳箱`}>
@@ -3470,6 +3567,7 @@ export default function FarmGame() {
               {game.bookBag.map((bookId) => <button key={`bag-book-${bookId}`} className={heldItem?.kind === "book" && heldItem.id === bookId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${LOST_BOOKS[bookId].title}：${LOST_BOOKS[bookId].content}`)} onDoubleClick={() => carryLostBook(bookId)} title="点击阅读，双击拿起来送给叶老师"><span className="harvest-icon book-icon">书</span><p>{LOST_BOOKS[bookId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
               {game.artifactBag.map((artifactId) => <button key={`bag-artifact-${artifactId}`} className={heldItem?.kind === "artifact" && heldItem.id === artifactId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${RARE_ARTIFACTS[artifactId].title}：${RARE_ARTIFACTS[artifactId].description}`)} onDoubleClick={() => carryArtifact(artifactId)} title="点击查看，双击拿起来送到博物馆"><span className={`harvest-icon artifact-icon artifact-icon-${artifactId + 1}`}>{RARE_ARTIFACTS[artifactId].short}</span><p>{RARE_ARTIFACTS[artifactId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
             </div>
+            {Object.values(game.mallItems).some((count) => count > 0) && <div className="mall-item-backpack"><div><strong>商场物品背包</strong><small>点击衣服穿着 · 点击雨伞撑开</small></div><section>{game.mallItems.redCoat > 0 && <button className={game.equippedOutfit === "redCoat" ? "wearing" : ""} onClick={() => wearMallOutfit("redCoat")}><i className="bag-coat red" /><span>红色外套<b>{game.mallItems.redCoat}</b><small>{game.equippedOutfit === "redCoat" ? "正在穿 · 点击脱下" : "点击穿着"}</small></span></button>}{game.mallItems.blueOutfit > 0 && <button className={game.equippedOutfit === "blueOutfit" ? "wearing" : ""} onClick={() => wearMallOutfit("blueOutfit")}><i className="bag-coat blue" /><span>蓝色旅行装<b>{game.mallItems.blueOutfit}</b><small>{game.equippedOutfit === "blueOutfit" ? "正在穿 · 点击脱下" : "点击穿着"}</small></span></button>}{game.mallItems.umbrella > 0 && <button className={game.umbrellaOpen ? "wearing" : ""} onClick={toggleUmbrella}><i className="bag-umbrella" /><span>彩色雨伞<b>{game.mallItems.umbrella}</b><small>{game.umbrellaOpen ? "已经撑开 · 点击收起" : "点击撑开"}</small></span></button>}{game.mallItems.seedBox > 0 && <button onClick={openMallSeedBox}><i className="bag-seed-box" /><span>种子礼盒<b>{game.mallItems.seedBox}</b><small>点击打开</small></span></button>}</section></div>}
           </div>
           <div className="task-card">
             <div className="section-title"><span>今日小目标</span><b>{game.daily.rewardClaimed ? "已奖 100" : `${completed}/3`}</b></div>
@@ -3485,10 +3583,12 @@ export default function FarmGame() {
         </aside>
 
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
-          <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "mysteryRoad" ? "mystery-road-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome || friendHomeOpen || mallOpen ? "interior-open" : ""} ${playingWithAnan ? "playing-with-anan" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
+          <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "mysteryRoad" ? "mystery-road-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} weather-world-${game.weather} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome || friendHomeOpen || mallOpen ? "interior-open" : ""} ${playingWithAnan ? "playing-with-anan" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "mysteryRoad" ? "▤" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
+            {(game.weather === "rain" || game.weather === "thunder") && <div className="rain-weather-layer" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div>}
+            {game.weather === "thunder" && <div className="lightning-weather-layer" aria-hidden="true"><i /></div>}
             {twilightLevel > 0 && <div className="night-sky" aria-hidden="true"><span className="moon" /><i /><i /><i /><i /><i /><i /></div>}
             {twilightLevel > 0 && <div className="twilight-layer" aria-hidden="true" />}
             {scene !== "farm" && <div className={`outdoor-lamps outdoor-lamps-${scene}`} aria-hidden="true"><i /><i /><i /><i /></div>}
@@ -3563,7 +3663,7 @@ export default function FarmGame() {
                 <div className="new-district-sign"><strong>远方新区</strong><span>更多地方正在等待建设</span></div>
                 <button className="grand-mall-building" onClick={(event) => { event.stopPropagation(); setMallOpen(true); setMessage("走进青禾大商场，服装、食品和百货区都开门了。 "); }} aria-label="进入青禾大商场"><i className="mall-roof" /><i className="mall-body" /><i className="mall-door" /><i className="mall-windows" /><strong>青禾大商场</strong><small>服装 · 食品 · 百货 · 点击进入</small></button>
                 <div className="district-plots"><i /><i /><i /><span>待建设区域</span></div>
-                <button className="return-car" onClick={(event) => { event.stopPropagation(); setCarTraveling(true); setMessage("驾驶汽车沿新公路返回安安的小农场……"); window.setTimeout(() => { setCarTraveling(false); setScene("westFriendFarm"); setPlayer({ x: 6, y: 4 }); setMessage("汽车回到安安的小农场。 "); }, 1200); }}><i /><b>开车返回</b><small>安安的小农场</small></button>
+                <button className="return-car" onClick={(event) => { event.stopPropagation(); setCarTraveling(true); setCarRouteTarget("farm"); setCarRouteStep(0); setCarHeading("forward"); setMessage("汽车发动了！请自己驾驶，按照路口指示返回安安的小农场。 "); }}><i /><b>自己开车返回</b><small>前进 · 转弯 · 掉头</small></button>
               </>
             ) : scene === "town" ? (
               <>
@@ -3639,7 +3739,7 @@ export default function FarmGame() {
             })}
 
             {!ananBeachOpen && !ananBeachTraveling && <div className={`player facing-${facing} ${isWalking ? "walking" : ""} ${scene === "farm" ? "farm-centered-player" : ""}`} style={{ left: scene === "farm" ? "50%" : `${4 + player.x * 7.7}%`, top: scene === "farm" ? "55%" : `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
-              {renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
+              {renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
             </div>}
             {partner?.online && partner.currentVillage === activeVillage && partner.scene === scene && <div className="online-partner" style={{ left: `${4 + partner.x * 7.7}%`, top: `${8 + partner.y * 10.5}%` }} aria-label={`${partner.playerName}也在这里`}><span>{partner.playerName}<small>朋友</small></span><i className="player-shadow" /><img src={partner.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>}
             {partner?.online && partner.currentVillage === activeVillage && partner.scene !== scene && <button className="friend-locator" onClick={(event) => { event.stopPropagation(); setActiveBuilding(null); setNeighborInterior(null); setResidentHome(null); setScene(partner.scene); setPlayer({ x: Math.max(0, Math.min(11, partner.x + (partner.x < 11 ? 1 : -1))), y: partner.y }); setMessage(`找到${partner.playerName}了！现在你们在同一个地方。`); }}><span>● {partner.playerName}也在{activeVillageInfo.name}</span><strong>点击去找朋友</strong><small>{partner.scene === "farm" ? activeVillageInfo.farm : partner.scene === "westFriendFarm" ? "安安的小农场" : partner.scene === "town" ? "中心街" : partner.scene === "cultureDistrict" ? "清河文化街" : partner.scene === "residentialDistrict" ? "青禾住宅坡" : partner.scene === "eastNeighbor" ? "东郊" : partner.scene === "southNeighbor" ? "南坡" : "北林"}</small></button>}
@@ -3664,7 +3764,7 @@ export default function FarmGame() {
                     <div className="neighbor-home-items anan-home-items">{["山谷地图", "水晶收藏", "露营相册"].map((item) => <button key={item} onClick={() => setMessage(item === "山谷地图" ? "地图上画着安安走过的山路、帐篷营地和青禾山洞。" : item === "水晶收藏" ? "架子上放着安安从山洞带回来的彩色小水晶。" : "相册里有安安和小禾一起在野外玩的照片。 ")}><i />{item}</button>)}</div>
                     {!wildFriendVisit && !wildFriendAtPlayerHome ? <button style={personClothesStyle("安安")} className="neighbor-indoor-npc anan-home-npc anan-character" onClick={() => interactWithPerson("安安", "安安：欢迎来我家！我们可以看看地图，再决定今天去哪里探险。 ")} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和安安聊天"}><i className="npc-hair" /><i className="npc-face" /><em className="anan-pigtails" /><i className="npc-body" /><span>安安</span></button> : <button className="anan-indoor-away-note" onClick={() => setMessage(wildFriendAtPlayerHome ? `纸条上写着：我去${displayName}家找你啦！——安安` : `纸条上写着：我去${wildFriendVisit === "cave" ? "山洞" : "帐篷"}玩一会儿，晚点回来！——安安`)}><i />安安留下的纸条<small>点击查看去向</small></button>}
                     <button className="house-door neighbor-home-door" onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }}><span>出口</span></button>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{wildFriendVisit || wildFriendAtPlayerHome ? "安安出门了" : "安安"}</strong><p>{wildFriendAtPlayerHome ? `安安今天去${displayName}的农舍找你。她在桌上留了一张纸条。` : wildFriendVisit ? `安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}，小屋里留下了她的去向。` : "欢迎来我家！屋里有登山装备、地图、水晶收藏和安安自己的床。"}</p></div>
                   <div className="service-actions"><button onClick={() => wildFriendVisit || wildFriendAtPlayerHome ? setMessage("安安不在家，但她把今天的去向写在纸条上了。 ") : interactWithPerson("安安", "安安：下次我也会直接去你家找你，我们可以从农舍一起出发。 ")}>{wildFriendVisit || wildFriendAtPlayerHome ? "查看安安留下的纸条" : heldItem ? `把${carriedItemName}送给安安` : "和安安聊天"}</button>{!wildFriendVisit && !wildFriendAtPlayerHome && <button onClick={receiveAnanCookie}>和安安分享饼干 · 每天 1 块</button>}{!wildFriendVisit && !wildFriendAtPlayerHome && <button onClick={startAnanBeachTrip}>{game.ananBeachTrips.includes(currentAnanTripKey) ? "和安安再去海边" : "和安安第一次去海边"}</button>}<button className="exit-action" onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }}>从门口出去</button></div>
@@ -3686,7 +3786,7 @@ export default function FarmGame() {
                     </div>
                     <button style={personClothesStyle(neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师")} className={`neighbor-indoor-npc ${isNpcSick(neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师") ? "sick-npc" : ""}`} onClick={() => talkToNeighbor(neighborInterior)}><i className="npc-hair" /><i className="npc-face" /><i className="npc-body" /><span>{neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师"}</span></button>
                     <button className="house-door neighbor-home-door" onClick={() => { setNeighborInterior(null); setBuilderOpen(false); setMessage("从居民家的门口出来了。 "); }}><span>出口</span></button>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师"}</strong><p>{neighborInterior === "eastNeighbor" ? "欢迎来我家！桌上放着果酱和刚摘下来的草莓。" : neighborInterior === "southNeighbor" ? "把木头和石材交给我，我能帮你制作东西、扩建农舍和地盘。" : "欢迎来到林间书屋，书架上的故事都可以慢慢看。"}</p></div>
                   <div className="service-actions"><button onClick={() => talkToNeighbor(neighborInterior)}>{heldItem ? `把${carriedItemName}送给${neighborInterior === "eastNeighbor" ? "林婶" : neighborInterior === "southNeighbor" ? "鲁师傅" : "叶老师"}` : neighborInterior === "southNeighbor" ? "打开鲁师傅的委托单" : "和主人聊天"}</button><button className="exit-action" onClick={() => { setNeighborInterior(null); setBuilderOpen(false); setMessage("从居民家的门口出来了。 "); }}>从门口出去</button></div>
@@ -3706,7 +3806,7 @@ export default function FarmGame() {
                     <div className="resident-home-items">{residentHomeInfo.items.map((item) => <button key={item} onClick={() => setMessage(`在${residentHome}家里仔细看了${item}。`)}><i />{item}</button>)}</div>
                     <button style={personClothesStyle(residentHome)} className={`neighbor-indoor-npc resident-home-npc ${isNpcSick(residentHome) ? "sick-npc" : ""} ${residentHome === "诊所助手" ? "home-relief-assistant" : ""}`} onClick={() => interactWithPerson(residentHome, `${residentHome}：${residentHomeGreeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${residentHome}` : `和${residentHome}交谈`}><i className="npc-hair" /><i className="npc-face" /><i className="npc-body" /><span>{residentHome}</span></button>
                     <button className="house-door neighbor-home-door" onClick={() => { setResidentHome(null); setMessage("从居民自己的房子里出来了。 "); }}><span>出口</span></button>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className={`service-dialogue ${residentHome === "白医生" && doctorIsRestingAtHome ? "relief-dialogue" : ""}`}><strong>{residentHome}</strong><p>{residentHomeGreeting}</p></div>
                   <div className="service-actions"><button onClick={() => interactWithPerson(residentHome, `${residentHome}：${residentHomeGreeting}`)}>{heldItem ? `把${carriedItemName}送给${residentHome}` : "和房子的主人聊天"}</button><button className="exit-action" onClick={() => { setResidentHome(null); setMessage("从居民自己的房子里出来了。 "); }}>从门口出去</button></div>
@@ -3830,7 +3930,7 @@ export default function FarmGame() {
                     {wildFriendAtPlayerHome && <button style={personClothesStyle("安安")} className="neighbor-indoor-npc anan-farmhouse-visitor anan-character" onClick={() => interactWithPerson("安安", `安安：我直接跑来${displayName}家找你啦！今天一起去农场、帐篷或者山洞玩吧。`)} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和来家里找你的安安聊天"}><i className="npc-hair" /><i className="npc-face" /><em className="anan-pigtails" /><i className="npc-body" /><span>安安<small>来找你玩</small></span></button>}
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{isBirthday ? `${displayName}的生日派对` : wildFriendAtPlayerHome ? "安安来找你啦" : "回到家啦"}</strong><p>{isBirthday ? "每一年的春天第十九天，大家都会来到农舍庆祝二月十九日生日。点击朋友可以聊天，点击蛋糕能恢复体力。" : wildFriendAtPlayerHome ? "安安有时会从西边的小农场直接跑来你家。点击她可以聊天，也可以把头顶举着的礼物送给她。" : "床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。"}</p></div>
                   <div className="service-actions">
@@ -3846,7 +3946,7 @@ export default function FarmGame() {
               <div className="shop-overlay" role="presentation">
                 <section className="shop-panel" role="dialog" aria-modal="true" aria-labelledby="shop-title">
                   <header><div><span>青禾镇杂货</span><h2 id="shop-title">青禾超市</h2></div><div className="shop-wallet"><small>你的金币</small><strong>● {game.coins}</strong></div><button onClick={leaveBuilding} aria-label="离开商店">×</button></header>
-                  <div className="shopkeeper"><button style={personClothesStyle(supermarketClerk)} className={`shopkeeper-face ${supermarketReliefWorker ? "relief-worker" : ""}`} onClick={() => interactWithPerson(supermarketClerk, `${supermarketClerk}：${supermarketReliefWorker?.greeting ?? "欢迎呀，小禾！今天想带点什么回农场？"}`)} aria-label={heldItem ? `把${carriedItemName}送给${supermarketClerk}` : `和${supermarketClerk}交谈`}><i /><b /></button><p><strong>{supermarketClerk}{supermarketReliefWorker ? " · 今日代班" : ""}</strong>{heldItem ? `小禾正举着${carriedItemName}，点击${supermarketClerk}就能送给他。` : supermarketReliefWorker?.greeting ?? (currentFestival?.id === "seeds" ? "种子分享日快乐！今天所有水果和蔬菜种子都免费。" : "欢迎呀，小禾！今天想带点什么回农场？")}</p><div className={`player indoor-player indoor-shop-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: "0" }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div></div>
+                  <div className="shopkeeper"><button style={personClothesStyle(supermarketClerk)} className={`shopkeeper-face ${supermarketReliefWorker ? "relief-worker" : ""}`} onClick={() => interactWithPerson(supermarketClerk, `${supermarketClerk}：${supermarketReliefWorker?.greeting ?? "欢迎呀，小禾！今天想带点什么回农场？"}`)} aria-label={heldItem ? `把${carriedItemName}送给${supermarketClerk}` : `和${supermarketClerk}交谈`}><i /><b /></button><p><strong>{supermarketClerk}{supermarketReliefWorker ? " · 今日代班" : ""}</strong>{heldItem ? `小禾正举着${carriedItemName}，点击${supermarketClerk}就能送给他。` : supermarketReliefWorker?.greeting ?? (currentFestival?.id === "seeds" ? "种子分享日快乐！今天所有水果和蔬菜种子都免费。" : "欢迎呀，小禾！今天想带点什么回农场？")}</p><div className={`player indoor-player indoor-shop-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: "0" }}>{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div></div>
                   {currentFestival?.id === "seeds" && <><div className="free-seed-festival"><strong>种子分享日 · 全部免费</strong><span>西瓜、番茄、土豆、南瓜、蓝莓等 8 种种子</span><button onClick={takeFreeSeedBundle}>免费领取 8 种种子大礼包</button></div><div className="shop-festival-guests" aria-label="参加种子分享日的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：种子分享日真热闹，大家都领到了喜欢的种子！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div></>}
                   <div className="product-grid">
                     {CROP_TYPES.map((crop) => <article className="product-card" key={crop}><span className={`product-icon ${crop}-seeds`}>{CROP_INFO[crop].short}</span><div><strong>{CROP_INFO[crop].name}种子包</strong><small>内含 5 颗种子</small></div><button className={currentFestival?.id === "seeds" ? "free-shop-button" : ""} onClick={() => buyItem(CROP_INFO[crop].seedField)}>{currentFestival?.id === "seeds" ? "免费" : <><span>●</span>{CROP_INFO[crop].seedPrice}</>}</button></article>)}
@@ -3890,7 +3990,7 @@ export default function FarmGame() {
                       {activeBuilding === "library" && game.libraryBooks.map((bookId) => <button type="button" className="recovered-book" key={`library-book-${bookId}`} onClick={() => inspectBuildingItem(LOST_BOOKS[bookId].title)}>{LOST_BOOKS[bookId].title}</button>)}
                       {activeBuilding === "museum" && game.museumArtifacts.map((artifactId) => <button type="button" className={`museum-case artifact-case-${artifactId + 1}`} key={`museum-artifact-${artifactId}`} onClick={() => inspectBuildingItem(RARE_ARTIFACTS[artifactId].title)}><span className="museum-artifact-thumb"><img src="/museum-artifacts.png" alt="" draggable={false} /></span>{RARE_ARTIFACTS[artifactId].title}</button>)}
                     </div>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在房子里面">{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在房子里面">{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className={`service-dialogue ${activeReliefWorker ? "relief-dialogue" : ""}`}><strong>{activeBuildingOwner}{activeReliefWorker ? " · 代班" : ""}</strong><p>{activeBuildingGreeting}</p></div>
                   {inspectedItem && (
