@@ -116,6 +116,7 @@ type GameState = {
   crabs: number;
   shrimp: number;
   ananBeachTrips: string[];
+  lastAnanCookieDay: string;
   lastEggDay: number;
   lastMilkDay: number;
   birthdayCakeYear: number;
@@ -421,6 +422,7 @@ const makeNewGame = (): GameState => ({
   crabs: 0,
   shrimp: 0,
   ananBeachTrips: [],
+  lastAnanCookieDay: "",
   lastEggDay: 0,
   lastMilkDay: 0,
   birthdayCakeYear: 0,
@@ -1819,6 +1821,18 @@ export default function FarmGame() {
     setGame((current) => ({ ...current, cookies: current.cookies - 1, energy: Math.min(100, current.energy + 18) }));
     setMessage("吃掉了安安分享的星星饼干，香香脆脆，恢复了 18 点体力！ ");
     playTone(820);
+  };
+
+  const receiveAnanCookie = () => {
+    const cookieDayKey = `${game.year}-${game.season}-${game.day}`;
+    if (game.lastAnanCookieDay === cookieDayKey) {
+      setMessage("安安：今天的星星饼干已经分给你啦，明天再来一起吃！ ");
+      playTone(420);
+      return;
+    }
+    setGame((current) => ({ ...current, cookies: current.cookies + 1, lastAnanCookieDay: cookieDayKey }));
+    setMessage("安安把一块星星饼干放进小禾的背包。每天来安安家可以分享 1 块，吃掉恢复 18 点体力！ ");
+    playTone(880);
   };
 
   const talkToNeighbor = (neighbor: NeighborScene) => {
@@ -3376,7 +3390,7 @@ export default function FarmGame() {
                     <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{wildFriendVisit || wildFriendAtPlayerHome ? "安安出门了" : "安安"}</strong><p>{wildFriendAtPlayerHome ? `安安今天去${displayName}的农舍找你。她在桌上留了一张纸条。` : wildFriendVisit ? `安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}，小屋里留下了她的去向。` : "欢迎来我家！屋里有登山装备、地图、水晶收藏和安安自己的床。"}</p></div>
-                  <div className="service-actions"><button onClick={() => wildFriendVisit || wildFriendAtPlayerHome ? setMessage("安安不在家，但她把今天的去向写在纸条上了。 ") : interactWithPerson("安安", "安安：下次我也会直接去你家找你，我们可以从农舍一起出发。 ")}>{wildFriendVisit || wildFriendAtPlayerHome ? "查看安安留下的纸条" : heldItem ? `把${carriedItemName}送给安安` : "和安安聊天"}</button>{!wildFriendVisit && !wildFriendAtPlayerHome && <button onClick={startAnanBeachTrip}>{game.ananBeachTrips.includes(currentAnanTripKey) ? "和安安再去海边" : "和安安第一次去海边"}</button>}<button className="exit-action" onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }}>从门口出去</button></div>
+                  <div className="service-actions"><button onClick={() => wildFriendVisit || wildFriendAtPlayerHome ? setMessage("安安不在家，但她把今天的去向写在纸条上了。 ") : interactWithPerson("安安", "安安：下次我也会直接去你家找你，我们可以从农舍一起出发。 ")}>{wildFriendVisit || wildFriendAtPlayerHome ? "查看安安留下的纸条" : heldItem ? `把${carriedItemName}送给安安` : "和安安聊天"}</button>{!wildFriendVisit && !wildFriendAtPlayerHome && <button onClick={receiveAnanCookie}>和安安分享饼干 · 每天 1 块</button>}{!wildFriendVisit && !wildFriendAtPlayerHome && <button onClick={startAnanBeachTrip}>{game.ananBeachTrips.includes(currentAnanTripKey) ? "和安安再去海边" : "和安安第一次去海边"}</button>}<button className="exit-action" onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }}>从门口出去</button></div>
                   <footer><span>{message}</span><small>屋里可以移动 · 按 Esc 出去</small></footer>
                 </section>
               </div>
