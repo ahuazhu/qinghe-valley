@@ -21,6 +21,9 @@ type PlantedTree = { id: string; x: number; y: number; stage: number; watered: b
 type FencePlacementSlot = { id: string; x: number; y: number; rotation: 0 | 90 };
 type ForestItem = "pinecone" | "pineNut";
 type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "resin" } | { kind: "matches" } | { kind: "product"; id: "egg" | "milk" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
+type ShippingItemGroup = "resource" | "seed" | "craft" | "single";
+type ShippingSingleField = "wood" | "stone" | "herbs" | "pinecones" | "pineNuts" | "resin" | "eggs" | "milk" | "cookies" | "crabs" | "shrimp";
+type ShippingCatalogItem = { id: string; name: string; short: string; price: number; group: ShippingItemGroup; key: string };
 
 type OnlinePlayer = {
   deviceId: string;
@@ -76,6 +79,7 @@ type GameState = {
   fishCaught: number;
   inventory: Record<StorableResource, number>;
   chestStorage: Record<StorableResource, number>;
+  shippingBin: Record<string, number>;
   wood: number;
   stone: number;
   herbs: number;
@@ -251,6 +255,30 @@ const CRAFT_RECIPES: Record<CraftType, { name: string; short: string; descriptio
   matches: { name: "火柴", short: "火", description: "进入山洞或帐篷后，可以点亮火光", wood: 3, stone: 0, resin: 2 },
 };
 
+const SHIPPING_CATALOG: ShippingCatalogItem[] = [
+  ...(Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => ({ id: `resource:${resource}`, name: RESOURCE_INFO[resource].name, short: resource === "fish" ? "鱼" : CROP_INFO[resource].short, price: RESOURCE_INFO[resource].price, group: "resource" as const, key: resource })),
+  ...CROP_TYPES.map((crop) => ({ id: `seed:${crop}`, name: `${CROP_INFO[crop].name}种子`, short: CROP_INFO[crop].short, price: Math.max(12, Math.round(CROP_INFO[crop].seedPrice * .45)), group: "seed" as const, key: crop })),
+  ...(Object.keys(CRAFT_RECIPES) as CraftType[]).map((craft) => ({ id: `craft:${craft}`, name: CRAFT_RECIPES[craft].name, short: CRAFT_RECIPES[craft].short, price: Math.max(25, CRAFT_RECIPES[craft].wood * 12 + CRAFT_RECIPES[craft].stone * 15 + (CRAFT_RECIPES[craft].resin ?? 0) * 22), group: "craft" as const, key: craft })),
+  { id: "single:wood", name: "木头", short: "木", price: 12, group: "single", key: "wood" },
+  { id: "single:stone", name: "石材", short: "石", price: 15, group: "single", key: "stone" },
+  { id: "single:herbs", name: "药材", short: "药", price: 38, group: "single", key: "herbs" },
+  { id: "single:pinecones", name: "松果", short: "果", price: 20, group: "single", key: "pinecones" },
+  { id: "single:pineNuts", name: "松子", short: "子", price: 16, group: "single", key: "pineNuts" },
+  { id: "single:resin", name: "树脂", short: "脂", price: 32, group: "single", key: "resin" },
+  { id: "single:eggs", name: "鸡蛋", short: "蛋", price: 55, group: "single", key: "eggs" },
+  { id: "single:milk", name: "牛奶", short: "奶", price: 82, group: "single", key: "milk" },
+  { id: "single:cookies", name: "安安的饼干", short: "饼", price: 95, group: "single", key: "cookies" },
+  { id: "single:crabs", name: "海边螃蟹", short: "蟹", price: 78, group: "single", key: "crabs" },
+  { id: "single:shrimp", name: "海边小虾", short: "虾", price: 72, group: "single", key: "shrimp" },
+];
+
+const shippingItemCount = (state: GameState, item: ShippingCatalogItem) => {
+  if (item.group === "resource") return state.inventory[item.key as StorableResource];
+  if (item.group === "seed") return state[CROP_INFO[item.key as CropType].seedField];
+  if (item.group === "craft") return state.crafted[item.key as CraftType];
+  return state[item.key as ShippingSingleField];
+};
+
 const FENCE_PLACEMENT_SLOTS: FencePlacementSlot[] = [
   ...[24, 34, 44, 54, 64].flatMap((x, index) => [
     { id: `top-${index}`, x, y: 40, rotation: 0 as const },
@@ -383,6 +411,7 @@ const makeNewGame = (): GameState => ({
   fishCaught: 0,
   inventory: { radish: 0, strawberry: 0, corn: 0, pineapple: 0, watermelon: 0, tomato: 0, potato: 0, pumpkin: 0, blueberry: 0, fish: 0 },
   chestStorage: { radish: 0, strawberry: 0, corn: 0, pineapple: 0, watermelon: 0, tomato: 0, potato: 0, pumpkin: 0, blueberry: 0, fish: 0 },
+  shippingBin: {},
   wood: 0,
   stone: 0,
   herbs: 0,
@@ -442,6 +471,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       ...parsed,
       inventory: { ...defaults.inventory, ...(parsed.inventory ?? {}) },
       chestStorage: { ...defaults.chestStorage, ...(parsed.chestStorage ?? {}) },
+      shippingBin: { ...defaults.shippingBin, ...(parsed.shippingBin ?? {}) },
       treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
       plantedTrees: (parsed.plantedTrees ?? []).map((tree) => ({ ...tree, watered: tree.watered ?? false })),
       rockStates: defaults.rockStates.map((standing, index) => parsed.rockStates?.[index] ?? standing),
@@ -508,6 +538,8 @@ export default function FarmGame() {
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [chestOpen, setChestOpen] = useState(false);
+  const [shippingBinOpen, setShippingBinOpen] = useState(false);
+  const [shippingReport, setShippingReport] = useState<{ itemCount: number; earnings: number } | null>(null);
   const [chestDepositStreak, setChestDepositStreak] = useState<{ resource: StorableResource; count: number } | null>(null);
   const [bulkChestPrompt, setBulkChestPrompt] = useState<StorableResource | null>(null);
   const [stoveLit, setStoveLit] = useState(false);
@@ -598,6 +630,7 @@ export default function FarmGame() {
             fishCaught: parsed.fishCaught ?? 0,
             inventory: { ...defaults.inventory, ...(parsed.inventory ?? { radish: parsed.harvested ?? 0, fish: parsed.fishCaught ?? 0 }) },
             chestStorage: { ...defaults.chestStorage, ...(parsed.chestStorage ?? {}) },
+            shippingBin: { ...defaults.shippingBin, ...(parsed.shippingBin ?? {}) },
             wood: parsed.wood ?? 0,
             stone: parsed.stone ?? 0,
             herbs: parsed.herbs ?? 0,
@@ -672,6 +705,7 @@ export default function FarmGame() {
     setFarmGateOpen(false);
     setHeldItem(null);
     setChestOpen(false);
+    setShippingBinOpen(false);
     setCraftingOpen(false);
     setRanchOpen(false);
     setFarmInterior(null);
@@ -720,6 +754,7 @@ export default function FarmGame() {
           ...data.save,
           inventory: { ...defaults.inventory, ...(data.save.inventory ?? {}) },
           chestStorage: { ...defaults.chestStorage, ...(data.save.chestStorage ?? {}) },
+          shippingBin: { ...defaults.shippingBin, ...(data.save.shippingBin ?? {}) },
           plantedTrees: (data.save.plantedTrees ?? []).map((tree) => ({ ...tree, watered: tree.watered ?? false })),
           crafted: { ...defaults.crafted, ...(data.save.crafted ?? {}) },
           upgrades: { ...defaults.upgrades, ...(data.save.upgrades ?? {}) },
@@ -869,7 +904,7 @@ export default function FarmGame() {
       setMessage(divingAtSea ? "穿着潜水服在水下游动，靠近小鱼小虾后可以抓起。 " : "在海滩上自由走动，也可以走进浅海游泳。 ");
       return;
     }
-    if (craftingOpen || chestOpen || ranchOpen || farmInterior) return;
+    if (craftingOpen || chestOpen || shippingBinOpen || ranchOpen || farmInterior) return;
     const now = Date.now();
     if (now - lastMoveAtRef.current < 230) return;
     lastMoveAtRef.current = now;
@@ -929,7 +964,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, bulkChestPrompt, chestOpen, craftingOpen, crossSceneBoundary, divingAtSea, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, neighborInterior, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, bulkChestPrompt, chestOpen, shippingBinOpen, craftingOpen, crossSceneBoundary, divingAtSea, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, neighborInterior, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -989,6 +1024,11 @@ export default function FarmGame() {
         setMessage("关上木箱。");
         return;
       }
+      if (key === "escape" && shippingBinOpen) {
+        setShippingBinOpen(false);
+        setMessage("关上大号出货箱，放进去的东西会在睡觉后售卖。 ");
+        return;
+      }
       if (key === "escape" && craftingOpen) {
         setCraftingOpen(false);
         setMessage("收起制作手册。");
@@ -1018,7 +1058,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, chestOpen, craftingOpen, embeddedMode, farmInterior, friendHomeOpen, move, neighborInterior, ranchOpen, residentHome, splitScreen]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, chestOpen, shippingBinOpen, craftingOpen, embeddedMode, farmInterior, friendHomeOpen, move, neighborInterior, ranchOpen, residentHome, splitScreen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -2194,6 +2234,59 @@ export default function FarmGame() {
     playTone(620);
   };
 
+  const putInShippingBin = (item: ShippingCatalogItem) => {
+    if (shippingItemCount(game, item) <= 0) {
+      setMessage(`背包里没有可以放入出货箱的${item.name}。`);
+      playTone(220);
+      return;
+    }
+    setGame((current) => {
+      if (shippingItemCount(current, item) <= 0) return current;
+      let next = current;
+      if (item.group === "resource") {
+        const resource = item.key as StorableResource;
+        next = { ...current, inventory: { ...current.inventory, [resource]: current.inventory[resource] - 1 } };
+      } else if (item.group === "seed") {
+        const field = CROP_INFO[item.key as CropType].seedField;
+        next = { ...current, [field]: Math.max(0, current[field] - 1) };
+      } else if (item.group === "craft") {
+        const craft = item.key as CraftType;
+        next = { ...current, crafted: { ...current.crafted, [craft]: current.crafted[craft] - 1 } };
+      } else {
+        const field = item.key as ShippingSingleField;
+        next = { ...current, [field]: Math.max(0, current[field] - 1) };
+      }
+      return { ...next, shippingBin: { ...current.shippingBin, [item.id]: (current.shippingBin[item.id] ?? 0) + 1 } };
+    });
+    setMessage(`把 1 个${item.name}放进大号出货箱。睡到第二天后会自动卖出。`);
+    playTone(700);
+  };
+
+  const takeFromShippingBin = (item: ShippingCatalogItem) => {
+    if ((game.shippingBin[item.id] ?? 0) <= 0) return;
+    setGame((current) => {
+      const inBin = current.shippingBin[item.id] ?? 0;
+      if (inBin <= 0) return current;
+      let next = current;
+      if (item.group === "resource") {
+        const resource = item.key as StorableResource;
+        next = { ...current, inventory: { ...current.inventory, [resource]: current.inventory[resource] + 1 } };
+      } else if (item.group === "seed") {
+        const field = CROP_INFO[item.key as CropType].seedField;
+        next = { ...current, [field]: current[field] + 1 };
+      } else if (item.group === "craft") {
+        const craft = item.key as CraftType;
+        next = { ...current, crafted: { ...current.crafted, [craft]: current.crafted[craft] + 1 } };
+      } else {
+        const field = item.key as ShippingSingleField;
+        next = { ...current, [field]: current[field] + 1 };
+      }
+      return { ...next, shippingBin: { ...current.shippingBin, [item.id]: inBin - 1 } };
+    });
+    setMessage(`从出货箱取回 1 个${item.name}。`);
+    playTone(560);
+  };
+
   const sellBackpack = () => {
     const resources = Object.keys(RESOURCE_INFO) as StorableResource[];
     const itemCount = resources.reduce((sum, resource) => sum + game.inventory[resource], 0);
@@ -2490,6 +2583,8 @@ export default function FarmGame() {
     setInspectedItem(null);
     setCraftingOpen(false);
     setChestOpen(false);
+    setShippingBinOpen(false);
+    setShippingReport(null);
     setBuilderOpen(false);
     setNeighborInterior(null);
     setResidentHome(null);
@@ -2508,6 +2603,7 @@ export default function FarmGame() {
     setFriendHomeOpen(false);
     setCraftingOpen(false);
     setChestOpen(false);
+    setShippingBinOpen(false);
     setMapOpen(false);
     setBrandMenuOpen(false);
     setScene(destination);
@@ -2631,6 +2727,9 @@ export default function FarmGame() {
 
   const nextDay = () => {
     cancelFishing();
+    const shippedItemCount = SHIPPING_CATALOG.reduce((sum, item) => sum + (game.shippingBin[item.id] ?? 0), 0);
+    const shippedBaseEarnings = SHIPPING_CATALOG.reduce((sum, item) => sum + (game.shippingBin[item.id] ?? 0) * item.price, 0);
+    const shippedEarnings = Math.round(shippedBaseEarnings * (game.upgrades.storage ? 1.1 : 1));
     const nextDayNumber = game.day === 28 ? 1 : game.day + 1;
     const nextSeason = game.day === 28 ? (game.season + 1) % SEASONS.length : game.season;
     const nextYear = game.day === 28 && game.season === SEASONS.length - 1 ? game.year + 1 : game.year;
@@ -2662,7 +2761,9 @@ export default function FarmGame() {
         ? "早上七点了，小禾的表情仍然有些伤心。"
         : `早上七点了！${game.day === 28 ? `新的${SEASONS[nextSeason]}开始了。` : ""}浇过水的作物和松果树苗都长大了一点。`;
     const birthdayMessage = nextSeason === 0 && nextDayNumber === 19 ? ` 今天是第 ${nextYear} 年春天第十九天，也是小禾的二月十九日生日！大家已经带着蛋糕来到农舍，回家就能开生日派对。` : "";
-    const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${visitorMessage}${birthdayMessage}`;
+    const shippingMessage = shippedItemCount > 0 ? ` 昨晚大号出货箱卖出了 ${shippedItemCount} 件东西，赚到 ${shippedEarnings} 金币！` : "";
+    const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${shippingMessage}${visitorMessage}${birthdayMessage}`;
+    setShippingReport(shippedItemCount > 0 ? { itemCount: shippedItemCount, earnings: shippedEarnings } : null);
     setGame((current) => {
       const treeStates = [...current.treeStates];
       const emptySpot = treeStates.indexOf(false);
@@ -2703,6 +2804,8 @@ export default function FarmGame() {
         season: nextSeason,
         seasonExcursionCompleted: game.day === 28 ? false : current.seasonExcursionCompleted,
         hour: 7,
+        coins: current.coins + shippedEarnings,
+        shippingBin: {},
         daily: { ...makeNewGame().daily, day: nextDayNumber },
         energy: remainsSick ? 65 : 100,
         sick: remainsSick,
@@ -2758,6 +2861,8 @@ export default function FarmGame() {
     cancelFishing();
     setCraftingOpen(false);
     setChestOpen(false);
+    setShippingBinOpen(false);
+    setShippingReport(null);
     setSelectedResource(null);
     setSelectedCraftItem(null);
     setPlantingPinecone(false);
@@ -3021,7 +3126,7 @@ export default function FarmGame() {
   };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || ananBeachOpen || ananBeachTraveling) return;
+    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || shippingBinOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || ananBeachOpen || ananBeachTraveling) return;
     if ((event.target as HTMLElement).closest("button, input, .shop-overlay")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
@@ -3143,6 +3248,7 @@ export default function FarmGame() {
         <div className="brand-lockup">
           <button className="brand-mark" onClick={() => setBrandMenuOpen((open) => !open)} aria-label="打开青禾谷菜单" aria-expanded={brandMenuOpen}><i /><i /><i /></button>
           <div><strong>青禾谷</strong><span>GREENFIELD VALLEY</span></div>
+          <div className="coins top-coins" aria-label={`现有 ${game.coins} 金币`}><span>●</span>{game.coins.toLocaleString()}</div>
           {brandMenuOpen && <div className="brand-menu"><span>青禾谷村庄菜单</span><strong>想做什么？</strong><button onClick={() => { setMapOpen(true); setBrandMenuOpen(false); }}><i className="mini-map-icon" /><b>打开小地图</b><small>查看场景和建筑</small></button><button className="brand-craft-entry" onClick={() => { setCraftingOpen(true); setBrandMenuOpen(false); setMessage("打开制作手册，选择想做的东西。"); }}><i className="mini-craft-icon">⚒</i><b>打开制作</b><small>使用木头和石材做东西</small></button></div>}
         </div>
         <div className="day-card">
@@ -3151,7 +3257,6 @@ export default function FarmGame() {
         </div>
         <div className="top-stats">
           <div className={`weather ${isNight ? "night-weather" : ""}`}><span className={isNight ? "moon-icon" : "sun-icon"} />{isNight ? "月夜" : "晴朗"} <small>{isNight ? "12°C" : "18°C"}</small></div>
-          <div className="coins"><span>●</span>{game.coins.toLocaleString()}</div>
           <button className="multiplayer-button" onClick={() => setSplitScreen(true)}>双人模式</button>
           <button className="cloud-transfer-button" onClick={transferSaveToWeb} disabled={transferringSave}>{transferringSave ? "转移中…" : "转移到网页版"}</button>
           <button className="round-button home-button" onClick={returnToFarm} aria-label="回到农场" title="回到农场">⌂</button>
@@ -3159,6 +3264,8 @@ export default function FarmGame() {
           <button className="round-button" onClick={resetGame} aria-label="重新开始">↻</button>
         </div>
       </header>
+
+      {shippingReport && <div className="shipping-report-toast" role="dialog" aria-modal="true" aria-label="昨晚出货收入"><span>清晨出货通知</span><strong>昨晚卖出 {shippingReport.itemCount} 件东西</strong><b>+ {shippingReport.earnings.toLocaleString()} 金币</b><button onClick={() => setShippingReport(null)}>知道了</button></div>}
 
       {mapOpen && <div className="map-overlay" role="presentation">
         <section className="village-map-panel" role="dialog" aria-modal="true" aria-labelledby="village-map-title">
@@ -3263,6 +3370,7 @@ export default function FarmGame() {
                 {isBirthday && <div className="birthday-farm-friends" aria-label="在生日当天跑到菜地和农场玩耍的朋友">{BIRTHDAY_GUESTS.slice(0, 6).map((name, index) => <button key={`farm-party-${name}`} style={personClothesStyle(name)} className={`birthday-field-friend field-friend-${index + 1} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：我们从农舍跑到菜地边玩啦，一会儿再回去吃生日蛋糕！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div>}
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" /><span className="sign">{displayName}的农舍{game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
                 <button className={`crafted-object crafted-chest home-storage-chest ${selectedResource ? "ready-to-store" : ""}`} onClick={() => { if (selected === "axe") { setMessage("这是农舍旁边固定的收纳木箱，不会被斧头拆掉。 "); return; } useChest(); }} aria-label={`农舍旁的木箱，内有 ${Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)} 件物品`}><i /><b>{Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)}</b></button>
+                <button className="home-shipping-bin" onClick={() => { setShippingBinOpen(true); setMessage("打开大号出货箱。单击物品放进去，睡到第二天就会卖掉换成金币。 "); }} aria-label={`农舍旁的大号出货箱，已有 ${Object.values(game.shippingBin).reduce((sum, count) => sum + count, 0)} 件待售物品`}><i /><i /><b>{Object.values(game.shippingBin).reduce((sum, count) => sum + count, 0)}</b><span>大号出货箱</span></button>
                 {game.rockStates.map((standing, index) => <button key={`rock-${index}`} className={`farm-rock rock-${index + 1} ${standing ? "" : "broken"}`} onClick={() => breakRock(index)} aria-label={standing ? `敲碎第 ${index + 1} 块石头` : `第 ${index + 1} 处碎石`} />)}
                 {game.treeStates.map((standing, index) => (
                   <button key={index} className={`tree tree-${["a", "b", "c", "d"][index]} ${standing ? "" : "stump"}`} onClick={() => chopTree(index)} aria-label={standing ? `砍伐第 ${index + 1} 棵树` : `第 ${index + 1} 个树桩`} />
@@ -3541,6 +3649,19 @@ export default function FarmGame() {
                     {(Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => <article className="product-card" key={resource}><span className={`product-icon ${resource}-icon`}>{resource === "fish" ? "鱼" : CROP_INFO[resource].short}</span><div><strong>{RESOURCE_INFO[resource].name}</strong><small>箱内有 {game.chestStorage[resource]} 个</small></div><button disabled={game.chestStorage[resource] <= 0} onClick={() => takeFromChest(resource)}>取出 1 个</button></article>)}
                   </div>
                   <footer><span>{message}</span><button onClick={() => setChestOpen(false)}>关上木箱</button></footer>
+                </section>
+              </div>
+            )}
+
+            {shippingBinOpen && (
+              <div className="shop-overlay" role="presentation">
+                <section className="shop-panel shipping-bin-panel" role="dialog" aria-modal="true" aria-labelledby="shipping-bin-title">
+                  <header><div><span>农舍旁的大号箱子</span><h2 id="shipping-bin-title">大号出货箱</h2></div><div className="shop-wallet"><small>睡觉后预计收入</small><strong>● {Math.round(SHIPPING_CATALOG.reduce((sum, item) => sum + (game.shippingBin[item.id] ?? 0) * item.price, 0) * (game.upgrades.storage ? 1.1 : 1)).toLocaleString()}</strong></div><button onClick={() => setShippingBinOpen(false)} aria-label="关上大号出货箱">×</button></header>
+                  <div className="shopkeeper shipping-bin-intro"><span className="shipping-bin-mini"><i /></span><p><strong>单击“放入 1 个”</strong>就会把物品放进箱子。睡到第二天，它们会自动卖掉并通知赚了多少金币。锄头、水壶、收获、鱼竿等基础工具不能放入。</p></div>
+                  <div className="shipping-bin-grid">
+                    {SHIPPING_CATALOG.map((item) => { const available = shippingItemCount(game, item); const inBin = game.shippingBin[item.id] ?? 0; return <article className="shipping-item-card" key={item.id}><span>{item.short}</span><div><strong>{item.name}</strong><small>背包 {available} · 待售 {inBin} · 每个 {item.price} 金币</small></div><button disabled={available <= 0} onClick={() => putInShippingBin(item)}>放入 1 个</button><button className="shipping-take-back" disabled={inBin <= 0} onClick={() => takeFromShippingBin(item)}>取回</button></article>; })}
+                  </div>
+                  <footer><span>{message}</span><button onClick={() => setShippingBinOpen(false)}>关上箱子，等到明早售卖</button></footer>
                 </section>
               </div>
             )}
