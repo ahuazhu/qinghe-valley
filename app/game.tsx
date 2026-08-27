@@ -3654,7 +3654,7 @@ export default function FarmGame() {
             )}
 
             {shippingBinOpen && (
-              <div className="shop-overlay" role="presentation">
+              <div className="shop-overlay shipping-bin-overlay" role="presentation">
                 <section className="shop-panel shipping-bin-panel" role="dialog" aria-modal="true" aria-labelledby="shipping-bin-title">
                   <header><div><span>农舍旁的大号箱子</span><h2 id="shipping-bin-title">大号出货箱</h2></div><div className="shop-wallet"><small>睡觉后预计收入</small><strong>● {Math.round(SHIPPING_CATALOG.reduce((sum, item) => sum + (game.shippingBin[item.id] ?? 0) * item.price, 0) * (game.upgrades.storage ? 1.1 : 1)).toLocaleString()}</strong></div><button onClick={() => setShippingBinOpen(false)} aria-label="关上大号出货箱">×</button></header>
                   <div className="shopkeeper shipping-bin-intro"><span className="shipping-bin-mini"><i /></span><p><strong>单击“放入 1 个”</strong>就会把物品放进箱子。睡到第二天，它们会自动卖掉并通知赚了多少金币。锄头、水壶、收获、鱼竿等基础工具不能放入。</p></div>
