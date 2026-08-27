@@ -1997,8 +1997,21 @@ export default function FarmGame() {
       }
 
       if (selected === "hoe") {
-        if (tile.state !== "grass") {
-          feedback = "这里已经开垦过了。";
+        if (tile.state === "crop") {
+          const cropType = tile.cropType ?? "radish";
+          const cropDetails = CROP_INFO[cropType];
+          target.state = "soil";
+          target.stage = 0;
+          target.watered = false;
+          target.cropType = undefined;
+          next[cropDetails.seedField] += 1;
+          next.energy = Math.max(0, current.energy - 2);
+          feedback = `用锄头小心挖掉了${cropDetails.name}${tile.stage >= 3 ? "植株" : "幼苗"}，1 颗${cropDetails.name}种子已经退回原来的种子袋。土地仍然保持松软。`;
+          tone = 520;
+          return next;
+        }
+        if (tile.state === "soil") {
+          feedback = "这里已经松好土了，可以直接播种。";
           return current;
         }
         target.state = "soil";
