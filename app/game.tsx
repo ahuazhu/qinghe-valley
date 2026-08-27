@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 
 type Tool = "hoe" | "seed" | "water" | "hand" | "rod" | "axe";
 type TileState = "grass" | "soil" | "crop";
-type Scene = "farm" | "town" | "cultureDistrict" | "residentialDistrict" | "eastNeighbor" | "southNeighbor" | "northNeighbor";
+type Scene = "farm" | "westFriendFarm" | "town" | "cultureDistrict" | "residentialDistrict" | "eastNeighbor" | "southNeighbor" | "northNeighbor";
 type NeighborScene = "eastNeighbor" | "southNeighbor" | "northNeighbor";
 type ResidentHomeOwner = "白医生" | "阿麦" | "周镇长" | "沈馆长" | "诊所助手" | "许老师";
 type BuildingId = "farmhouse" | "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library" | "museum" | "school";
@@ -266,7 +266,7 @@ const PERSON_DIALOGUES: Record<string, string> = {
   小满: "小满：我喜欢四季课，夏天的西瓜和秋天的南瓜都很好看。",
   阿禾: "阿禾：英语里的 seed 是种子，我把这个单词记得最牢。",
   小树: "小树：农场知识课说，松果种下后要等几天才会长成大树。",
-  安安: "安安：我在黑板上画了稻草人，老师说它能保护田里的种子。",
+  安安: "安安：我住在农场西边，喜欢爬山、认路和在帐篷里看星星。有空一起去山洞探险吧！",
 };
 const PERSON_CLOTHES: Record<string, string> = {
   林婶: "#b85c55", 鲁师傅: "#8a6848", 叶老师: "#77618e", 白医生: "#e8eee7", 阿麦: "#d68a45", 周镇长: "#526f91", 沈馆长: "#39766f", 诊所助手: "#c74646", 红衣助手: "#c74646", 许老师: "#4f7d66",
@@ -764,6 +764,12 @@ export default function FarmGame() {
       setMessage(friend ? `沿着左边山路到了青禾村，一进村就看见了${friend.playerName}！` : "沿着左边山路到了青禾村。朋友来到同一个场景后就会出现。 ");
       return true;
     }
+    if (scene === "farm" && worldVillage === "qinghe" && dx < 0 && destination.x === 0) {
+      setScene("westFriendFarm"); setPlayer({ x: 11, y: 5 }); setMessage("沿着农场左边的草路，来到安安的小农场。 "); return true;
+    }
+    if (scene === "westFriendFarm" && dx > 0 && destination.x === 11) {
+      setScene("farm"); setPlayer({ x: 0, y: 5 }); setMessage("从安安的小农场回到青禾农场。 "); return true;
+    }
     if (scene === "farm" && dx > 0 && destination.x === 11) {
       setScene("town"); setPlayer({ x: 0, y: 5 }); setMessage(`欢迎来到${VILLAGE_INFO[worldVillage].name}！走到道路边缘就能继续前往其他地方。`); return true;
     }
@@ -1153,11 +1159,11 @@ export default function FarmGame() {
       wood: current.wood + (current.toolUpgrades.axe ? 6 : 4),
       pinecones: current.pinecones + 1,
       pineNuts: current.pineNuts + 2,
-      resin: current.resin + 1,
+      resin: current.resin + 2,
       treeStates: current.treeStates.map((tree, treeIndex) => treeIndex === index ? false : tree),
       daily: { ...current.daily, chopped: current.daily.chopped + 1 },
     }));
-    setMessage(`砍下树木，获得 ${game.toolUpgrades.axe ? 6 : 4} 块木头、1 个松果、2 颗松子和 1 滴树脂！树脂可以用来制作火柴。`);
+    setMessage(`砍下树木，获得 ${game.toolUpgrades.axe ? 6 : 4} 块木头、1 个松果、2 颗松子和 2 滴树脂！树脂可以用来制作火柴。`);
     playTone(330);
   };
 
@@ -1203,11 +1209,11 @@ export default function FarmGame() {
       wood: current.wood + (current.toolUpgrades.axe ? 6 : 4),
       pinecones: current.pinecones + 1,
       pineNuts: current.pineNuts + 2,
-      resin: current.resin + 1,
+      resin: current.resin + 2,
       plantedTrees: current.plantedTrees.filter((plantedTree) => plantedTree.id !== tree.id),
       daily: { ...current.daily, chopped: current.daily.chopped + 1 },
     }));
-    setMessage("长大的松树被砍下，获得木头、松果、松子和 1 滴绿色树脂。它空出的位置还能再种松果。 ");
+    setMessage("长大的松树被砍下，获得木头、松果、松子和 2 滴绿色树脂。它空出的位置还能再种松果。 ");
     playTone(330);
   };
 
@@ -2678,7 +2684,8 @@ export default function FarmGame() {
   const nextFestival = FESTIVAL_SCHEDULE.find((festival) => festival.day >= game.day) ?? FESTIVAL_SCHEDULE[0];
   const daysUntilFestival = nextFestival.day >= game.day ? nextFestival.day - game.day : 28 - game.day + nextFestival.day;
   const displayName = multiplayerSession?.playerName ?? "小禾";
-  const sceneLabel = scene === "farm" ? activeVillageInfo.farm : scene === "town" ? `${activeVillageInfo.name} · 中心街` : scene === "cultureDistrict" ? `${activeVillageInfo.name} · 清河文化街` : scene === "residentialDistrict" ? `${activeVillageInfo.name} · 青禾住宅坡` : scene === "eastNeighbor" ? "东郊 · 林婶的果园小屋" : scene === "southNeighbor" ? "南坡 · 鲁师傅的院子" : "北林 · 叶老师的书屋";
+  const sceneLabel = scene === "farm" ? activeVillageInfo.farm : scene === "westFriendFarm" ? "西边 · 安安的小农场" : scene === "town" ? `${activeVillageInfo.name} · 中心街` : scene === "cultureDistrict" ? `${activeVillageInfo.name} · 清河文化街` : scene === "residentialDistrict" ? `${activeVillageInfo.name} · 青禾住宅坡` : scene === "eastNeighbor" ? "东郊 · 林婶的果园小屋" : scene === "southNeighbor" ? "南坡 · 鲁师傅的院子" : "北林 · 叶老师的书屋";
+  const wildFriendVisit: "cave" | "camp" | null = game.day % 4 === 0 ? "cave" : game.day % 4 === 2 ? "camp" : null;
   const isNpcSick = (name: string) => (NPC_SICK_DAYS[name]?.includes(game.day) ?? false) && game.npcHealedDays[name] !== game.day;
   const doctorIsRestingAtHome = isNpcSick("白医生");
   const originalBuildingOwner = activeBuilding ? BUILDING_INFO[activeBuilding].owner : "";
@@ -2864,8 +2871,9 @@ export default function FarmGame() {
         <section className="village-map-panel" role="dialog" aria-modal="true" aria-labelledby="village-map-title">
           <header><div><span>按照游戏实际道路绘制</span><h2 id="village-map-title">青禾谷实际地图</h2></div><button onClick={() => setMapOpen(false)} aria-label="关闭地图">×</button></header>
           <div className="village-map-canvas">
-            <i className="map-river" /><i className="actual-route route-farm-town" /><i className="actual-route route-town-east" /><i className="actual-route route-east-maple" /><i className="actual-route route-town-culture" /><i className="actual-route route-culture-north" /><i className="actual-route route-culture-residential" /><i className="actual-route route-town-south" /><i className="map-tree-cluster tree-cluster-one" /><i className="map-tree-cluster tree-cluster-two" />
+            <i className="map-river" /><i className="actual-route route-wild-farm" /><i className="actual-route route-farm-town" /><i className="actual-route route-town-east" /><i className="actual-route route-east-maple" /><i className="actual-route route-town-culture" /><i className="actual-route route-culture-north" /><i className="actual-route route-culture-residential" /><i className="actual-route route-town-south" /><i className="map-tree-cluster tree-cluster-one" /><i className="map-tree-cluster tree-cluster-two" />
             <button className={`map-place map-farm ${activeVillage === "qinghe" && scene === "farm" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("farm", { x: 8, y: 5 }, "青禾农场"); }}><i className="map-scene-picture picture-farm"><em /><em /><em /></i><b>青禾农场</b><span>农舍 · 农田 · 鱼塘</span></button>
+            <button className={`map-place map-wild-farm ${activeVillage === "qinghe" && scene === "westFriendFarm" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("westFriendFarm", { x: 8, y: 5 }, "安安的小农场"); }}><i className="map-scene-picture picture-wild-farm"><em /><em /><em /></i><b>安安的小农场</b><span>青禾农场左边 · 野外朋友</span></button>
             <button className={`map-place map-town ${activeVillage === "qinghe" && scene === "town" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("town", { x: 5, y: 5 }, "中心街"); }}><i className="map-scene-picture picture-town"><em /><em /><em /></i><b>中心街</b><span>商店和居民建筑</span></button>
             <button className={`map-place map-culture ${activeVillage === "qinghe" && scene === "cultureDistrict" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("cultureDistrict", { x: 6, y: 7 }, "清河文化街"); }}><i className="map-scene-picture picture-culture"><em /><em /><em /></i><b>清河文化街</b><span>镇公所 · 学校 · 博物馆</span></button>
             <button className={`map-place map-east ${activeVillage === "qinghe" && scene === "eastNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("eastNeighbor", { x: 3, y: 5 }, "林婶的果园小屋"); }}><i className="map-scene-picture picture-orchard"><em /><em /><em /></i><b>东郊果园</b><span>林婶家</span></button>
@@ -2875,7 +2883,7 @@ export default function FarmGame() {
             <button className={`map-place map-residential ${activeVillage === "qinghe" && scene === "residentialDistrict" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("residentialDistrict", { x: 2, y: 5 }, "青禾住宅坡"); }}><i className="map-scene-picture picture-residential"><em /><em /><em /></i><b>青禾住宅坡</b><span>白医生 · 阿麦 · 周镇长 · 沈馆长 · 助手 · 许老师</span></button>
             <div className="map-legend"><span><i />你现在的位置</span><small>点击地图上的场景图可以直接前往</small></div>
           </div>
-          <footer><span>中心街向上到文化街；文化街向上去北林，向右就到每位居民都有独立院地的青禾住宅坡。</span><button onClick={() => setMapOpen(false)}>收起地图</button></footer>
+          <footer><span>青禾农场一直向左到安安的小农场；中心街向上到文化街，文化街向上去北林。</span><button onClick={() => setMapOpen(false)}>收起地图</button></footer>
         </section>
       </div>}
 
@@ -2928,8 +2936,8 @@ export default function FarmGame() {
         </aside>
 
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
-          <div className={`world ${scene === "farm" ? "farm-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome ? "interior-open" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
-            <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
+          <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome ? "interior-open" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
+            <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
             {twilightLevel > 0 && <div className="night-sky" aria-hidden="true"><span className="moon" /><i /><i /><i /><i /><i /><i /></div>}
@@ -2981,8 +2989,20 @@ export default function FarmGame() {
                 <button className="edge-gate farm-exit" onClick={() => { setScene("town"); setPlayer({ x: 0, y: 5 }); setMessage(`欢迎来到${activeVillageInfo.name}！超市在左上方。`); }} aria-label={`前往${activeVillageInfo.name}`}>
                   <span>{activeVillageInfo.name}</span><b>→</b><small>继续向右走</small>
                 </button>
+                {activeVillage === "qinghe" && <button className="edge-gate wild-farm-crossing" onClick={() => { setScene("westFriendFarm"); setPlayer({ x: 11, y: 5 }); setMessage("沿着左边草路来到安安的小农场。 "); }}><b>←</b><span>安安的小农场</span><small>一直向左走</small></button>}
                 {activeVillage === "maple" && <button className="edge-gate village-crossing crossing-left" onClick={() => { const friend = partner?.online && partner.currentVillage === "qinghe" ? partner : null; switchVillage("qinghe"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x + 1)), y: friend.y } : { x: 11, y: 5 }); setMessage(friend ? `到了青禾村，马上看见了${friend.playerName}！` : "沿着左边山路到了青禾村。 "); }}><b>←</b><span>前往青禾村</span><small>{partner?.online && partner.currentVillage === "qinghe" ? `去见${partner.playerName}` : "一直向左走"}</small></button>}
               </div>
+            ) : scene === "westFriendFarm" ? (
+              <>
+                <div className="friend-farm-path" />
+                <div className="friend-mini-field" aria-label="安安的十二格小农田">{Array.from({ length: 12 }).map((_, index) => <i key={`friend-plot-${index}`} className={index % 3 === 0 ? "friend-plot-grown" : ""} />)}</div>
+                <div className="friend-wild-garden"><i /><i /><i /><b>野菜和香草</b></div>
+                <div className="friend-water-barrel"><i /><b>雨水桶</b></div>
+                <div className="friend-farm-shelter"><i className="friend-shelter-roof" /><i className="friend-shelter-wall" /><i className="friend-shelter-door" /><strong>安安的林边小屋<small>喜欢野外生活的朋友</small></strong></div>
+                {wildFriendVisit ? <button className="friend-away-note" onClick={() => setMessage(`安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}，回青禾农场就能找到她。`)}>安安出去玩了<small>今天在{wildFriendVisit === "cave" ? "山洞" : "帐篷"}</small></button> : <button style={personClothesStyle("安安")} className="wild-friend-npc" onClick={() => interactWithPerson("安安", PERSON_DIALOGUES["安安"])} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和朋友安安聊天"}><i /><b /><span>安安<small>{heldItem ? `送出${carriedItemName}` : "你的野外朋友"}</small></span></button>}
+                <div className="friend-farm-trees"><i /><i /><i /></div>
+                <button className="edge-gate friend-farm-return" onClick={() => { setScene("farm"); setPlayer({ x: 0, y: 5 }); setMessage("从安安的小农场回到青禾农场。 "); }}><span>返回青禾农场</span><b>→</b><small>一直向右走</small></button>
+              </>
             ) : scene === "town" ? (
               <>
                 <div className="town-road road-horizontal" /><div className="town-road road-vertical" />
@@ -3059,7 +3079,7 @@ export default function FarmGame() {
               {renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
             </div>
             {partner?.online && partner.currentVillage === activeVillage && partner.scene === scene && <div className="online-partner" style={{ left: `${4 + partner.x * 7.7}%`, top: `${8 + partner.y * 10.5}%` }} aria-label={`${partner.playerName}也在这里`}><span>{partner.playerName}<small>朋友</small></span><i className="player-shadow" /><img src={partner.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>}
-            {partner?.online && partner.currentVillage === activeVillage && partner.scene !== scene && <button className="friend-locator" onClick={(event) => { event.stopPropagation(); setActiveBuilding(null); setNeighborInterior(null); setResidentHome(null); setScene(partner.scene); setPlayer({ x: Math.max(0, Math.min(11, partner.x + (partner.x < 11 ? 1 : -1))), y: partner.y }); setMessage(`找到${partner.playerName}了！现在你们在同一个地方。`); }}><span>● {partner.playerName}也在{activeVillageInfo.name}</span><strong>点击去找朋友</strong><small>{partner.scene === "farm" ? activeVillageInfo.farm : partner.scene === "town" ? "中心街" : partner.scene === "cultureDistrict" ? "清河文化街" : partner.scene === "residentialDistrict" ? "青禾住宅坡" : partner.scene === "eastNeighbor" ? "东郊" : partner.scene === "southNeighbor" ? "南坡" : "北林"}</small></button>}
+            {partner?.online && partner.currentVillage === activeVillage && partner.scene !== scene && <button className="friend-locator" onClick={(event) => { event.stopPropagation(); setActiveBuilding(null); setNeighborInterior(null); setResidentHome(null); setScene(partner.scene); setPlayer({ x: Math.max(0, Math.min(11, partner.x + (partner.x < 11 ? 1 : -1))), y: partner.y }); setMessage(`找到${partner.playerName}了！现在你们在同一个地方。`); }}><span>● {partner.playerName}也在{activeVillageInfo.name}</span><strong>点击去找朋友</strong><small>{partner.scene === "farm" ? activeVillageInfo.farm : partner.scene === "westFriendFarm" ? "安安的小农场" : partner.scene === "town" ? "中心街" : partner.scene === "cultureDistrict" ? "清河文化街" : partner.scene === "residentialDistrict" ? "青禾住宅坡" : partner.scene === "eastNeighbor" ? "东郊" : partner.scene === "southNeighbor" ? "南坡" : "北林"}</small></button>}
 
             <div className="speech-bubble"><span>{scene === "farm" ? "☀" : "◆"}</span>{message}</div>
             <div className="movement-help"><span>WASD / 方向键</span>移动</div>
@@ -3152,6 +3172,7 @@ export default function FarmGame() {
                   <header><div><span>{farmInterior === "cave" ? "青禾农场西侧" : "溪边露营地"}</span><h2 id="farm-special-title">{farmInterior === "cave" ? "青禾山洞内部" : "双顶帐篷内部"}</h2></div><button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); }} aria-label="离开这里">×</button></header>
                   <div className="farm-special-scene">
                     {farmInterior === "cave" ? <><i className="cave-rock cave-rock-one" /><i className="cave-rock cave-rock-two" /><i className="cave-crystal cave-crystal-one" /><i className="cave-crystal cave-crystal-two" /><span className="cave-path" /><b className="cave-fire" /></> : <><i className="camp-bed" /><i className="camp-bag" /><i className="camp-table" /><span className="camp-lantern" /><b className="camp-window" /></>}
+                    {wildFriendVisit === farmInterior && <button style={personClothesStyle("安安")} className="wild-friend-visitor" onClick={() => interactWithPerson("安安", farmInterior === "cave" ? "安安：这里的水晶真漂亮！我们点亮火柴，再一起找找通往深处的小路吧。" : "安安：今晚风很轻，我们可以在帐篷里讲山谷探险的故事。") }><i /><b /><span>安安<small>来陪你玩</small></span></button>}
                     <div className={`player indoor-player farm-special-player facing-${facing} ${isWalking ? "walking" : ""}`}><span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     {!interiorFireLit && <div className="special-darkness"><span>{farmInterior === "cave" ? "山洞里很暗" : "帐篷里还没点灯"}</span></div>}
                   </div>
