@@ -112,6 +112,10 @@ type GameState = {
   cows: number;
   eggs: number;
   milk: number;
+  cookies: number;
+  crabs: number;
+  shrimp: number;
+  ananBeachTrips: string[];
   lastEggDay: number;
   lastMilkDay: number;
   birthdayCakeYear: number;
@@ -139,6 +143,11 @@ const CROP_INFO: Record<CropType, { name: string; short: string; seedField: Seed
 };
 
 const CROP_TYPES = Object.keys(CROP_INFO) as CropType[];
+
+const BEACH_CRABS = [
+  { x: 22, y: 67 }, { x: 36, y: 58 }, { x: 49, y: 72 },
+  { x: 63, y: 61 }, { x: 77, y: 76 }, { x: 86, y: 55 },
+];
 
 const RESOURCE_INFO: Record<StorableResource, { name: string; energy: number; price: number }> = {
   radish: { name: "萝卜", energy: 8, price: 65 },
@@ -408,6 +417,10 @@ const makeNewGame = (): GameState => ({
   cows: 0,
   eggs: 0,
   milk: 0,
+  cookies: 0,
+  crabs: 0,
+  shrimp: 0,
+  ananBeachTrips: [],
   lastEggDay: 0,
   lastMilkDay: 0,
   birthdayCakeYear: 0,
@@ -492,11 +505,19 @@ export default function FarmGame() {
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [chestOpen, setChestOpen] = useState(false);
+  const [chestDepositStreak, setChestDepositStreak] = useState<{ resource: StorableResource; count: number } | null>(null);
+  const [bulkChestPrompt, setBulkChestPrompt] = useState<StorableResource | null>(null);
   const [stoveLit, setStoveLit] = useState(false);
   const [neighborInterior, setNeighborInterior] = useState<NeighborScene | null>(null);
   const [residentHome, setResidentHome] = useState<ResidentHomeOwner | null>(null);
   const [friendHomeOpen, setFriendHomeOpen] = useState(false);
   const [playingWithAnan, setPlayingWithAnan] = useState(false);
+  const [ananBeachOpen, setAnanBeachOpen] = useState(false);
+  const [ananBeachTraveling, setAnanBeachTraveling] = useState(false);
+  const [beachPlayer, setBeachPlayer] = useState({ x: 48, y: 72 });
+  const [beachCrabs, setBeachCrabs] = useState(() => BEACH_CRABS.map(() => true));
+  const [divingAtSea, setDivingAtSea] = useState(false);
+  const [seaCreatures, setSeaCreatures] = useState(() => BEACH_CRABS.map(() => true));
   const [festivalDisplay, setFestivalDisplay] = useState<"wood" | null>(null);
   const [amusementOpen, setAmusementOpen] = useState(false);
   const [busTraveling, setBusTraveling] = useState(false);
@@ -831,6 +852,16 @@ export default function FarmGame() {
   }, [multiplayerSession?.deviceId, onlinePlayers, scene, switchVillage, worldVillage]);
 
   const move = useCallback((dx: number, dy: number) => {
+    if (ananBeachTraveling || bulkChestPrompt) return;
+    if (ananBeachOpen) {
+      showWalking(dx, dy);
+      setBeachPlayer((current) => ({
+        x: Math.max(7, Math.min(93, current.x + dx * 4)),
+        y: Math.max(divingAtSea ? 22 : 48, Math.min(86, current.y + dy * 4)),
+      }));
+      setMessage(divingAtSea ? "穿着潜水服在水下游动，靠近小鱼小虾后可以抓取。 " : "在海滩上自由走动，也可以走进浅海游泳。 ");
+      return;
+    }
     if (craftingOpen || chestOpen || ranchOpen || farmInterior) return;
     const now = Date.now();
     if (now - lastMoveAtRef.current < 230) return;
@@ -891,7 +922,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, chestOpen, craftingOpen, crossSceneBoundary, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, neighborInterior, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, bulkChestPrompt, chestOpen, craftingOpen, crossSceneBoundary, divingAtSea, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, neighborInterior, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -900,6 +931,19 @@ export default function FarmGame() {
         if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) event.preventDefault();
         if (["w", "a", "s", "d"].includes(key)) splitLeftRef.current?.contentWindow?.postMessage({ type: "split-move", key }, window.location.origin);
         if (["arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) splitRightRef.current?.contentWindow?.postMessage({ type: "split-move", key }, window.location.origin);
+        return;
+      }
+      if (key === "escape" && bulkChestPrompt) {
+        setBulkChestPrompt(null);
+        setChestDepositStreak(null);
+        setMessage("暂时不把剩下的物品全部放入收纳箱。 ");
+        return;
+      }
+      if (key === "escape" && (ananBeachOpen || ananBeachTraveling)) {
+        setAnanBeachOpen(false);
+        setAnanBeachTraveling(false);
+        setDivingAtSea(false);
+        setMessage("和安安坐巴士回到了青禾农场。 ");
         return;
       }
       if (key === "escape" && builderOpen) {
@@ -967,7 +1011,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, builderOpen, chestOpen, craftingOpen, embeddedMode, farmInterior, friendHomeOpen, move, neighborInterior, ranchOpen, residentHome, splitScreen]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, chestOpen, craftingOpen, embeddedMode, farmInterior, friendHomeOpen, move, neighborInterior, ranchOpen, residentHome, splitScreen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -1629,6 +1673,102 @@ export default function FarmGame() {
     return true;
   };
 
+  const startAnanBeachTrip = () => {
+    const tripKey = `${game.year}-${game.season}`;
+    setGame((current) => ({
+      ...current,
+      energy: Math.min(100, current.energy + 10),
+      ananBeachTrips: current.ananBeachTrips.includes(tripKey) ? current.ananBeachTrips : [...current.ananBeachTrips, tripKey],
+    }));
+    setFriendHomeOpen(false);
+    setActiveBuilding(null);
+    setFarmInterior(null);
+    setAnanBeachTraveling(true);
+    setBeachPlayer({ x: 48, y: 72 });
+    setBeachCrabs(BEACH_CRABS.map(() => true));
+    setSeaCreatures(BEACH_CRABS.map(() => true));
+    setDivingAtSea(false);
+    setMessage("安安背上雨水桶和小船，拉着小禾坐上去海边的巴士。出发旅行恢复了 10 点体力！ ");
+    playTone(860);
+    window.setTimeout(() => {
+      setAnanBeachTraveling(false);
+      setAnanBeachOpen(true);
+      setMessage("到海边啦！安安送给你一个螃蟹夹子。靠近螃蟹后点击下面的“抓取”。 ");
+    }, 1_800);
+  };
+
+  const catchBeachCrab = () => {
+    let nearest = -1;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    BEACH_CRABS.forEach((crab, index) => {
+      if (!beachCrabs[index]) return;
+      const distance = Math.hypot(crab.x - beachPlayer.x, crab.y - beachPlayer.y);
+      if (distance < nearestDistance) { nearest = index; nearestDistance = distance; }
+    });
+    if (nearest < 0 || nearestDistance > 15) {
+      setMessage("螃蟹夹子还够不到。先走到一只螃蟹旁边，再点击抓取。 ");
+      playTone(250);
+      return;
+    }
+    setBeachCrabs((current) => current.map((visible, index) => index === nearest ? false : visible));
+    setGame((current) => ({ ...current, crabs: current.crabs + 1 }));
+    setMessage("夹住一只横着跑的小螃蟹！它已经装进背包，可以点击食用。 ");
+    playTone(880);
+  };
+
+  const fishAtSea = () => {
+    if (selected !== "rod") {
+      setMessage("先在下方工具栏选择鱼竿，才能在海上钓鱼。 ");
+      playTone(240);
+      return;
+    }
+    setGame((current) => ({ ...current, fishCaught: current.fishCaught + 1, inventory: { ...current.inventory, fish: current.inventory.fish + 1 }, daily: { ...current.daily, fish: current.daily.fish + 1 } }));
+    setMessage("在小船旁等了一会儿，海面浮标一沉，钓到了一条海鱼！ ");
+    playTone(900);
+  };
+
+  const catchSeaCreature = () => {
+    let nearest = -1;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    BEACH_CRABS.forEach((creature, index) => {
+      if (!seaCreatures[index]) return;
+      const distance = Math.hypot(creature.x - beachPlayer.x, creature.y - beachPlayer.y);
+      if (distance < nearestDistance) { nearest = index; nearestDistance = distance; }
+    });
+    if (nearest < 0 || nearestDistance > 16) {
+      setMessage("潜水夹还够不到小鱼小虾。游到它们旁边，再点击抓取。 ");
+      playTone(250);
+      return;
+    }
+    const caughtFish = nearest % 2 === 0;
+    setSeaCreatures((current) => current.map((visible, index) => index === nearest ? false : visible));
+    setGame((current) => caughtFish
+      ? { ...current, fishCaught: current.fishCaught + 1, inventory: { ...current.inventory, fish: current.inventory.fish + 1 } }
+      : { ...current, shrimp: current.shrimp + 1 });
+    setMessage(caughtFish ? "在水下抓到一条闪亮的小海鱼，放进背包啦！ " : "用潜水夹抓到一只小虾，放进背包啦！ ");
+    playTone(900);
+  };
+
+  const eatCrab = () => {
+    if (game.crabs <= 0) {
+      setMessage("背包里还没有螃蟹，去海边靠近螃蟹后用夹子抓一只吧。 ");
+      return;
+    }
+    setGame((current) => ({ ...current, crabs: current.crabs - 1, energy: Math.min(100, current.energy + 20) }));
+    setMessage("吃了一只海边螃蟹，恢复了 20 点体力！ ");
+    playTone(790);
+  };
+
+  const eatShrimp = () => {
+    if (game.shrimp <= 0) {
+      setMessage("背包里还没有小虾，穿上潜水服去水下找找吧。 ");
+      return;
+    }
+    setGame((current) => ({ ...current, shrimp: current.shrimp - 1, energy: Math.min(100, current.energy + 12) }));
+    setMessage("吃掉一只海边小虾，恢复了 12 点体力！ ");
+    playTone(780);
+  };
+
   const interactWithPerson = (person: string, fallback: string) => {
     if (giveHeldItem(person)) return;
     if (NPC_SICK_DAYS[person]?.includes(game.day) && game.npcHealedDays[person] !== game.day) {
@@ -1636,7 +1776,17 @@ export default function FarmGame() {
       playTone(300);
       return;
     }
-    if (person === "安安" && Math.random() < .5) {
+    if (person === "安安" && !game.ananBeachTrips.includes(`${game.year}-${game.season}`)) {
+      startAnanBeachTrip();
+      return;
+    }
+    if (person === "安安" && Math.random() < .3) {
+      setGame((current) => ({ ...current, cookies: current.cookies + 1 }));
+      setMessage("安安从小布包里拿出一块星星饼干送给小禾：“这是我烤的，分给你一块！”饼干已经放进背包。 ");
+      playTone(880);
+      return;
+    }
+    if (person === "安安" && Math.random() < .58) {
       setPlayingWithAnan(true);
       setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) }));
       setMessage("安安笑着拉住小禾，两个人追着跑、拍拍手，又绕着桌子嬉戏了一会儿！开心玩耍恢复了 5 点体力。 ");
@@ -1646,6 +1796,17 @@ export default function FarmGame() {
     }
     setMessage(PERSON_DIALOGUES[person] ?? fallback);
     playTone(520);
+  };
+
+  const eatAnanCookie = () => {
+    if (game.cookies <= 0) {
+      setMessage("背包里还没有饼干。有时和安安说话，她会和你分享。 ");
+      playTone(260);
+      return;
+    }
+    setGame((current) => ({ ...current, cookies: current.cookies - 1, energy: Math.min(100, current.energy + 18) }));
+    setMessage("吃掉了安安分享的星星饼干，香香脆脆，恢复了 18 点体力！ ");
+    playTone(820);
   };
 
   const talkToNeighbor = (neighbor: NeighborScene) => {
@@ -1930,8 +2091,11 @@ export default function FarmGame() {
         inventory: { ...current.inventory, [selectedResource]: current.inventory[selectedResource] - 1 },
         chestStorage: { ...current.chestStorage, [selectedResource]: current.chestStorage[selectedResource] + 1 },
       }));
+      const nextStreakCount = chestDepositStreak?.resource === selectedResource ? chestDepositStreak.count + 1 : 1;
+      setChestDepositStreak({ resource: selectedResource, count: nextStreakCount });
+      if (nextStreakCount >= 5 && count > 1) setBulkChestPrompt(selectedResource);
       if (count === 1) setSelectedResource(null);
-      setMessage(`把 1 个${name}放进木箱。现在箱内共有 ${Object.values(game.chestStorage).reduce((sum, value) => sum + value, 0) + 1} 件物品。`);
+      setMessage(nextStreakCount >= 5 && count > 1 ? `已经连续放入 5 个${name}。要不要把背包里剩下的${name}全部放进收纳箱？` : `把 1 个${name}放进木箱。现在箱内共有 ${Object.values(game.chestStorage).reduce((sum, value) => sum + value, 0) + 1} 件物品。`);
       playTone(680);
       return;
     }
@@ -1942,6 +2106,29 @@ export default function FarmGame() {
     setChestOpen(true);
     setMessage(`打开木箱：萝卜 ${game.chestStorage.radish}、草莓 ${game.chestStorage.strawberry}、玉米 ${game.chestStorage.corn}、鱼 ${game.chestStorage.fish}。`);
     playTone(500);
+  };
+
+  const storeAllPromptedResource = () => {
+    if (!bulkChestPrompt) return;
+    const resource = bulkChestPrompt;
+    const amount = game.inventory[resource];
+    const name = RESOURCE_INFO[resource].name;
+    if (amount <= 0) {
+      setBulkChestPrompt(null);
+      setChestDepositStreak(null);
+      setMessage(`背包里的${name}已经全部放好了。`);
+      return;
+    }
+    setGame((current) => ({
+      ...current,
+      inventory: { ...current.inventory, [resource]: 0 },
+      chestStorage: { ...current.chestStorage, [resource]: current.chestStorage[resource] + current.inventory[resource] },
+    }));
+    setBulkChestPrompt(null);
+    setChestDepositStreak(null);
+    setSelectedResource(null);
+    setMessage(`把剩下的 ${amount} 个${name}全部放进了收纳箱。`);
+    playTone(820);
   };
 
   const takeFromChest = (resource: StorableResource) => {
@@ -2743,7 +2930,8 @@ export default function FarmGame() {
   const calendarMonth = [2, 5, 8, 11][game.season];
   const sceneLabel = scene === "farm" ? activeVillageInfo.farm : scene === "westFriendFarm" ? "西边 · 安安的小农场" : scene === "town" ? `${activeVillageInfo.name} · 中心街` : scene === "cultureDistrict" ? `${activeVillageInfo.name} · 清河文化街` : scene === "residentialDistrict" ? `${activeVillageInfo.name} · 青禾住宅坡` : scene === "eastNeighbor" ? "东郊 · 林婶的果园小屋" : scene === "southNeighbor" ? "南坡 · 鲁师傅的院子" : "北林 · 叶老师的书屋";
   const wildFriendVisit: "cave" | "camp" | null = game.day % 5 === 0 ? "cave" : game.day % 5 === 2 ? "camp" : null;
-  const wildFriendAtPlayerHome = game.day % 5 === 3;
+  const currentAnanTripKey = `${game.year}-${game.season}`;
+  const wildFriendAtPlayerHome = game.day % 5 === 3 || (!game.ananBeachTrips.includes(currentAnanTripKey) && game.day >= 22);
   const isNpcSick = (name: string) => (NPC_SICK_DAYS[name]?.includes(game.day) ?? false) && game.npcHealedDays[name] !== game.day;
   const doctorIsRestingAtHome = isNpcSick("白医生");
   const originalBuildingOwner = activeBuilding ? BUILDING_INFO[activeBuilding].owner : "";
@@ -2786,7 +2974,7 @@ export default function FarmGame() {
   };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay) return;
+    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || ananBeachOpen || ananBeachTraveling) return;
     if ((event.target as HTMLElement).closest("button, input, .shop-overlay")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
@@ -2945,6 +3133,15 @@ export default function FarmGame() {
         </section>
       </div>}
 
+      {bulkChestPrompt && (
+        <div className="bulk-chest-prompt" role="dialog" aria-modal="true" aria-label={`是否把所有${RESOURCE_INFO[bulkChestPrompt].name}放进收纳箱`}>
+          <span>已经连续放入 5 个</span>
+          <strong>是否把所有{RESOURCE_INFO[bulkChestPrompt].name}都放到收纳箱里面去？</strong>
+          <small>背包里还剩 {game.inventory[bulkChestPrompt]} 个{RESOURCE_INFO[bulkChestPrompt].name}</small>
+          <div><button onClick={storeAllPromptedResource}>把所有{RESOURCE_INFO[bulkChestPrompt].name}放入</button><button onClick={() => { setBulkChestPrompt(null); setChestDepositStreak(null); setMessage(`暂时保留剩下的${RESOURCE_INFO[bulkChestPrompt].name}。`); }}>暂时不要</button></div>
+        </div>
+      )}
+
       <section className="game-layout">
         <aside className="side-panel">
           <div className="portrait-card">
@@ -2977,6 +3174,9 @@ export default function FarmGame() {
               <button className={heldItem?.kind === "resin" ? "resource-item resin-record held-material" : "resource-item resin-record"} onDoubleClick={pickUpResin} title="双击拿起绿色树脂"><span className="harvest-icon resin-icon" /><p>树脂<strong>{game.resin}</strong><small>双击拿起 · 做火柴</small></p></button>
               <button className={heldItem?.kind === "product" && heldItem.id === "egg" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => setMessage(`农场鸡蛋共有 ${game.eggs} 枚。每只鸡每天产 1 枚，双击可以拿起来。`)} onDoubleClick={() => pickUpAnimalProduct("egg")} title="双击拿起鸡蛋"><span className="harvest-icon egg-icon" /><p>鸡蛋<strong>{game.eggs}</strong><small>双击拿起</small></p></button>
               <button className={heldItem?.kind === "product" && heldItem.id === "milk" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => setMessage(`新鲜牛奶共有 ${game.milk} 瓶。每头奶牛每天产 1 瓶，双击可以拿起来。`)} onDoubleClick={() => pickUpAnimalProduct("milk")} title="双击拿起牛奶"><span className="harvest-icon milk-icon" /><p>牛奶<strong>{game.milk}</strong><small>双击拿起</small></p></button>
+              <button className="resource-item anan-cookie-item" onClick={eatAnanCookie} title="点击食用，恢复 18 点体力"><span className="harvest-icon cookie-icon" /><p>安安的饼干<strong>{game.cookies}</strong><small>单击食用</small></p></button>
+              <button className="resource-item beach-food-item" onClick={eatCrab} title="点击食用，恢复 20 点体力"><span className="harvest-icon crab-icon" /><p>海边螃蟹<strong>{game.crabs}</strong><small>单击食用</small></p></button>
+              <button className="resource-item beach-food-item" onClick={eatShrimp} title="点击食用，恢复 12 点体力"><span className="harvest-icon shrimp-icon" /><p>海边小虾<strong>{game.shrimp}</strong><small>单击食用</small></p></button>
               {game.bookBag.map((bookId) => <button key={`bag-book-${bookId}`} className={heldItem?.kind === "book" && heldItem.id === bookId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${LOST_BOOKS[bookId].title}：${LOST_BOOKS[bookId].content}`)} onDoubleClick={() => carryLostBook(bookId)} title="点击阅读，双击拿起来送给叶老师"><span className="harvest-icon book-icon">书</span><p>{LOST_BOOKS[bookId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
               {game.artifactBag.map((artifactId) => <button key={`bag-artifact-${artifactId}`} className={heldItem?.kind === "artifact" && heldItem.id === artifactId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${RARE_ARTIFACTS[artifactId].title}：${RARE_ARTIFACTS[artifactId].description}`)} onDoubleClick={() => carryArtifact(artifactId)} title="点击查看，双击拿起来送到博物馆"><span className={`harvest-icon artifact-icon artifact-icon-${artifactId + 1}`}>{RARE_ARTIFACTS[artifactId].short}</span><p>{RARE_ARTIFACTS[artifactId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
             </div>
@@ -3012,8 +3212,8 @@ export default function FarmGame() {
                   <i /><i /><i /><b className="fishing-float" />{fishingPhase === "bite" && <strong className="bite-question">?</strong>}<span className="pond-label">{fishingPhase === "waiting" ? "等待鱼儿咬钩…" : fishingPhase === "bite" ? "快点！点击问号" : currentFestival?.id === "fishing" ? "钓鱼节会场 · 鱼获 +2" : "钓鱼池"}</span>
                 </button>
                 {fishingPhase === "reeling" && <div className="fishing-challenge" onClick={(event) => event.stopPropagation()}><header><span>提竿小游戏</span><b>{fishingScore}/3</b></header><p>等红色游标进入绿色区域时，点击提竿！</p><div className="fishing-timing-bar"><i className={game.toolUpgrades.rod ? "lucky-zone" : ""} /><b style={{ left: `${fishingMarker}%` }} /></div><button onClick={attemptReel}>提竿！</button><small>{game.toolUpgrades.rod ? "幸运鱼竿：咬钩更快，成功区域更宽" : "连续命中 3 次才能把鱼钓上来"}</small></div>}
-                {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节并不断挥竿钓鱼的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} fishing-villager fishing-villager-${index + 1} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：我刚把一条鱼提起来收进口袋，现在重新抛竿比赛！`)}><i /><b /><em className="festival-fishing-rod" /><u className="festival-caught-fish" /><span>{name}<small>正在比赛钓鱼</small></span></button>)}</div>}
-                {isBirthday && <div className="birthday-farm-friends" aria-label="在生日当天跑到菜地和农场玩耍的朋友">{BIRTHDAY_GUESTS.slice(0, 6).map((name, index) => <button key={`farm-party-${name}`} style={personClothesStyle(name)} className={`birthday-field-friend field-friend-${index + 1}`} onClick={() => interactWithPerson(name, `${name}：我们从农舍跑到菜地边玩啦，一会儿再回去吃生日蛋糕！`)}><i /><b /><span>{name}</span></button>)}</div>}
+                {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节并不断挥竿钓鱼的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} fishing-villager fishing-villager-${index + 1} ${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：我刚把一条鱼提起来收进口袋，现在重新抛竿比赛！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><em className="festival-fishing-rod" /><u className="festival-caught-fish" /><span>{name}<small>等待鱼儿咬钩</small></span></button>)}</div>}
+                {isBirthday && <div className="birthday-farm-friends" aria-label="在生日当天跑到菜地和农场玩耍的朋友">{BIRTHDAY_GUESTS.slice(0, 6).map((name, index) => <button key={`farm-party-${name}`} style={personClothesStyle(name)} className={`birthday-field-friend field-friend-${index + 1} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：我们从农舍跑到菜地边玩啦，一会儿再回去吃生日蛋糕！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div>}
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" /><span className="sign">{displayName}的农舍{game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
                 <button className={`crafted-object crafted-chest home-storage-chest ${selectedResource ? "ready-to-store" : ""}`} onClick={() => { if (selected === "axe") { setMessage("这是农舍旁边固定的收纳木箱，不会被斧头拆掉。 "); return; } useChest(); }} aria-label={`农舍旁的木箱，内有 ${Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)} 件物品`}><i /><b>{Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)}</b></button>
                 {game.rockStates.map((standing, index) => <button key={`rock-${index}`} className={`farm-rock rock-${index + 1} ${standing ? "" : "broken"}`} onClick={() => breakRock(index)} aria-label={standing ? `敲碎第 ${index + 1} 块石头` : `第 ${index + 1} 处碎石`} />)}
@@ -3059,7 +3259,7 @@ export default function FarmGame() {
                 <div className="friend-wild-garden"><i /><i /><i /><b>野菜和香草</b></div>
                 <div className="friend-water-barrel"><i /><b>雨水桶</b></div>
                 <button className="friend-farm-shelter" onClick={(event) => { event.stopPropagation(); setFriendHomeOpen(true); setIndoorPlayer({ x: 34, y: 70 }); setMessage("走进安安的林边小屋，屋里摆着登山装备和野外收藏。 "); }} aria-label="进入安安的林边小屋"><i className="friend-shelter-roof" /><i className="friend-shelter-wall" /><i className="friend-shelter-door" /><strong>安安的林边小屋<small>点击进入拜访</small></strong></button>
-                {wildFriendVisit || wildFriendAtPlayerHome ? <button className="friend-away-note" onClick={() => setMessage(wildFriendAtPlayerHome ? `安安今天去${displayName}的农舍找你了，回自己家就能见到她。` : `安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}。`)}>安安出去玩了<small>今天在{wildFriendAtPlayerHome ? `${displayName}的农舍` : wildFriendVisit === "cave" ? "山洞" : "帐篷"}</small></button> : <button style={personClothesStyle("安安")} className="wild-friend-npc" onClick={() => interactWithPerson("安安", PERSON_DIALOGUES["安安"])} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和朋友安安聊天"}><i /><b /><span>安安<small>{heldItem ? `送出${carriedItemName}` : "你的野外朋友"}</small></span></button>}
+                {wildFriendVisit || wildFriendAtPlayerHome ? <button className="friend-away-note" onClick={() => setMessage(wildFriendAtPlayerHome ? `安安今天去${displayName}的农舍找你了，回自己家就能见到她。` : `安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}。`)}>安安出去玩了<small>今天在{wildFriendAtPlayerHome ? `${displayName}的农舍` : wildFriendVisit === "cave" ? "山洞" : "帐篷"}</small></button> : <button style={personClothesStyle("安安")} className="wild-friend-npc anan-character" onClick={() => interactWithPerson("安安", PERSON_DIALOGUES["安安"])} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和朋友安安聊天"}><i /><em className="anan-pigtails" /><b /><span>安安<small>{heldItem ? `送出${carriedItemName}` : "你的野外朋友"}</small></span></button>}
                 <div className="friend-farm-trees"><i /><i /><i /></div>
                 <button className="edge-gate friend-farm-return" onClick={() => { setScene("farm"); setPlayer({ x: 0, y: 5 }); setMessage("从安安的小农场回到青禾农场。 "); }}><span>返回青禾农场</span><b>→</b><small>一直向右走</small></button>
               </>
@@ -3159,7 +3359,7 @@ export default function FarmGame() {
                     <div className="anan-home-gear"><i /><i /><i /><span>登山包 · 绳索 · 地图</span></div>
                     <button className="neighbor-bed anan-bed" onClick={() => setMessage("这是安安的床，床头放着一本写满山洞路线的探险笔记。 ")}><i /><b /><span>安安的床</span></button>
                     <div className="neighbor-home-items anan-home-items">{["山谷地图", "水晶收藏", "露营相册"].map((item) => <button key={item} onClick={() => setMessage(item === "山谷地图" ? "地图上画着安安走过的山路、帐篷营地和青禾山洞。" : item === "水晶收藏" ? "架子上放着安安从山洞带回来的彩色小水晶。" : "相册里有安安和小禾一起在野外玩的照片。 ")}><i />{item}</button>)}</div>
-                    {!wildFriendVisit && !wildFriendAtPlayerHome ? <button style={personClothesStyle("安安")} className="neighbor-indoor-npc anan-home-npc" onClick={() => interactWithPerson("安安", "安安：欢迎来我家！我们可以看看地图，再决定今天去哪里探险。 ")} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和安安聊天"}><i className="npc-hair" /><i className="npc-face" /><i className="npc-body" /><span>安安</span></button> : <button className="anan-indoor-away-note" onClick={() => setMessage(wildFriendAtPlayerHome ? `纸条上写着：我去${displayName}家找你啦！——安安` : `纸条上写着：我去${wildFriendVisit === "cave" ? "山洞" : "帐篷"}玩一会儿，晚点回来！——安安`)}><i />安安留下的纸条<small>点击查看去向</small></button>}
+                    {!wildFriendVisit && !wildFriendAtPlayerHome ? <button style={personClothesStyle("安安")} className="neighbor-indoor-npc anan-home-npc anan-character" onClick={() => interactWithPerson("安安", "安安：欢迎来我家！我们可以看看地图，再决定今天去哪里探险。 ")} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和安安聊天"}><i className="npc-hair" /><i className="npc-face" /><em className="anan-pigtails" /><i className="npc-body" /><span>安安</span></button> : <button className="anan-indoor-away-note" onClick={() => setMessage(wildFriendAtPlayerHome ? `纸条上写着：我去${displayName}家找你啦！——安安` : `纸条上写着：我去${wildFriendVisit === "cave" ? "山洞" : "帐篷"}玩一会儿，晚点回来！——安安`)}><i />安安留下的纸条<small>点击查看去向</small></button>}
                     <button className="house-door neighbor-home-door" onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }}><span>出口</span></button>
                     <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
@@ -3252,7 +3452,7 @@ export default function FarmGame() {
                   <header><div><span>{farmInterior === "cave" ? "青禾农场西侧" : "溪边露营地"}</span><h2 id="farm-special-title">{farmInterior === "cave" ? "青禾山洞内部" : "双顶帐篷内部"}</h2></div><button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); }} aria-label="离开这里">×</button></header>
                   <div className="farm-special-scene">
                     {farmInterior === "cave" ? <><i className="cave-rock cave-rock-one" /><i className="cave-rock cave-rock-two" /><i className="cave-crystal cave-crystal-one" /><i className="cave-crystal cave-crystal-two" /><span className="cave-path" /><b className="cave-fire" /></> : <><i className="camp-bed" /><i className="camp-bag" /><i className="camp-table" /><span className="camp-lantern" /><b className="camp-window" /></>}
-                    {wildFriendVisit === farmInterior && <button style={personClothesStyle("安安")} className="wild-friend-visitor" onClick={() => interactWithPerson("安安", farmInterior === "cave" ? "安安：这里的水晶真漂亮！我们点亮火柴，再一起找找通往深处的小路吧。" : "安安：今晚风很轻，我们可以在帐篷里讲山谷探险的故事。") }><i /><b /><span>安安<small>来陪你玩</small></span></button>}
+                    {wildFriendVisit === farmInterior && <button style={personClothesStyle("安安")} className="wild-friend-visitor anan-character" onClick={() => interactWithPerson("安安", farmInterior === "cave" ? "安安：这里的水晶真漂亮！我们点亮火柴，再一起找找通往深处的小路吧。" : "安安：今晚风很轻，我们可以在帐篷里讲山谷探险的故事。") }><i /><em className="anan-pigtails" /><b /><span>安安<small>来陪你玩</small></span></button>}
                     <div className={`player indoor-player farm-special-player facing-${facing} ${isWalking ? "walking" : ""}`}><span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     {!interiorFireLit && <div className="special-darkness"><span>{farmInterior === "cave" ? "山洞里很暗" : "帐篷里还没点灯"}</span></div>}
                   </div>
@@ -3304,14 +3504,14 @@ export default function FarmGame() {
                   <header><div><span>{activeVillageInfo.farm}室内</span><h2 id="farmhouse-title">{displayName}的农舍</h2></div><button onClick={leaveBuilding} aria-label={`离开${displayName}的农舍`}>×</button></header>
                   <div className={`interior-room farmhouse-room ${game.upgrades.house ? "expanded-farmhouse-room" : ""} farmhouse-level-${game.upgrades.house} ${isNight ? "night-room" : ""} ${isNight && stoveLit ? "stove-lit-room" : ""} ${isNight && game.equipment.lampOn ? "lamp-lit-room" : ""}`} onClick={walkInsidePointer}>
                     <div className="room-window"><i /><i /></div>
-                    {isBirthday && <><div className="birthday-banner">二月十九日 · {displayName}生日快乐！</div><div className="birthday-loft" aria-label="生日派对时可以跑上去的小阁楼"><i /><b /><span>小阁楼</span></div><div className="birthday-house-guests" aria-label="会在农舍里跑动、看窗户、跳床和玩耍的所有朋友">{BIRTHDAY_GUESTS.map((name, index) => <button key={`birthday-${name}`} style={personClothesStyle(name)} className={`birthday-guest birthday-guest-${index + 1} birthday-behavior-${index % 5}`} onClick={() => interactWithPerson(name, `${name}：生日快乐！我们刚才在屋里跑来跑去、看窗外，还轮流在床上跳呢！`)} aria-label={`和参加生日派对的${name}聊天`}><i /><b /><span>{name}</span></button>)}</div><button className={`birthday-cake ${game.birthdayCakeYear === game.year ? "cake-eaten" : ""}`} onClick={eatBirthdayCake} aria-label="分享生日蛋糕恢复体力"><i /><b /><em /><span>{game.birthdayCakeYear === game.year ? "蛋糕已经分享完" : "点击吃生日蛋糕 · 恢复40体力"}</span></button></>}
+                    {isBirthday && <><div className="birthday-banner">二月十九日 · {displayName}生日快乐！</div><div className="birthday-loft" aria-label="生日派对时可以跑上去的小阁楼"><i /><b /><span>小阁楼</span></div><div className="birthday-house-guests" aria-label="会在农舍里跑动、看窗户、跳床和玩耍的所有朋友">{BIRTHDAY_GUESTS.map((name, index) => <button key={`birthday-${name}`} style={personClothesStyle(name)} className={`birthday-guest birthday-guest-${index + 1} birthday-behavior-${index % 5} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：生日快乐！我们刚才在屋里跑来跑去、看窗外，还轮流在床上跳呢！`)} aria-label={`和参加生日派对的${name}聊天`}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><button className={`birthday-cake ${game.birthdayCakeYear === game.year ? "cake-eaten" : ""}`} onClick={eatBirthdayCake} aria-label="分享生日蛋糕恢复体力"><i /><b /><em /><span>{game.birthdayCakeYear === game.year ? "蛋糕已经分享完" : "点击吃生日蛋糕 · 恢复40体力"}</span></button></>}
                     <button className="house-bed" onClick={sleepAtHome} aria-label="点击床睡到第二天"><i /><b /><span>点击睡觉</span></button>
                     <div className="house-table"><i /><i /></div>
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     {game.upgrades.house >= 1 && <button className={`house-equipment house-lamp ${game.equipment.lampOn ? "active" : ""}`} onClick={() => { setGame((current) => ({ ...current, equipment: { ...current.equipment, lampOn: !current.equipment.lampOn } })); setMessage(game.equipment.lampOn ? "关掉了暖光灯。" : "暖光灯亮起来，夜晚的房间变得明亮了！"); }}><i />暖光灯</button>}
                     {game.upgrades.house >= 2 && <button className="house-equipment house-water-tank" onClick={() => { setGame((current) => ({ ...current, water: current.toolUpgrades.water ? 18 : 12 })); setMessage("自动水箱把洒水壶补满了！"); playTone(620); }}><i />自动水箱</button>}
                     {game.upgrades.house >= 3 && <button className="house-equipment house-kitchen" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 20) })); setMessage("在料理台吃了一份热饭，恢复 20 点体力！"); playTone(740); }}><i />料理台</button>}
-                    {wildFriendAtPlayerHome && <button style={personClothesStyle("安安")} className="neighbor-indoor-npc anan-farmhouse-visitor" onClick={() => interactWithPerson("安安", `安安：我直接跑来${displayName}家找你啦！今天一起去农场、帐篷或者山洞玩吧。`)} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和来家里找你的安安聊天"}><i className="npc-hair" /><i className="npc-face" /><i className="npc-body" /><span>安安<small>来找你玩</small></span></button>}
+                    {wildFriendAtPlayerHome && <button style={personClothesStyle("安安")} className="neighbor-indoor-npc anan-farmhouse-visitor anan-character" onClick={() => interactWithPerson("安安", `安安：我直接跑来${displayName}家找你啦！今天一起去农场、帐篷或者山洞玩吧。`)} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和来家里找你的安安聊天"}><i className="npc-hair" /><i className="npc-face" /><em className="anan-pigtails" /><i className="npc-body" /><span>安安<small>来找你玩</small></span></button>}
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
                     <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
@@ -3331,7 +3531,7 @@ export default function FarmGame() {
                 <section className="shop-panel" role="dialog" aria-modal="true" aria-labelledby="shop-title">
                   <header><div><span>青禾镇杂货</span><h2 id="shop-title">青禾超市</h2></div><div className="shop-wallet"><small>你的金币</small><strong>● {game.coins}</strong></div><button onClick={leaveBuilding} aria-label="离开商店">×</button></header>
                   <div className="shopkeeper"><button style={personClothesStyle(supermarketClerk)} className={`shopkeeper-face ${supermarketReliefWorker ? "relief-worker" : ""}`} onClick={() => interactWithPerson(supermarketClerk, `${supermarketClerk}：${supermarketReliefWorker?.greeting ?? "欢迎呀，小禾！今天想带点什么回农场？"}`)} aria-label={heldItem ? `把${carriedItemName}送给${supermarketClerk}` : `和${supermarketClerk}交谈`}><i /><b /></button><p><strong>{supermarketClerk}{supermarketReliefWorker ? " · 今日代班" : ""}</strong>{heldItem ? `小禾正举着${carriedItemName}，点击${supermarketClerk}就能送给他。` : supermarketReliefWorker?.greeting ?? (game.day === 3 ? "种子分享日快乐！今天所有水果和蔬菜种子都免费。" : "欢迎呀，小禾！今天想带点什么回农场？")}</p><div className={`player indoor-player indoor-shop-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: "0" }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div></div>
-                  {game.day === 3 && <><div className="free-seed-festival"><strong>种子分享日 · 全部免费</strong><span>西瓜、番茄、土豆、南瓜、蓝莓等 8 种种子</span><button onClick={takeFreeSeedBundle}>免费领取 8 种种子大礼包</button></div><div className="shop-festival-guests" aria-label="参加种子分享日的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={isNpcSick(name) ? "sick-npc" : ""} onClick={() => interactWithPerson(name, `${name}：种子分享日真热闹，大家都领到了喜欢的种子！`)}><i /><b /><span>{name}</span></button>)}</div></>}
+                  {game.day === 3 && <><div className="free-seed-festival"><strong>种子分享日 · 全部免费</strong><span>西瓜、番茄、土豆、南瓜、蓝莓等 8 种种子</span><button onClick={takeFreeSeedBundle}>免费领取 8 种种子大礼包</button></div><div className="shop-festival-guests" aria-label="参加种子分享日的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：种子分享日真热闹，大家都领到了喜欢的种子！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div></>}
                   <div className="product-grid">
                     {CROP_TYPES.map((crop) => <article className="product-card" key={crop}><span className={`product-icon ${crop}-seeds`}>{CROP_INFO[crop].short}</span><div><strong>{CROP_INFO[crop].name}种子包</strong><small>内含 5 颗种子</small></div><button className={game.day === 3 ? "free-shop-button" : ""} onClick={() => buyItem(CROP_INFO[crop].seedField)}>{game.day === 3 ? "免费" : <><span>●</span>{CROP_INFO[crop].seedPrice}</>}</button></article>)}
                     <article className="product-card"><span className="product-icon water-drop">水</span><div><strong>水壶补给</strong><small>立刻补满 12 格水</small></div><button onClick={() => buyItem("water")}><span>●</span>25</button></article>
@@ -3363,10 +3563,10 @@ export default function FarmGame() {
                     <div className="room-window"><i /><i /></div>
                     <div className="room-rug" />
                     <div className="room-furniture"><i /><i /><i /></div>
-                    {activeBuilding === "school" && <><div className="school-blackboard"><strong>{isExcursionAvailable ? `今日${excursionName}` : isSchoolDay ? "今日课堂" : "课程表"}</strong><span>{isExcursionAvailable ? `第一次到校可与同学一起去${excursionName}` : isSchoolDay ? ["A B C · 英语", "阅读与写字 · 语文", "加减乘除 · 数学", "种植与浇水 · 农场知识"][Math.floor((game.day - 1) / 2) % 4] : "周一 · 周三 · 周五 · 周日上课"}</span><i /></div>{isExcursionAvailable && <button className="school-bus" onClick={() => useBuildingService("school")}><i /><b /><span>{excursionName}大巴</span><small>与老师同学一起上车</small></button>}<div className="school-desks" aria-label={isSchoolDay ? "同学们坐在课桌前听课" : "今天空着的课桌椅"}>{SCHOOL_STUDENTS.map((student, index) => <button key={student} style={personClothesStyle(student)} className={`classroom-seat seat-${index + 1} ${isSchoolDay ? "student-seated" : "empty-seat"}`} disabled={!isSchoolDay} onClick={(event) => { event.stopPropagation(); interactWithPerson(student, `${student}：我正在认真听许老师讲课，今天学到了很多新知识！`); }} aria-label={isSchoolDay ? `${student}坐在课桌前听课` : "空课桌"}><i /><em /><b /><span>{isSchoolDay ? student : "空座位"}</span></button>)}</div></>}
+                    {activeBuilding === "school" && <><div className="school-blackboard"><strong>{isExcursionAvailable ? `今日${excursionName}` : isSchoolDay ? "今日课堂" : "课程表"}</strong><span>{isExcursionAvailable ? `第一次到校可与同学一起去${excursionName}` : isSchoolDay ? ["A B C · 英语", "阅读与写字 · 语文", "加减乘除 · 数学", "种植与浇水 · 农场知识"][Math.floor((game.day - 1) / 2) % 4] : "周一 · 周三 · 周五 · 周日上课"}</span><i /></div>{isExcursionAvailable && <button className="school-bus" onClick={() => useBuildingService("school")}><i /><b /><span>{excursionName}大巴</span><small>与老师同学一起上车</small></button>}<div className="school-desks" aria-label={isSchoolDay ? "同学们坐在课桌前听课" : "今天空着的课桌椅"}>{SCHOOL_STUDENTS.map((student, index) => <button key={student} style={personClothesStyle(student)} className={`classroom-seat seat-${index + 1} ${isSchoolDay ? "student-seated" : "empty-seat"} ${student === "安安" ? "anan-character" : ""}`} disabled={!isSchoolDay} onClick={(event) => { event.stopPropagation(); interactWithPerson(student, `${student}：我正在认真听许老师讲课，今天学到了很多新知识！`); }} aria-label={isSchoolDay ? `${student}坐在课桌前听课` : "空课桌"}><i />{student === "安安" && <strong className="anan-pigtails" />}<em /><b /><span>{isSchoolDay ? student : "空座位"}</span></button>)}</div></>}
                     <button style={personClothesStyle(activeBuildingOwner)} className={`npc-character ${activeReliefWorker ? "clinic-relief-assistant relief-worker" : ""}`} onClick={() => interactWithPerson(activeBuildingOwner, `${activeBuildingOwner}：${activeBuildingGreeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${activeBuildingOwner}` : `和${activeBuildingOwner}交谈`}><span className="npc-hair" /><span className="npc-face" /><span className="npc-body" /></button>
                     {activeReliefWorker && <div className="clinic-relief-note"><strong>{activeReliefWorker.name}代班</strong><span>{originalBuildingOwner}在家休息 · 两人平时住在一起</span></div>}
-                    {((activeBuilding === "cafe" && currentFestival?.id === "coffee") || (activeBuilding === "workshop" && currentFestival?.id === "craft")) && <div className={`festival-indoor-guests guests-${activeBuilding}`} aria-label={`参加${currentFestival.name}的居民`}>{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`indoor-guest guest-${index + 1} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：${currentFestival.name}真热闹，屋里坐满了村民！`)}><i /><b /><span>{name}</span></button>)}</div>}
+                    {((activeBuilding === "cafe" && currentFestival?.id === "coffee") || (activeBuilding === "workshop" && currentFestival?.id === "craft")) && <div className={`festival-indoor-guests guests-${activeBuilding}`} aria-label={`参加${currentFestival.name}的居民`}>{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`indoor-guest guest-${index + 1} ${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：${currentFestival.name}真热闹，屋里坐满了村民！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div>}
                     <div className="interior-counter" />
                     <div className="interior-sign">{activeBuilding === "townhall" ? "公告" : activeBuilding === "clinic" ? "健康" : activeBuilding === "cafe" ? "今日菜单" : activeBuilding === "workshop" ? "制作台" : activeBuilding === "museum" ? "山谷馆藏" : activeBuilding === "school" ? "今日课堂" : "农事图鉴"}</div>
                     <div className={`room-specials special-${activeBuilding}`}>
@@ -3393,7 +3593,7 @@ export default function FarmGame() {
               <div className="shop-overlay bus-trip-overlay" role="presentation">
                 <section className="bus-trip-panel" role="dialog" aria-modal="true" aria-labelledby="bus-trip-title">
                   <header><span>青禾学校 · {excursionName}</span><h2 id="bus-trip-title">大巴正在前往游乐园</h2><small>沿着山谷公路再等一会儿……</small></header>
-                  <div className="bus-interior"><div className="bus-driver"><i /><span>司机</span></div><div className="bus-teacher" style={personClothesStyle(activeBuildingOwner || "许老师")}><i /><span>{activeBuildingOwner || "许老师"}</span></div><div className="bus-seats">{SCHOOL_STUDENTS.map((student) => <div key={`bus-${student}`} style={personClothesStyle(student)}><i /><b /><span>{student}</span></div>)}</div><div className="bus-player"><PlayerSprite facing="down" sick={game.sick} /><span>{displayName}</span></div><div className="moving-road"><i /><i /><i /></div></div>
+                  <div className="bus-interior"><div className="bus-driver"><i /><span>司机</span></div><div className="bus-teacher" style={personClothesStyle(activeBuildingOwner || "许老师")}><i /><span>{activeBuildingOwner || "许老师"}</span></div><div className="bus-seats">{SCHOOL_STUDENTS.map((student) => <div key={`bus-${student}`} style={personClothesStyle(student)} className={student === "安安" ? "anan-character" : ""}><i />{student === "安安" && <em className="anan-pigtails" />}<b /><span>{student}</span></div>)}</div><div className="bus-player"><PlayerSprite facing="down" sick={game.sick} /><span>{displayName}</span></div><div className="moving-road"><i /><i /><i /></div></div>
                   <footer><span>老师、同学们和小禾都已经坐好，大巴正在慢慢开往青禾游乐园。</span></footer>
                 </section>
               </div>
@@ -3405,6 +3605,32 @@ export default function FarmGame() {
                   <header><div><span>青禾学校{excursionName}</span><h2 id="amusement-title">青禾游乐园</h2></div><button onClick={finishExcursion}>×</button></header>
                   <div className="amusement-scene"><div className="ferris-wheel"><i /><i /><i /><i /></div><div className="carousel"><i /><i /><i /></div><div className="park-bus"><i /><b /><span>青禾学校</span></div><div className="park-students">{SCHOOL_STUDENTS.map((student) => <span key={student}>{student}</span>)}</div><button className="park-extra park-fountain" onClick={() => { setMessage("彩色喷泉随着音乐一高一低，同学们在旁边拍了合照。 "); playTone(700); }}><i /><b />音乐喷泉</button><button className="park-extra park-train" onClick={() => { setMessage("小火车绕着游乐园开了一圈，经过花园、摩天轮和点心屋。 "); playTone(620); }}><i /><i /><b />山谷小火车</button><button className="park-extra park-bumper" onClick={() => { setMessage("和同学们玩了碰碰车，大家笑得停不下来！ "); playTone(840); }}><i /><i /><b />碰碰车</button><button className="park-extra park-balloons" onClick={() => { setMessage("气球摊送给大家彩色气球，秋游和春游都变得更热闹了。 "); playTone(780); }}><i /><i /><i /><b />气球摊</button><button className="park-extra park-snacks" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 12) })); setMessage("在点心屋吃了棉花糖和小饼干，恢复 12 点体力！ "); playTone(760); }}><i /><b />游园点心屋</button></div>
                   <div className="amusement-actions"><button onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 10) })); setMessage("坐了一圈摩天轮，从高处看见了整个青禾谷，恢复 10 点体力！"); playTone(820); }}>乘坐摩天轮</button><button onClick={() => { setMessage("旋转木马慢慢转起来，同学们开心地挥手。 "); playTone(760); }}>玩旋转木马</button><button onClick={finishExcursion}>坐大巴回学校</button></div>
+                </section>
+              </div>
+            )}
+
+            {ananBeachTraveling && (
+              <div className="shop-overlay anan-beach-travel-overlay" role="presentation">
+                <section className="anan-beach-travel-panel" role="dialog" aria-modal="true" aria-label="和安安前往海边">
+                  <header><span>每季一次 · 安安的海边邀请</span><h2>先坐巴士，再乘小船出海</h2><small>安安带着雨水桶、小船和潜水服，海风越来越近了……</small></header>
+                  <div className="anan-coast-journey"><div className="coast-bus"><i /><i /><b>青禾海岸线</b></div><div className="drifting-boat"><i /><b /><span>安安和小禾</span></div>{(game.day + game.season) % 2 === 0 && <div className="passing-ship"><i /><i /><b>远洋号</b></div>}<div className="trip-luggage"><i /><b /><span>雨水桶 · 螃蟹夹 · 潜水服</span></div></div>
+                  <footer>小船在海浪上轻轻漂荡，偶尔还能遇见一艘更大的船。</footer>
+                </section>
+              </div>
+            )}
+
+            {ananBeachOpen && (
+              <div className="shop-overlay anan-beach-overlay" role="presentation">
+                <section className={`anan-beach-panel ${divingAtSea ? "underwater-mode" : "shore-mode"}`} role="dialog" aria-modal="true" aria-labelledby="anan-beach-title">
+                  <header><div><span>安安的每季海边旅行</span><h2 id="anan-beach-title">{divingAtSea ? "穿上潜水服 · 海底探索" : "青禾海岸 · 沙滩与浅海"}</h2></div><button onClick={() => { setAnanBeachOpen(false); setDivingAtSea(false); setMessage("和安安坐巴士回到了青禾农场。 "); }}>×</button></header>
+                  <div className="anan-beach-scene" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; const bounds = event.currentTarget.getBoundingClientRect(); setBeachPlayer({ x: Math.max(7, Math.min(93, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(divingAtSea ? 22 : 48, Math.min(86, ((event.clientY - bounds.top) / bounds.height) * 100)) }); setMessage(divingAtSea ? "小禾穿着潜水服游到了你点击的位置。 " : "小禾走到了海滩上你点击的位置。 "); }}>
+                    <div className="beach-sky" /><div className="beach-sea"><i /><i /><i /></div><div className="beach-sand" />
+                    {!divingAtSea && <><div className="beach-small-boat"><i /><b /><span>安安的小船</span></div>{(game.day + game.season) % 2 === 0 && <div className="beach-big-ship"><i /><i /><b>远处的大船</b></div>}<div className="anan-beach-bucket"><i /><b /><span>雨水桶</span></div><button style={personClothesStyle("安安")} className="anan-beach-friend anan-character" onClick={() => interactWithPerson("安安", "安安：海风好舒服！我们可以抓螃蟹、游泳，也可以坐在船边钓鱼。 ")}><i /><em className="anan-pigtails" /><b /><span>安安</span></button>{BEACH_CRABS.map((crab, index) => beachCrabs[index] && <button key={`beach-crab-${index}`} className={`beach-crab crab-${index + 1}`} style={{ left: `${crab.x}%`, top: `${crab.y}%` }} onClick={(event) => { event.stopPropagation(); setMessage("这只螃蟹横着跑开了，靠近它后点击下面的抓取按钮！ "); }} aria-label="沙滩上的螃蟹"><i /><i /><b /></button>)}</>}
+                    {divingAtSea && <><div className="underwater-rays"><i /><i /><i /></div><div className="coral coral-one"><i /><i /><i /></div><div className="coral coral-two"><i /><i /></div>{BEACH_CRABS.map((creature, index) => seaCreatures[index] && <button key={`sea-creature-${index}`} className={`sea-creature ${index % 2 === 0 ? "tiny-fish" : "tiny-shrimp"}`} style={{ left: `${creature.x}%`, top: `${Math.max(26, creature.y - 18)}%` }} onClick={(event) => { event.stopPropagation(); setMessage(index % 2 === 0 ? "一条小鱼从海草旁游过，靠近后可以抓取。 " : "一只小虾藏在珊瑚边，靠近后可以抓取。 "); }}><i /><b /></button>)}</>}
+                    <div className={`beach-player ${divingAtSea ? "diving-player" : beachPlayer.y < 56 ? "swimming-player" : ""}`} style={{ left: `${beachPlayer.x}%`, top: `${beachPlayer.y}%` }}><span className="player-shadow" /><PlayerSprite facing={facing} sick={game.sick} />{divingAtSea && <i className="diving-mask" />}</div>
+                  </div>
+                  <div className="anan-beach-actions"><button className="crab-catch-action" onClick={divingAtSea ? catchSeaCreature : catchBeachCrab}>夹子抓取</button><button onClick={() => { setDivingAtSea((current) => !current); setBeachPlayer({ x: 48, y: 64 }); setMessage(divingAtSea ? "脱下潜水服回到沙滩。 " : "安安把潜水服递给小禾。穿好后直接潜进海里啦！ "); }}>{divingAtSea ? "返回沙滩" : "穿潜水服下海"}</button><button onClick={fishAtSea}>在小船旁海钓</button><button onClick={() => { setAnanBeachOpen(false); setDivingAtSea(false); setMessage("和安安坐巴士回到了青禾农场。 "); }}>坐巴士回家</button></div>
+                  <footer><span>{message}</span><small>键盘、方向按钮或点击画面都能移动</small></footer>
                 </section>
               </div>
             )}
