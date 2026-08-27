@@ -8,19 +8,19 @@ type Scene = "farm" | "town" | "cultureDistrict" | "residentialDistrict" | "east
 type NeighborScene = "eastNeighbor" | "southNeighbor" | "northNeighbor";
 type ResidentHomeOwner = "白医生" | "阿麦" | "周镇长" | "沈馆长" | "诊所助手" | "许老师";
 type BuildingId = "farmhouse" | "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library" | "museum" | "school";
-type CropType = "radish" | "strawberry" | "corn" | "watermelon" | "tomato" | "potato" | "pumpkin" | "blueberry";
+type CropType = "radish" | "strawberry" | "corn" | "pineapple" | "watermelon" | "tomato" | "potato" | "pumpkin" | "blueberry";
 type StorableResource = CropType | "fish";
 type VillageId = "qinghe" | "maple";
 type Facing = "down" | "up" | "left" | "right";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft";
-type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
-type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign";
+type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
+type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "matches";
 type CraftRotation = 0 | 45 | 90;
 type PlacedCraft = { id: string; type: CraftType; x: number; y: number; rotation: CraftRotation };
 type PlantedTree = { id: string; x: number; y: number; stage: number; watered: boolean };
 type FencePlacementSlot = { id: string; x: number; y: number; rotation: 0 | 90 };
 type ForestItem = "pinecone" | "pineNut";
-type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
+type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "resin" } | { kind: "matches" } | { kind: "product"; id: "egg" | "milk" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
 
 type OnlinePlayer = {
   deviceId: string;
@@ -60,6 +60,7 @@ type GameState = {
   seeds: number;
   strawberrySeeds: number;
   cornSeeds: number;
+  pineappleSeeds: number;
   watermelonSeeds: number;
   tomatoSeeds: number;
   potatoSeeds: number;
@@ -79,6 +80,7 @@ type GameState = {
   herbs: number;
   pinecones: number;
   pineNuts: number;
+  resin: number;
   treeStates: boolean[];
   plantedTrees: PlantedTree[];
   rockStates: boolean[];
@@ -106,7 +108,7 @@ type GameState = {
   seasonExcursionCompleted: boolean;
   animalPen: boolean;
   chickens: number;
-  sheep: number;
+  cows: number;
   eggs: number;
   milk: number;
   lastEggDay: number;
@@ -126,6 +128,7 @@ const CROP_INFO: Record<CropType, { name: string; short: string; seedField: Seed
   radish: { name: "萝卜", short: "萝", seedField: "seeds", seedPrice: 60 },
   strawberry: { name: "草莓", short: "莓", seedField: "strawberrySeeds", seedPrice: 90 },
   corn: { name: "玉米", short: "玉", seedField: "cornSeeds", seedPrice: 110 },
+  pineapple: { name: "菠萝", short: "菠", seedField: "pineappleSeeds", seedPrice: 135 },
   watermelon: { name: "西瓜", short: "瓜", seedField: "watermelonSeeds", seedPrice: 120 },
   tomato: { name: "番茄", short: "番", seedField: "tomatoSeeds", seedPrice: 75 },
   potato: { name: "土豆", short: "薯", seedField: "potatoSeeds", seedPrice: 70 },
@@ -139,6 +142,7 @@ const RESOURCE_INFO: Record<StorableResource, { name: string; energy: number; pr
   radish: { name: "萝卜", energy: 8, price: 65 },
   strawberry: { name: "草莓", energy: 12, price: 90 },
   corn: { name: "玉米", energy: 10, price: 80 },
+  pineapple: { name: "菠萝", energy: 16, price: 125 },
   watermelon: { name: "西瓜", energy: 18, price: 115 },
   tomato: { name: "番茄", energy: 10, price: 78 },
   potato: { name: "土豆", energy: 8, price: 72 },
@@ -223,7 +227,7 @@ const GROUND_SUPPLIES = [
 ] as const;
 
 const GROUND_SUPPLY_PRICES = [45, 55, 160, 220, 220, 50, 60, 60] as const;
-const CRAFT_RECIPES: Record<CraftType, { name: string; short: string; description: string; wood: number; stone: number }> = {
+const CRAFT_RECIPES: Record<CraftType, { name: string; short: string; description: string; wood: number; stone: number; resin?: number }> = {
   chest: { name: "木箱", short: "箱", description: "摆放后可以存放收获", wood: 8, stone: 0 },
   fence: { name: "木栅栏", short: "栏", description: "8 段围栏能挡住偷吃作物的小动物", wood: 4, stone: 0 },
   gate: { name: "木围栏门", short: "门", description: "装在围栏中间，点击可以开门或关门", wood: 7, stone: 1 },
@@ -231,6 +235,7 @@ const CRAFT_RECIPES: Record<CraftType, { name: string; short: string; descriptio
   lamp: { name: "农场灯柱", short: "灯", description: "摆在农场，天黑后自动亮起", wood: 6, stone: 4 },
   bench: { name: "休息长椅", short: "椅", description: "装饰农场，坐下可恢复少量体力", wood: 10, stone: 2 },
   sign: { name: "方向木牌", short: "牌", description: "可以横放、竖放或斜放的农场路牌", wood: 5, stone: 1 },
+  matches: { name: "火柴", short: "火", description: "进入山洞或帐篷后，可以点亮火光", wood: 3, stone: 0, resin: 2 },
 };
 
 const FENCE_PLACEMENT_SLOTS: FencePlacementSlot[] = [
@@ -343,6 +348,7 @@ const makeNewGame = (): GameState => ({
   seeds: 8,
   strawberrySeeds: 0,
   cornSeeds: 0,
+  pineappleSeeds: 0,
   watermelonSeeds: 0,
   tomatoSeeds: 0,
   potatoSeeds: 0,
@@ -355,17 +361,18 @@ const makeNewGame = (): GameState => ({
   wateredCount: 0,
   harvested: 0,
   fishCaught: 0,
-  inventory: { radish: 0, strawberry: 0, corn: 0, watermelon: 0, tomato: 0, potato: 0, pumpkin: 0, blueberry: 0, fish: 0 },
-  chestStorage: { radish: 0, strawberry: 0, corn: 0, watermelon: 0, tomato: 0, potato: 0, pumpkin: 0, blueberry: 0, fish: 0 },
+  inventory: { radish: 0, strawberry: 0, corn: 0, pineapple: 0, watermelon: 0, tomato: 0, potato: 0, pumpkin: 0, blueberry: 0, fish: 0 },
+  chestStorage: { radish: 0, strawberry: 0, corn: 0, pineapple: 0, watermelon: 0, tomato: 0, potato: 0, pumpkin: 0, blueberry: 0, fish: 0 },
   wood: 0,
   stone: 0,
   herbs: 0,
   pinecones: 0,
   pineNuts: 0,
+  resin: 0,
   treeStates: [true, true, true, true],
   plantedTrees: [],
   rockStates: [true, true, true, true, true, true],
-  crafted: { chest: 0, fence: 0, gate: 0, scarecrow: 0, lamp: 0, bench: 0, sign: 0 },
+  crafted: { chest: 0, fence: 0, gate: 0, scarecrow: 0, lamp: 0, bench: 0, sign: 0, matches: 0 },
   placedCrafts: [],
   farmVisitor: null,
   upgrades: { house: 0, land: 0, field: 0, storage: 0, greenhouse: 0, pond: 0, stoneWall: 0 },
@@ -389,7 +396,7 @@ const makeNewGame = (): GameState => ({
   seasonExcursionCompleted: false,
   animalPen: false,
   chickens: 0,
-  sheep: 0,
+  cows: 0,
   eggs: 0,
   milk: 0,
   lastEggDay: 0,
@@ -402,7 +409,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
   const defaults = makeNewGame();
   if (!saved) return defaults;
   try {
-    const parsed = JSON.parse(saved) as Partial<GameState>;
+    const parsed = JSON.parse(saved) as Partial<GameState> & { sheep?: number };
     if (!parsed.tiles || parsed.tiles.length < 32) return defaults;
     return {
       ...defaults,
@@ -429,6 +436,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       npcHealedDays: parsed.npcHealedDays ?? {},
       lastSchoolAttendance: parsed.lastSchoolAttendance ?? "",
       seasonExcursionCompleted: parsed.seasonExcursionCompleted ?? false,
+      cows: parsed.cows ?? parsed.sheep ?? 0,
     };
   } catch {
     return defaults;
@@ -484,6 +492,8 @@ export default function FarmGame() {
   const [heldItem, setHeldItem] = useState<CarriedItem | null>(null);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [ranchOpen, setRanchOpen] = useState(false);
+  const [farmInterior, setFarmInterior] = useState<"cave" | "camp" | null>(null);
+  const [interiorFireLit, setInteriorFireLit] = useState(false);
   const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
   const [inspectedItem, setInspectedItem] = useState<string | null>(null);
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
@@ -505,6 +515,7 @@ export default function FarmGame() {
   const eatTimerRef = useRef<number | null>(null);
   const herbClickTimerRef = useRef<number | null>(null);
   const forestClickTimerRef = useRef<number | null>(null);
+  const matchesClickTimerRef = useRef<number | null>(null);
   const walkTimerRef = useRef<number | null>(null);
   const farmActionTimerRef = useRef<number | null>(null);
   const excursionTimerRef = useRef<number | null>(null);
@@ -530,7 +541,7 @@ export default function FarmGame() {
     const saved = localStorage.getItem(storageKey);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved) as GameState;
+        const parsed = JSON.parse(saved) as GameState & { sheep?: number };
         if (parsed.tiles?.length >= 32) {
           const defaults = makeNewGame();
           setGame({
@@ -539,6 +550,7 @@ export default function FarmGame() {
             season: parsed.season ?? 0,
             strawberrySeeds: parsed.strawberrySeeds ?? 0,
             cornSeeds: parsed.cornSeeds ?? 0,
+            pineappleSeeds: parsed.pineappleSeeds ?? 0,
             watermelonSeeds: parsed.watermelonSeeds ?? 0,
             tomatoSeeds: parsed.tomatoSeeds ?? 0,
             potatoSeeds: parsed.potatoSeeds ?? 0,
@@ -553,6 +565,8 @@ export default function FarmGame() {
             herbs: parsed.herbs ?? 0,
             pinecones: parsed.pinecones ?? 0,
             pineNuts: parsed.pineNuts ?? 0,
+            resin: parsed.resin ?? 0,
+            cows: parsed.cows ?? parsed.sheep ?? 0,
             groundSupplies: defaults.groundSupplies.map((defaultVisible, index) => parsed.groundSupplies?.[index] ?? defaultVisible),
             treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
             plantedTrees: (parsed.plantedTrees ?? []).map((tree) => ({ ...tree, watered: tree.watered ?? false })),
@@ -622,6 +636,8 @@ export default function FarmGame() {
     setChestOpen(false);
     setCraftingOpen(false);
     setRanchOpen(false);
+    setFarmInterior(null);
+    setInteriorFireLit(false);
     setActiveBuilding(null);
     setNeighborInterior(null);
     setResidentHome(null);
@@ -704,6 +720,7 @@ export default function FarmGame() {
   useEffect(() => () => {
     if (eatTimerRef.current) window.clearTimeout(eatTimerRef.current);
     if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
+    if (matchesClickTimerRef.current) window.clearTimeout(matchesClickTimerRef.current);
     if (farmActionTimerRef.current) window.clearTimeout(farmActionTimerRef.current);
     if (excursionTimerRef.current) window.clearTimeout(excursionTimerRef.current);
     if (fishingWaitTimerRef.current) window.clearTimeout(fishingWaitTimerRef.current);
@@ -795,7 +812,7 @@ export default function FarmGame() {
   }, [multiplayerSession?.deviceId, onlinePlayers, scene, switchVillage, worldVillage]);
 
   const move = useCallback((dx: number, dy: number) => {
-    if (craftingOpen || chestOpen || ranchOpen) return;
+    if (craftingOpen || chestOpen || ranchOpen || farmInterior) return;
     const now = Date.now();
     if (now - lastMoveAtRef.current < 230) return;
     lastMoveAtRef.current = now;
@@ -855,7 +872,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, chestOpen, craftingOpen, crossSceneBoundary, farmGateOpen, game.day, game.npcHealedDays, game.placedCrafts, neighborInterior, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, chestOpen, craftingOpen, crossSceneBoundary, farmGateOpen, farmInterior, game.day, game.npcHealedDays, game.placedCrafts, neighborInterior, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -874,6 +891,12 @@ export default function FarmGame() {
       if (key === "escape" && ranchOpen) {
         setRanchOpen(false);
         setMessage("离开青禾动物牧场。 ");
+        return;
+      }
+      if (key === "escape" && farmInterior) {
+        setFarmInterior(null);
+        setInteriorFireLit(false);
+        setMessage(farmInterior === "cave" ? "从山洞回到大农场。" : "掀开帐篷门帘回到露营地。");
         return;
       }
       if (key === "escape" && neighborInterior) {
@@ -920,7 +943,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, builderOpen, chestOpen, craftingOpen, embeddedMode, move, neighborInterior, ranchOpen, residentHome, splitScreen]);
+  }, [activeBuilding, builderOpen, chestOpen, craftingOpen, embeddedMode, farmInterior, move, neighborInterior, ranchOpen, residentHome, splitScreen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -1130,10 +1153,11 @@ export default function FarmGame() {
       wood: current.wood + (current.toolUpgrades.axe ? 6 : 4),
       pinecones: current.pinecones + 1,
       pineNuts: current.pineNuts + 2,
+      resin: current.resin + 1,
       treeStates: current.treeStates.map((tree, treeIndex) => treeIndex === index ? false : tree),
       daily: { ...current.daily, chopped: current.daily.chopped + 1 },
     }));
-    setMessage(`砍下树木，获得 ${game.toolUpgrades.axe ? 6 : 4} 块木头、1 个松果和 2 颗松子！松果放进背包用来种树，松子放进资源记录用来吃。`);
+    setMessage(`砍下树木，获得 ${game.toolUpgrades.axe ? 6 : 4} 块木头、1 个松果、2 颗松子和 1 滴树脂！树脂可以用来制作火柴。`);
     playTone(330);
   };
 
@@ -1179,10 +1203,11 @@ export default function FarmGame() {
       wood: current.wood + (current.toolUpgrades.axe ? 6 : 4),
       pinecones: current.pinecones + 1,
       pineNuts: current.pineNuts + 2,
+      resin: current.resin + 1,
       plantedTrees: current.plantedTrees.filter((plantedTree) => plantedTree.id !== tree.id),
       daily: { ...current.daily, chopped: current.daily.chopped + 1 },
     }));
-    setMessage("长大的松树被砍下，获得木头、松果和松子。它空出的位置还能再种松果。 ");
+    setMessage("长大的松树被砍下，获得木头、松果、松子和 1 滴绿色树脂。它空出的位置还能再种松果。 ");
     playTone(330);
   };
 
@@ -1213,8 +1238,9 @@ export default function FarmGame() {
 
   const craftItem = (item: CraftType) => {
     const recipe = CRAFT_RECIPES[item];
-    if (game.wood < recipe.wood || game.stone < recipe.stone) {
-      setMessage(`制作${recipe.name}需要 ${recipe.wood} 木头${recipe.stone ? `和 ${recipe.stone} 石材` : ""}，材料还不够。`);
+    const resinCost = recipe.resin ?? 0;
+    if (game.wood < recipe.wood || game.stone < recipe.stone || game.resin < resinCost) {
+      setMessage(`制作${recipe.name}需要 ${recipe.wood} 木头${recipe.stone ? `、${recipe.stone} 石材` : ""}${resinCost ? `和 ${resinCost} 滴树脂` : ""}，材料还不够。`);
       playTone(220);
       return;
     }
@@ -1223,9 +1249,10 @@ export default function FarmGame() {
       ...current,
       wood: current.wood - recipe.wood,
       stone: current.stone - recipe.stone,
+      resin: current.resin - resinCost,
       crafted: { ...current.crafted, [item]: current.crafted[item] + 1 },
     }));
-    setMessage(`制作完成：${recipe.name}！已经放进下方背包，选中后再点击农场位置摆放。`);
+    setMessage(`制作完成：${recipe.name}！已经放进下方背包。${item === "matches" ? "进入山洞或帐篷后可以点燃。" : "选中后再点击农场位置摆放。"}`);
     playTone(700);
   };
 
@@ -1240,11 +1267,11 @@ export default function FarmGame() {
       return;
     }
     setGame((current) => ({ ...current, wood: current.wood - 12, stone: current.stone - 4, animalPen: true }));
-    setMessage("动物围栏建好了！现在可以去牧场买鸡和羊。 ");
+    setMessage("动物围栏建好了！现在可以去牧场买鸡和奶牛。 ");
     playTone(760);
   };
 
-  const buyFarmAnimal = (animal: "chicken" | "sheep") => {
+  const buyFarmAnimal = (animal: "chicken" | "cow") => {
     if (!game.animalPen) {
       setMessage("先在牧场委托建一个动物围栏，动物才有安全的家。 ");
       playTone(220);
@@ -1252,26 +1279,26 @@ export default function FarmGame() {
     }
     const price = animal === "chicken" ? 180 : 350;
     if (game.coins < price) {
-      setMessage(`金币不够，买${animal === "chicken" ? "鸡" : "羊"}需要 ${price} 金币。`);
+      setMessage(`金币不够，买${animal === "chicken" ? "鸡" : "奶牛"}需要 ${price} 金币。`);
       playTone(220);
       return;
     }
-    setGame((current) => ({ ...current, coins: current.coins - price, [animal === "chicken" ? "chickens" : "sheep"]: current[animal === "chicken" ? "chickens" : "sheep"] + 1 }));
-    setMessage(`买到一只${animal === "chicken" ? "小鸡" : "小羊"}，它已经住进农场旁的围栏。`);
+    setGame((current) => ({ ...current, coins: current.coins - price, [animal === "chicken" ? "chickens" : "cows"]: current[animal === "chicken" ? "chickens" : "cows"] + 1 }));
+    setMessage(`买到一只${animal === "chicken" ? "小鸡" : "奶牛"}，它已经住进农场旁的围栏。`);
     playTone(820);
   };
 
-  const collectAnimalProduct = (animal: "chicken" | "sheep") => {
+  const collectAnimalProduct = (animal: "chicken" | "cow") => {
     if (animal === "chicken") {
       if (game.chickens <= 0) { setMessage("围栏里还没有鸡，可以去牧场购买。 "); return; }
       if (game.lastEggDay === game.day) { setMessage("今天的鸡蛋已经收过了，明早再来吧。 "); return; }
       setGame((current) => ({ ...current, eggs: current.eggs + current.chickens, lastEggDay: current.day }));
       setMessage(`从鸡窝收到了 ${game.chickens} 枚鸡蛋！`);
     } else {
-      if (game.sheep <= 0) { setMessage("围栏里还没有羊，可以去牧场购买。 "); return; }
-      if (game.lastMilkDay === game.day) { setMessage("今天已经挤过羊奶了，明早再来吧。 "); return; }
-      setGame((current) => ({ ...current, milk: current.milk + current.sheep, lastMilkDay: current.day }));
-      setMessage(`给羊挤奶，得到 ${game.sheep} 瓶新鲜羊奶！`);
+      if (game.cows <= 0) { setMessage("围栏里还没有牛，可以去牧场购买。 "); return; }
+      if (game.lastMilkDay === game.day) { setMessage("今天已经挤过牛奶了，明早再来吧。 "); return; }
+      setGame((current) => ({ ...current, milk: current.milk + current.cows, lastMilkDay: current.day }));
+      setMessage(`给每头牛挤奶，得到 ${game.cows} 瓶新鲜牛奶！`);
     }
     playTone(760);
   };
@@ -1400,6 +1427,67 @@ export default function FarmGame() {
     playTone(900);
   };
 
+  const pickUpAnimalProduct = (product: "egg" | "milk") => {
+    const field = product === "egg" ? "eggs" : "milk";
+    if (game[field] <= 0) {
+      setMessage(product === "egg" ? "现在还没有鸡蛋，点击围栏里的鸡收取。" : "现在还没有牛奶，点击围栏里的牛挤奶。 ");
+      return;
+    }
+    setHeldItem({ kind: "product", id: product });
+    setSelectedResource(null);
+    setMessage(`双击拿起了${product === "egg" ? "鸡蛋" : "牛奶"}，现在能看到它真实的像素样子，也可以送给居民。`);
+    playTone(620);
+  };
+
+  const pickUpResin = () => {
+    if (game.resin <= 0) {
+      setMessage("现在还没有树脂，砍倒一棵树就会掉落绿色树脂。 ");
+      return;
+    }
+    setHeldItem({ kind: "resin" });
+    setSelectedResource(null);
+    setMessage("双击拿起了绿色树脂，小水滴现在举在小禾头顶，也可以送给居民。 ");
+    playTone(600);
+  };
+
+  const pickUpMatches = () => {
+    if (matchesClickTimerRef.current) window.clearTimeout(matchesClickTimerRef.current);
+    if (game.crafted.matches <= 0) {
+      setMessage("背包里还没有火柴，可以用 3 块木头和 2 滴树脂制作。 ");
+      return;
+    }
+    setHeldItem({ kind: "matches" });
+    setSelectedCraftItem(null);
+    setMessage("双击拿起了像素火柴盒。进入山洞或帐篷后，单击火柴就能点亮。 ");
+    playTone(660);
+  };
+
+  const igniteWithMatches = () => {
+    if (game.crafted.matches <= 0) {
+      setMessage("没有火柴了。需要 3 块木头和 2 滴树脂才能再制作一盒。 ");
+      playTone(220);
+      return;
+    }
+    if (!farmInterior) {
+      setMessage("先进入山洞或帐篷，再使用火柴点亮里面。 ");
+      return;
+    }
+    if (interiorFireLit) {
+      setMessage(farmInterior === "cave" ? "山洞里的火把正在稳定燃烧。" : "帐篷里的露营灯已经亮着了。 ");
+      return;
+    }
+    setGame((current) => ({ ...current, crafted: { ...current.crafted, matches: Math.max(0, current.crafted.matches - 1) } }));
+    setHeldItem(null);
+    setInteriorFireLit(true);
+    setMessage(farmInterior === "cave" ? "擦亮火柴，岩壁上的水晶、矿脉和石阶都显现出来了！" : "擦亮火柴，点燃了安全的露营灯，帐篷里暖和又明亮。 ");
+    playTone(820);
+  };
+
+  const clickMatches = () => {
+    if (matchesClickTimerRef.current) window.clearTimeout(matchesClickTimerRef.current);
+    matchesClickTimerRef.current = window.setTimeout(igniteWithMatches, 220);
+  };
+
   const pickUpGroundSupply = (supplyId: number) => {
     const supply = GROUND_SUPPLIES[supplyId];
     if (!supply || !game.groundSupplies[supplyId]) return;
@@ -1422,10 +1510,9 @@ export default function FarmGame() {
     playTone(supply.kind === "tool" ? 920 : supply.kind === "food" ? 760 : supply.kind === "herb" ? 820 : 660);
   };
 
-  const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "forest" ? forestItemName(heldItem.id) : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : heldItem.kind === "herb" ? "药材" : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].title : RARE_ARTIFACTS[heldItem.id].title : "";
-  const carriedItemShort = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木" : "石") : heldItem.kind === "forest" ? (heldItem.id === "pinecone" ? "果" : "子") : heldItem.kind === "resource" ? (heldItem.id === "fish" ? "鱼" : CROP_INFO[heldItem.id].short) : heldItem.kind === "seed" ? CROP_INFO[heldItem.id].short : heldItem.kind === "herb" ? "药" : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].short : RARE_ARTIFACTS[heldItem.id].short : "";
-  const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "forest" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : heldItem.kind === "seed" ? `${heldItem.id}-seeds` : heldItem.kind === "herb" ? "herb" : heldItem.kind === "book" ? "book" : "artifact" : "";
-  const renderCarriedItem = () => heldItem ? <span className={`held-overhead held-${carriedItemClass}`} title={carriedItemName}>{carriedItemShort}</span> : null;
+  const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "forest" ? forestItemName(heldItem.id) : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : heldItem.kind === "herb" ? "药材" : heldItem.kind === "resin" ? "树脂" : heldItem.kind === "matches" ? "火柴" : heldItem.kind === "product" ? (heldItem.id === "egg" ? "鸡蛋" : "牛奶") : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].title : RARE_ARTIFACTS[heldItem.id].title : "";
+  const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "forest" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : heldItem.kind === "seed" ? `${heldItem.id}-seeds` : heldItem.kind === "herb" ? "herb" : heldItem.kind === "resin" ? "resin" : heldItem.kind === "matches" ? "matches" : heldItem.kind === "product" ? heldItem.id : heldItem.kind === "book" ? "book" : "artifact" : "";
+  const renderCarriedItem = () => heldItem ? <span className={`held-overhead held-${carriedItemClass}`} title={carriedItemName} aria-label={`举着${carriedItemName}`}><i className="held-pixel-object" aria-hidden="true" /><span className="held-item-name">{carriedItemName}</span></span> : null;
 
   const giveHeldItem = (person: string) => {
     if (!heldItem) return false;
@@ -1500,6 +1587,12 @@ export default function FarmGame() {
         const field = CROP_INFO[heldItem.id].seedField;
         next = { ...current, [field]: Math.max(0, current[field] - 1) };
       } else if (heldItem.kind === "herb") next = { ...current, herbs: Math.max(0, current.herbs - 1) };
+      else if (heldItem.kind === "resin") next = { ...current, resin: Math.max(0, current.resin - 1) };
+      else if (heldItem.kind === "matches") next = { ...current, crafted: { ...current.crafted, matches: Math.max(0, current.crafted.matches - 1) } };
+      else if (heldItem.kind === "product") {
+        const field = heldItem.id === "egg" ? "eggs" : "milk";
+        next = { ...current, [field]: Math.max(0, current[field] - 1) };
+      }
       else next = { ...current, bookBag: current.bookBag.filter((bookId) => bookId !== heldItem.id) };
       if (!returnGift) return next;
       if (returnGift.kind === "seed" || returnGift.kind === "material") return { ...next, [returnGift.field]: next[returnGift.field] + returnGift.amount };
@@ -1607,6 +1700,10 @@ export default function FarmGame() {
       setMessage(`背包里还没有${CRAFT_RECIPES[item].name}，先在制作手册里制作。`);
       return;
     }
+    if (item === "matches") {
+      igniteWithMatches();
+      return;
+    }
     setSelectedCraftItem(item);
     setPlantingPinecone(false);
     setSelectedResource(null);
@@ -1649,6 +1746,7 @@ export default function FarmGame() {
       energy: Math.max(0, current.energy - 2),
       wood: current.wood + Math.max(1, Math.floor(recipe.wood / 2)),
       stone: current.stone + Math.floor(recipe.stone / 2),
+      resin: current.resin + Math.floor((recipe.resin ?? 0) / 2),
       placedCrafts: current.placedCrafts.filter((placed) => placed.id !== craft.id),
     }));
     setMessage(`拆除了${recipe.name}，回收了一部分木头和石材。`);
@@ -2623,7 +2721,7 @@ export default function FarmGame() {
   };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeBuilding || neighborInterior || residentHome || craftingOpen || chestOpen || multiplayerOpen || builderOpen || ranchOpen || festivalDisplay) return;
+    if (activeBuilding || neighborInterior || residentHome || craftingOpen || chestOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay) return;
     if ((event.target as HTMLElement).closest("button, input, .shop-overlay")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
@@ -2684,10 +2782,15 @@ export default function FarmGame() {
         playTone(760);
         return;
       }
+      if (selectedCraftItem === "matches") {
+        igniteWithMatches();
+        setSelectedCraftItem(null);
+        return;
+      }
       const placed: PlacedCraft = { id: `${selectedCraftItem}-${Date.now()}`, type: selectedCraftItem, x: Math.max(5, Math.min(94, percentX)), y: Math.max(18, Math.min(86, percentY)), rotation: craftRotation };
       setGame((current) => ({ ...current, crafted: { ...current.crafted, [selectedCraftItem]: Math.max(0, current.crafted[selectedCraftItem] - 1) }, placedCrafts: [...current.placedCrafts, placed] }));
       if (game.crafted[selectedCraftItem] <= 1) setSelectedCraftItem(null);
-      setMessage(`${CRAFT_RECIPES[selectedCraftItem].name}已经摆放到农场！${selectedCraftItem === "fence" ? "继续摆满 8 段围栏，小动物就进不来了。" : selectedCraftItem === "scarecrow" ? "摆两个稻草人后，乌鸦就不会再来。" : ""}`);
+      setMessage(`${CRAFT_RECIPES[selectedCraftItem].name}已经摆放到农场！${selectedCraftItem === "scarecrow" ? "摆两个稻草人后，乌鸦就不会再来。" : ""}`);
       playTone(720);
       return;
     }
@@ -2788,6 +2891,7 @@ export default function FarmGame() {
             <div className="meter-label"><span>体力</span><b>{game.energy}/100</b></div>
             <div className="meter"><i style={{ width: `${game.energy}%` }} /></div>
           </div>
+          <button className="sleep-button sleep-under-energy" onClick={nextDay}><span>☾</span><div><strong>结束今天</strong><small>回家睡一觉</small></div><b>›</b></button>
           <div className="harvest-log">
             <div className="section-title"><span>资源记录</span><button className="auto-sell-button" onClick={sellBackpack}>自动售卖</button></div>
             <div className="seed-record">
@@ -2803,8 +2907,9 @@ export default function FarmGame() {
               <button className={heldItem?.kind === "material" && heldItem.id === "stone" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("stone")} title="双击拿起石材"><span className="harvest-icon stone-icon">石</span><p>石材<strong>{game.stone}</strong><small>双击拿起</small></p></button>
               <button className={heldItem?.kind === "forest" && heldItem.id === "pineNut" ? "resource-item held-material" : "resource-item"} onClick={clickPineNut} onDoubleClick={doubleClickPineNut} title="单击吃掉恢复体力，双击拿起"><span className="harvest-icon pine-nut-icon">子</span><p>松子<strong>{game.pineNuts}</strong><small>单击吃 · 双击拿</small></p></button>
               <button className={heldItem?.kind === "herb" ? "resource-item herb-record held-material" : "resource-item herb-record"} onClick={clickHerb} onDoubleClick={pickUpHerb} aria-label={`药材 ${game.herbs} 份，生病时单击使用，双击拿起送人`} title="生病时单击使用，双击拿起送人"><span className="harvest-icon herb-icon">药</span><p>药材<strong>{game.herbs}</strong><small>{game.sick ? "单击用 · 双击拿" : "双击拿起"}</small></p></button>
-              <button className="resource-item animal-product-item" onClick={() => setMessage(`农场鸡蛋共有 ${game.eggs} 枚。每天点击围栏里的鸡可以收取新鸡蛋。`)}><span className="harvest-icon egg-icon">蛋</span><p>鸡蛋<strong>{game.eggs}</strong><small>动物牧场产物</small></p></button>
-              <button className="resource-item animal-product-item" onClick={() => setMessage(`新鲜羊奶共有 ${game.milk} 瓶。每天点击围栏里的羊可以挤一次奶。`)}><span className="harvest-icon milk-icon">奶</span><p>羊奶<strong>{game.milk}</strong><small>动物牧场产物</small></p></button>
+              <button className={heldItem?.kind === "resin" ? "resource-item resin-record held-material" : "resource-item resin-record"} onDoubleClick={pickUpResin} title="双击拿起绿色树脂"><span className="harvest-icon resin-icon" /><p>树脂<strong>{game.resin}</strong><small>双击拿起 · 做火柴</small></p></button>
+              <button className={heldItem?.kind === "product" && heldItem.id === "egg" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => setMessage(`农场鸡蛋共有 ${game.eggs} 枚。每只鸡每天产 1 枚，双击可以拿起来。`)} onDoubleClick={() => pickUpAnimalProduct("egg")} title="双击拿起鸡蛋"><span className="harvest-icon egg-icon" /><p>鸡蛋<strong>{game.eggs}</strong><small>双击拿起</small></p></button>
+              <button className={heldItem?.kind === "product" && heldItem.id === "milk" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => setMessage(`新鲜牛奶共有 ${game.milk} 瓶。每头奶牛每天产 1 瓶，双击可以拿起来。`)} onDoubleClick={() => pickUpAnimalProduct("milk")} title="双击拿起牛奶"><span className="harvest-icon milk-icon" /><p>牛奶<strong>{game.milk}</strong><small>双击拿起</small></p></button>
               {game.bookBag.map((bookId) => <button key={`bag-book-${bookId}`} className={heldItem?.kind === "book" && heldItem.id === bookId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${LOST_BOOKS[bookId].title}：${LOST_BOOKS[bookId].content}`)} onDoubleClick={() => carryLostBook(bookId)} title="点击阅读，双击拿起来送给叶老师"><span className="harvest-icon book-icon">书</span><p>{LOST_BOOKS[bookId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
               {game.artifactBag.map((artifactId) => <button key={`bag-artifact-${artifactId}`} className={heldItem?.kind === "artifact" && heldItem.id === artifactId ? "resource-item held-material" : "resource-item"} onClick={() => setMessage(`${RARE_ARTIFACTS[artifactId].title}：${RARE_ARTIFACTS[artifactId].description}`)} onDoubleClick={() => carryArtifact(artifactId)} title="点击查看，双击拿起来送到博物馆"><span className={`harvest-icon artifact-icon artifact-icon-${artifactId + 1}`}>{RARE_ARTIFACTS[artifactId].short}</span><p>{RARE_ARTIFACTS[artifactId].title}<strong>1</strong><small>双击拿起</small></p></button>)}
             </div>
@@ -2820,7 +2925,6 @@ export default function FarmGame() {
             </div>
           </div>
           <div className="tip-card"><span>?</span><p><strong>{scene === "farm" ? "农场小贴士" : scene === "cultureDistrict" ? "文化街指南" : scene === "residentialDistrict" ? "住宅坡指南" : "小镇指南"}</strong>{scene === "farm" ? "钓鱼要等待问号，再完成提竿小游戏。幸运鱼竿会更快咬钩。" : scene === "cultureDistrict" ? "镇公所在左边，博物馆在右边；向右去住宅坡，向上去北林。" : scene === "residentialDistrict" ? "这里每块院地都属于一位居民，点击房门就能进去拜访。" : "中心街向上先到文化街，北林书屋在文化街后面。"}</p></div>
-          <button className="sleep-button" onClick={nextDay}><span>☾</span><div><strong>结束今天</strong><small>回家睡一觉</small></div><b>›</b></button>
         </aside>
 
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
@@ -2830,11 +2934,12 @@ export default function FarmGame() {
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
             {twilightLevel > 0 && <div className="night-sky" aria-hidden="true"><span className="moon" /><i /><i /><i /><i /><i /><i /></div>}
             {twilightLevel > 0 && <div className="twilight-layer" aria-hidden="true" />}
-            <div className={`outdoor-lamps outdoor-lamps-${scene}`} aria-hidden="true"><i /><i /><i /><i /></div>
+            {scene !== "farm" && <div className={`outdoor-lamps outdoor-lamps-${scene}`} aria-hidden="true"><i /><i /><i /><i /></div>}
             {selectedCraftItem && scene === "farm" && <div className="placement-controls" onClick={(event) => event.stopPropagation()}><strong>正在摆放：{CRAFT_RECIPES[selectedCraftItem].name}</strong>{(selectedCraftItem === "sign" || selectedCraftItem === "bench") && <div><button className={craftRotation === 0 ? "selected" : ""} onClick={() => setCraftRotation(0)}>横着</button><button className={craftRotation === 90 ? "selected" : ""} onClick={() => setCraftRotation(90)}>竖着</button><button className={craftRotation === 45 ? "selected" : ""} onClick={() => setCraftRotation(45)}>斜着</button></div>}<span>{selectedCraftItem === "fence" ? "点击农田四周的绿色位置，围栏会自动对齐" : "选好方向后，点击农场空地"}</span><button className="cancel-placement" onClick={() => setSelectedCraftItem(null)}>取消</button></div>}
 
             {scene === "farm" ? (
               <div className="farm-camera-layer" style={{ "--farm-camera-x": `${(6 - player.x) * 2.7}%`, "--farm-camera-y": `${(4 - player.y) * 1.8}%` } as CSSProperties}>
+                <div className="outdoor-lamps outdoor-lamps-farm farm-fixed-lamps" aria-hidden="true"><i /><i /><i /><i /></div>
                 <div className="path path-one" /><div className="path path-two" />
                 <button className={`pond ${isFishing ? "fishing" : ""} ${currentFestival?.id === "fishing" ? "fishing-festival-pond" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
                   <i /><i /><i /><b className="fishing-float" />{fishingPhase === "bite" && <strong className="bite-question">?</strong>}<span className="pond-label">{fishingPhase === "waiting" ? "等待鱼儿咬钩…" : fishingPhase === "bite" ? "快点！点击问号" : currentFestival?.id === "fishing" ? "钓鱼节会场 · 鱼获 +2" : "钓鱼池"}</span>
@@ -2855,10 +2960,10 @@ export default function FarmGame() {
                 {game.farmVisitor === "animal" && <div className="farm-visitor animal-visitor" aria-label="小动物跑进农田"><i /><b /><span>偷吃幼苗</span></div>}
                 {game.upgrades.stoneWall > 0 && <div className="farm-stone-wall" aria-label="鲁师傅修建的农场石墙"><i /><i /><i /><i /></div>}
 
-                <button className="farm-cave" onClick={() => setMessage("山洞里吹出凉凉的风，岩壁上闪着矿石的光。以后可以继续向深处探险。 ")} aria-label="查看青禾山洞"><i /><b /><span>青禾山洞<small>矿石与探险</small></span></button>
-                <button className="farm-camp" onClick={() => setMessage("溪边露营地搭着两顶帐篷，晚上可以在这里看星星、听虫鸣。 ")} aria-label="查看溪边露营地"><i /><i /><b /><span>溪边露营地</span></button>
-                <button className="animal-ranch" onClick={() => { setRanchOpen(true); setMessage("来到青禾动物牧场，这里可以买鸡和羊，也能委托修建动物围栏。 "); }} aria-label="进入青禾动物牧场"><i className="ranch-roof" /><i className="ranch-wall" /><i className="ranch-door" /><b>青禾动物牧场</b><small>鸡 · 羊 · 围栏</small></button>
-                {game.animalPen && <div className="animal-pen" aria-label={`动物围栏，${game.chickens}只鸡，${game.sheep}只羊`}><span className="pen-rail rail-top" /><span className="pen-rail rail-bottom" /><span className="pen-post post-one" /><span className="pen-post post-two" /><span className="pen-post post-three" /><span className="pen-post post-four" />{Array.from({ length: game.chickens }).map((_, index) => <button key={`chicken-${index}`} className={`farm-animal chicken chicken-${index + 1}`} onClick={() => collectAnimalProduct("chicken")} aria-label="小鸡，点击收鸡蛋"><i /><b /><em /></button>)}{Array.from({ length: game.sheep }).map((_, index) => <button key={`sheep-${index}`} className={`farm-animal sheep sheep-${index + 1}`} onClick={() => collectAnimalProduct("sheep")} aria-label="小羊，点击挤羊奶"><i /><b /><em /></button>)}<strong>{game.chickens || game.sheep ? `鸡 ${game.chickens} · 羊 ${game.sheep}` : "动物围栏已建好"}</strong><small>点击鸡收蛋 · 点击羊挤奶</small></div>}
+                <button className="farm-cave" onClick={() => { setFarmInterior("cave"); setInteriorFireLit(false); setMessage("走进青禾山洞，里面很暗，可以使用火柴照明。 "); }} aria-label="进入青禾山洞"><i /><b /><span>青禾山洞<small>点击进入探险</small></span></button>
+                <button className="farm-camp" onClick={() => { setFarmInterior("camp"); setInteriorFireLit(false); setMessage("掀开门帘进入溪边帐篷，可以使用火柴点亮露营灯。 "); }} aria-label="进入溪边帐篷"><i /><i /><b /><span>溪边露营地 · 点击进入</span></button>
+                <button className="animal-ranch" onClick={() => { setRanchOpen(true); setMessage("来到青禾动物牧场，这里可以买鸡和奶牛，也能委托修建动物围栏。 "); }} aria-label="进入青禾动物牧场"><i className="ranch-roof" /><i className="ranch-wall" /><i className="ranch-door" /><b>青禾动物牧场</b><small>鸡 · 奶牛 · 围栏</small></button>
+                {game.animalPen && <div className="animal-pen" aria-label={`动物围栏，${game.chickens}只鸡，${game.cows}头奶牛`}><span className="pen-rail rail-top" /><span className="pen-rail rail-bottom" /><span className="pen-post post-one" /><span className="pen-post post-two" /><span className="pen-post post-three" /><span className="pen-post post-four" />{Array.from({ length: game.chickens }).map((_, index) => <button key={`chicken-${index}`} className={`farm-animal chicken chicken-${index + 1}`} onClick={() => collectAnimalProduct("chicken")} aria-label="小鸡，点击收鸡蛋"><i /><b /><em /></button>)}{Array.from({ length: game.cows }).map((_, index) => <button key={`cow-${index}`} className={`farm-animal cow cow-${index + 1}`} onClick={() => collectAnimalProduct("cow")} aria-label="奶牛，点击挤牛奶"><i /><b /><em /></button>)}<strong>{game.chickens || game.cows ? `鸡 ${game.chickens} · 牛 ${game.cows}` : "动物围栏已建好"}</strong><small>每只鸡每日 1 蛋 · 每头牛每日 1 奶</small></div>}
 
                 <div className={`field ${game.tiles.length > 32 ? "expanded-field" : ""}`} aria-label={`${game.tiles.length} 格农田`}>
                   {game.tiles.map((tile, index) => (
@@ -3041,13 +3146,27 @@ export default function FarmGame() {
               </div>
             )}
 
+            {farmInterior && (
+              <div className="shop-overlay farm-special-overlay" role="presentation">
+                <section className={`farm-special-panel ${farmInterior}-interior-panel ${interiorFireLit ? "interior-fire-lit" : ""}`} role="dialog" aria-modal="true" aria-labelledby="farm-special-title">
+                  <header><div><span>{farmInterior === "cave" ? "青禾农场西侧" : "溪边露营地"}</span><h2 id="farm-special-title">{farmInterior === "cave" ? "青禾山洞内部" : "双顶帐篷内部"}</h2></div><button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); }} aria-label="离开这里">×</button></header>
+                  <div className="farm-special-scene">
+                    {farmInterior === "cave" ? <><i className="cave-rock cave-rock-one" /><i className="cave-rock cave-rock-two" /><i className="cave-crystal cave-crystal-one" /><i className="cave-crystal cave-crystal-two" /><span className="cave-path" /><b className="cave-fire" /></> : <><i className="camp-bed" /><i className="camp-bag" /><i className="camp-table" /><span className="camp-lantern" /><b className="camp-window" /></>}
+                    <div className={`player indoor-player farm-special-player facing-${facing} ${isWalking ? "walking" : ""}`}><span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                    {!interiorFireLit && <div className="special-darkness"><span>{farmInterior === "cave" ? "山洞里很暗" : "帐篷里还没点灯"}</span></div>}
+                  </div>
+                  <div className="farm-special-actions"><button onClick={igniteWithMatches} disabled={interiorFireLit}>{interiorFireLit ? "火光已经点亮" : `使用火柴照明 · 剩 ${game.crafted.matches}`}</button><button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); setMessage(farmInterior === "cave" ? "从山洞回到大农场。" : "从帐篷回到露营地。 "); }}>从入口出去</button></div>
+                </section>
+              </div>
+            )}
+
             {craftingOpen && (
-              <div className="shop-overlay" role="presentation">
+              <div className="shop-overlay crafting-book-overlay" role="presentation">
                 <section className="craft-panel" role="dialog" aria-modal="true" aria-labelledby="craft-title">
-                  <header><div><span>农场手作</span><h2 id="craft-title">制作手册</h2></div><div className="wood-wallet"><small>现有材料</small><strong>{game.wood} 木 · {game.stone} 石</strong></div><button onClick={() => setCraftingOpen(false)} aria-label="关闭制作菜单">×</button></header>
-                  <div className="craft-intro"><span>⚒</span><p><strong>把木头和石材变成农场设施</strong>石头每天会更新；攒够材料还能扩建房屋和地盘。</p></div>
+                  <header className="craft-sticky-header"><div><span>农场手作</span><h2 id="craft-title">制作手册</h2></div><div className="wood-wallet"><small>现有材料</small><strong>{game.wood} 木 · {game.stone} 石 · {game.resin} 树脂</strong></div><button className="craft-close-button" onClick={() => setCraftingOpen(false)} aria-label="关闭制作菜单">×</button></header>
+                  <div className="craft-intro"><span>⚒</span><p><strong>把木头、石材和树脂做成实用物品</strong>砍树会掉绿色树脂；3 木加 2 树脂可以制作火柴。</p></div>
                   <div className="recipe-grid">
-                    {(Object.keys(CRAFT_RECIPES) as CraftType[]).map((item) => { const recipe = CRAFT_RECIPES[item]; return <article className="recipe-card" key={item}><span className={`recipe-icon ${item}-recipe`}>{recipe.short}</span><div><strong>{recipe.name}</strong><small>{recipe.description}</small><em>背包里 {game.crafted[item]} 个 · 已摆 {game.placedCrafts.filter((placed) => placed.type === item).length} 个</em></div><button onClick={() => craftItem(item)}><span>木</span>{recipe.wood}{recipe.stone > 0 && <> · <span>石</span>{recipe.stone}</>}</button></article>; })}
+                    {(Object.keys(CRAFT_RECIPES) as CraftType[]).map((item) => { const recipe = CRAFT_RECIPES[item]; return <article className="recipe-card" key={item}><span className={`recipe-icon ${item}-recipe`}>{recipe.short}</span><div><strong>{recipe.name}</strong><small>{recipe.description}</small><em>背包里 {game.crafted[item]} 个{item !== "matches" && ` · 已摆 ${game.placedCrafts.filter((placed) => placed.type === item).length} 个`}</em></div><button onClick={() => craftItem(item)}><span>木</span>{recipe.wood}{recipe.stone > 0 && <> · <span>石</span>{recipe.stone}</>}{(recipe.resin ?? 0) > 0 && <> · <span>脂</span>{recipe.resin}</>}</button></article>; })}
                   </div>
                   <footer><span>{message}</span><button onClick={() => setCraftingOpen(false)}>收起手册</button></footer>
                 </section>
@@ -3058,8 +3177,8 @@ export default function FarmGame() {
               <div className="shop-overlay ranch-overlay" role="presentation">
                 <section className="ranch-panel" role="dialog" aria-modal="true" aria-labelledby="ranch-title">
                   <header><div><span>青禾农场北坡</span><h2 id="ranch-title">青禾动物牧场</h2></div><div className="ranch-wallet"><small>现有金币</small><strong>● {game.coins}</strong></div><button onClick={() => setRanchOpen(false)} aria-label="离开动物牧场">×</button></header>
-                  <div className="ranch-scene"><div className="pixel-rancher" style={personClothesStyle("小桃")}><i /><b /><em /></div><div><strong>牧场管理员小桃</strong><p>先给动物建好围栏，再把鸡和羊带回农场。每天点击它们，就能收鸡蛋和挤羊奶。</p></div></div>
-                  <div className="ranch-products"><article><span className="ranch-product-icon pen-icon">栏</span><div><strong>动物木围栏</strong><small>12 木 · 4 石 · 建在农田旁边</small></div><button onClick={buildAnimalPen} disabled={game.animalPen}>{game.animalPen ? "已经建好" : "委托修建"}</button></article><article><span className="ranch-product-icon chicken-icon">鸡</span><div><strong>小鸡</strong><small>每天可以收 1 枚鸡蛋</small></div><button onClick={() => buyFarmAnimal("chicken")} disabled={!game.animalPen}>● 180</button></article><article><span className="ranch-product-icon sheep-icon">羊</span><div><strong>小羊</strong><small>每天可以挤 1 瓶羊奶</small></div><button onClick={() => buyFarmAnimal("sheep")} disabled={!game.animalPen}>● 350</button></article></div>
+                  <div className="ranch-scene"><div className="pixel-rancher" style={personClothesStyle("小桃")}><i /><b /><em /></div><div><strong>牧场管理员小桃</strong><p>先给动物建好围栏，再把鸡和奶牛带回农场。每只鸡每天产 1 枚鸡蛋，每头牛每天产 1 瓶牛奶。</p></div></div>
+                  <div className="ranch-products"><article><span className="ranch-product-icon pen-icon">栏</span><div><strong>动物木围栏</strong><small>12 木 · 4 石 · 建在农田旁边</small></div><button onClick={buildAnimalPen} disabled={game.animalPen}>{game.animalPen ? "已经建好" : "委托修建"}</button></article><article><span className="ranch-product-icon chicken-icon">鸡</span><div><strong>小鸡</strong><small>每只每天产 1 枚鸡蛋</small></div><button onClick={() => buyFarmAnimal("chicken")} disabled={!game.animalPen}>● 180</button></article><article><span className="ranch-product-icon cow-icon">牛</span><div><strong>奶牛</strong><small>每头每天产 1 瓶牛奶</small></div><button onClick={() => buyFarmAnimal("cow")} disabled={!game.animalPen}>● 350</button></article></div>
                   <footer><span>{message}</span><button onClick={() => setRanchOpen(false)}>回到大农场</button></footer>
                 </section>
               </div>
@@ -3203,7 +3322,7 @@ export default function FarmGame() {
                 ))}
                 <div className="selected-hint"><span>{scene === "farm" ? "当前" : "所在地点"}</span><strong>{scene === "farm" ? plantingPinecone ? "拿着松果 · 点击树桩种树" : selectedResource ? `拿着${RESOURCE_INFO[selectedResource].name}` : selected === "rod" ? `鱼竿 · 鱼饵 ${game.bait}` : selected === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : TOOL_INFO[selected].name : sceneLabel}</strong></div>
               </div>
-              <div className="crafted-backpack" aria-label="制作物和松果背包"><button className={plantingPinecone ? "crafted-bag-item pinecone-bag-item selected" : "crafted-bag-item pinecone-bag-item"} onClick={clickPinecone} onDoubleClick={doubleClickPinecone} disabled={game.pinecones <= 0} aria-label={`松果 ${game.pinecones} 个，点击选择种树，双击拿起`}><span>果</span><small>松果·种树</small><b>{game.pinecones}</b></button>{(Object.keys(CRAFT_RECIPES) as CraftType[]).map((item) => <button key={`crafted-bag-${item}`} className={selectedCraftItem === item ? "crafted-bag-item selected" : "crafted-bag-item"} onClick={() => chooseCraftForPlacement(item)} disabled={game.crafted[item] <= 0} aria-label={`${CRAFT_RECIPES[item].name} ${game.crafted[item]} 个，点击选择摆放`}><span>{CRAFT_RECIPES[item].short}</span><small>{CRAFT_RECIPES[item].name}</small><b>{game.crafted[item]}</b></button>)}</div>
+              <div className="crafted-backpack" aria-label="制作物和松果背包"><button className={plantingPinecone ? "crafted-bag-item pinecone-bag-item selected" : "crafted-bag-item pinecone-bag-item"} onClick={clickPinecone} onDoubleClick={doubleClickPinecone} disabled={game.pinecones <= 0} aria-label={`松果 ${game.pinecones} 个，点击选择种树，双击拿起`}><span>果</span><small>松果·种树</small><b>{game.pinecones}</b></button>{(Object.keys(CRAFT_RECIPES) as CraftType[]).map((item) => <button key={`crafted-bag-${item}`} className={`${selectedCraftItem === item ? "crafted-bag-item selected" : "crafted-bag-item"} ${item === "matches" ? "matches-bag-item" : ""}`} onClick={item === "matches" ? clickMatches : () => chooseCraftForPlacement(item)} onDoubleClick={item === "matches" ? pickUpMatches : undefined} disabled={game.crafted[item] <= 0} aria-label={`${CRAFT_RECIPES[item].name} ${game.crafted[item]} 个，${item === "matches" ? "点击使用，双击拿起" : "点击选择摆放"}`}><span>{CRAFT_RECIPES[item].short}</span><small>{CRAFT_RECIPES[item].name}</small><b>{game.crafted[item]}</b></button>)}</div>
             </div>
           </div>
         </section>
