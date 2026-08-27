@@ -857,9 +857,9 @@ export default function FarmGame() {
       showWalking(dx, dy);
       setBeachPlayer((current) => ({
         x: Math.max(7, Math.min(93, current.x + dx * 4)),
-        y: Math.max(divingAtSea ? 22 : 48, Math.min(86, current.y + dy * 4)),
+        y: Math.max(divingAtSea ? 22 : 30, Math.min(86, current.y + dy * 4)),
       }));
-      setMessage(divingAtSea ? "穿着潜水服在水下游动，靠近小鱼小虾后可以抓取。 " : "在海滩上自由走动，也可以走进浅海游泳。 ");
+      setMessage(divingAtSea ? "穿着潜水服在水下游动，靠近小鱼小虾后可以抓起。 " : "在海滩上自由走动，也可以走进浅海游泳。 ");
       return;
     }
     if (craftingOpen || chestOpen || ranchOpen || farmInterior) return;
@@ -1693,20 +1693,32 @@ export default function FarmGame() {
     window.setTimeout(() => {
       setAnanBeachTraveling(false);
       setAnanBeachOpen(true);
-      setMessage("到海边啦！安安送给你一个螃蟹夹子。靠近螃蟹后点击下面的“抓取”。 ");
+      setMessage("到海边啦！安安送给你一个螃蟹夹子。靠近螃蟹后点击下面的“抓起”。 ");
     }, 1_800);
   };
 
-  const catchBeachCrab = () => {
-    let nearest = -1;
+  const catchBeachCrab = (targetIndex?: number) => {
+    let nearest = targetIndex ?? -1;
     let nearestDistance = Number.POSITIVE_INFINITY;
-    BEACH_CRABS.forEach((crab, index) => {
-      if (!beachCrabs[index]) return;
-      const distance = Math.hypot(crab.x - beachPlayer.x, crab.y - beachPlayer.y);
-      if (distance < nearestDistance) { nearest = index; nearestDistance = distance; }
-    });
-    if (nearest < 0 || nearestDistance > 15) {
-      setMessage("螃蟹夹子还够不到。先走到一只螃蟹旁边，再点击抓取。 ");
+    if (nearest >= 0 && beachCrabs[nearest]) {
+      nearestDistance = Math.hypot(BEACH_CRABS[nearest].x - beachPlayer.x, BEACH_CRABS[nearest].y - beachPlayer.y);
+    } else {
+      nearest = -1;
+      BEACH_CRABS.forEach((crab, index) => {
+        if (!beachCrabs[index]) return;
+        const distance = Math.hypot(crab.x - beachPlayer.x, crab.y - beachPlayer.y);
+        if (distance < nearestDistance) { nearest = index; nearestDistance = distance; }
+      });
+    }
+    if (nearest < 0) {
+      setMessage("沙滩上的螃蟹已经全部抓起来了。 ");
+      playTone(420);
+      return;
+    }
+    if (nearestDistance > 24) {
+      const crab = BEACH_CRABS[nearest];
+      setBeachPlayer({ x: Math.max(7, crab.x - 7), y: crab.y });
+      setMessage("小禾已经走到螃蟹旁边了，现在点击下面的“抓起”就能抓到它。 ");
       playTone(250);
       return;
     }
@@ -1736,7 +1748,7 @@ export default function FarmGame() {
       if (distance < nearestDistance) { nearest = index; nearestDistance = distance; }
     });
     if (nearest < 0 || nearestDistance > 16) {
-      setMessage("潜水夹还够不到小鱼小虾。游到它们旁边，再点击抓取。 ");
+      setMessage("潜水夹还够不到小鱼小虾。游到它们旁边，再点击抓起。 ");
       playTone(250);
       return;
     }
@@ -3335,9 +3347,9 @@ export default function FarmGame() {
               return <button key={`ground-supply-${supplyId}`} className={`ground-supply supply-${supply.kind} ground-supply-${supplyId + 1}`} onClick={(event) => { event.stopPropagation(); setMessage(`地上掉着${supply.name}：${supply.description} 双击可以捡起来。`); playTone(540); }} onDoubleClick={(event) => { event.stopPropagation(); pickUpGroundSupply(supplyId); }} aria-label={`${supply.name}，双击捡起`}><i>{supply.short}</i><span>{supply.name}<small>双击捡起</small></span></button>;
             })}
 
-            <div className={`player facing-${facing} ${isWalking ? "walking" : ""} ${scene === "farm" ? "farm-centered-player" : ""}`} style={{ left: scene === "farm" ? "50%" : `${4 + player.x * 7.7}%`, top: scene === "farm" ? "55%" : `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
+            {!ananBeachOpen && !ananBeachTraveling && <div className={`player facing-${facing} ${isWalking ? "walking" : ""} ${scene === "farm" ? "farm-centered-player" : ""}`} style={{ left: scene === "farm" ? "50%" : `${4 + player.x * 7.7}%`, top: scene === "farm" ? "55%" : `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
               {renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
-            </div>
+            </div>}
             {partner?.online && partner.currentVillage === activeVillage && partner.scene === scene && <div className="online-partner" style={{ left: `${4 + partner.x * 7.7}%`, top: `${8 + partner.y * 10.5}%` }} aria-label={`${partner.playerName}也在这里`}><span>{partner.playerName}<small>朋友</small></span><i className="player-shadow" /><img src={partner.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>}
             {partner?.online && partner.currentVillage === activeVillage && partner.scene !== scene && <button className="friend-locator" onClick={(event) => { event.stopPropagation(); setActiveBuilding(null); setNeighborInterior(null); setResidentHome(null); setScene(partner.scene); setPlayer({ x: Math.max(0, Math.min(11, partner.x + (partner.x < 11 ? 1 : -1))), y: partner.y }); setMessage(`找到${partner.playerName}了！现在你们在同一个地方。`); }}><span>● {partner.playerName}也在{activeVillageInfo.name}</span><strong>点击去找朋友</strong><small>{partner.scene === "farm" ? activeVillageInfo.farm : partner.scene === "westFriendFarm" ? "安安的小农场" : partner.scene === "town" ? "中心街" : partner.scene === "cultureDistrict" ? "清河文化街" : partner.scene === "residentialDistrict" ? "青禾住宅坡" : partner.scene === "eastNeighbor" ? "东郊" : partner.scene === "southNeighbor" ? "南坡" : "北林"}</small></button>}
 
@@ -3364,7 +3376,7 @@ export default function FarmGame() {
                     <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}>{renderCarriedItem()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                   </div>
                   <div className="service-dialogue"><strong>{wildFriendVisit || wildFriendAtPlayerHome ? "安安出门了" : "安安"}</strong><p>{wildFriendAtPlayerHome ? `安安今天去${displayName}的农舍找你。她在桌上留了一张纸条。` : wildFriendVisit ? `安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}，小屋里留下了她的去向。` : "欢迎来我家！屋里有登山装备、地图、水晶收藏和安安自己的床。"}</p></div>
-                  <div className="service-actions"><button onClick={() => wildFriendVisit || wildFriendAtPlayerHome ? setMessage("安安不在家，但她把今天的去向写在纸条上了。 ") : interactWithPerson("安安", "安安：下次我也会直接去你家找你，我们可以从农舍一起出发。 ")}>{wildFriendVisit || wildFriendAtPlayerHome ? "查看安安留下的纸条" : heldItem ? `把${carriedItemName}送给安安` : "和安安聊天"}</button><button className="exit-action" onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }}>从门口出去</button></div>
+                  <div className="service-actions"><button onClick={() => wildFriendVisit || wildFriendAtPlayerHome ? setMessage("安安不在家，但她把今天的去向写在纸条上了。 ") : interactWithPerson("安安", "安安：下次我也会直接去你家找你，我们可以从农舍一起出发。 ")}>{wildFriendVisit || wildFriendAtPlayerHome ? "查看安安留下的纸条" : heldItem ? `把${carriedItemName}送给安安` : "和安安聊天"}</button>{!wildFriendVisit && !wildFriendAtPlayerHome && <button onClick={startAnanBeachTrip}>{game.ananBeachTrips.includes(currentAnanTripKey) ? "和安安再去海边" : "和安安第一次去海边"}</button>}<button className="exit-action" onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }}>从门口出去</button></div>
                   <footer><span>{message}</span><small>屋里可以移动 · 按 Esc 出去</small></footer>
                 </section>
               </div>
@@ -3623,13 +3635,13 @@ export default function FarmGame() {
               <div className="shop-overlay anan-beach-overlay" role="presentation">
                 <section className={`anan-beach-panel ${divingAtSea ? "underwater-mode" : "shore-mode"}`} role="dialog" aria-modal="true" aria-labelledby="anan-beach-title">
                   <header><div><span>安安的每季海边旅行</span><h2 id="anan-beach-title">{divingAtSea ? "穿上潜水服 · 海底探索" : "青禾海岸 · 沙滩与浅海"}</h2></div><button onClick={() => { setAnanBeachOpen(false); setDivingAtSea(false); setMessage("和安安坐巴士回到了青禾农场。 "); }}>×</button></header>
-                  <div className="anan-beach-scene" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; const bounds = event.currentTarget.getBoundingClientRect(); setBeachPlayer({ x: Math.max(7, Math.min(93, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(divingAtSea ? 22 : 48, Math.min(86, ((event.clientY - bounds.top) / bounds.height) * 100)) }); setMessage(divingAtSea ? "小禾穿着潜水服游到了你点击的位置。 " : "小禾走到了海滩上你点击的位置。 "); }}>
+                  <div className="anan-beach-scene" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; const bounds = event.currentTarget.getBoundingClientRect(); const nextBeachY = Math.max(divingAtSea ? 22 : 30, Math.min(86, ((event.clientY - bounds.top) / bounds.height) * 100)); setBeachPlayer({ x: Math.max(7, Math.min(93, ((event.clientX - bounds.left) / bounds.width) * 100)), y: nextBeachY }); setMessage(divingAtSea ? "小禾穿着潜水服游到了你点击的位置。 " : nextBeachY < 61 ? "小禾走进海水里游泳啦！ " : "小禾走到了海滩上你点击的位置。 "); }}>
                     <div className="beach-sky" /><div className="beach-sea"><i /><i /><i /></div><div className="beach-sand" />
-                    {!divingAtSea && <><div className="beach-small-boat"><i /><b /><span>安安的小船</span></div>{(game.day + game.season) % 2 === 0 && <div className="beach-big-ship"><i /><i /><b>远处的大船</b></div>}<div className="anan-beach-bucket"><i /><b /><span>雨水桶</span></div><button style={personClothesStyle("安安")} className="anan-beach-friend anan-character" onClick={() => interactWithPerson("安安", "安安：海风好舒服！我们可以抓螃蟹、游泳，也可以坐在船边钓鱼。 ")}><i /><em className="anan-pigtails" /><b /><span>安安</span></button>{BEACH_CRABS.map((crab, index) => beachCrabs[index] && <button key={`beach-crab-${index}`} className={`beach-crab crab-${index + 1}`} style={{ left: `${crab.x}%`, top: `${crab.y}%` }} onClick={(event) => { event.stopPropagation(); setMessage("这只螃蟹横着跑开了，靠近它后点击下面的抓取按钮！ "); }} aria-label="沙滩上的螃蟹"><i /><i /><b /></button>)}</>}
-                    {divingAtSea && <><div className="underwater-rays"><i /><i /><i /></div><div className="coral coral-one"><i /><i /><i /></div><div className="coral coral-two"><i /><i /></div>{BEACH_CRABS.map((creature, index) => seaCreatures[index] && <button key={`sea-creature-${index}`} className={`sea-creature ${index % 2 === 0 ? "tiny-fish" : "tiny-shrimp"}`} style={{ left: `${creature.x}%`, top: `${Math.max(26, creature.y - 18)}%` }} onClick={(event) => { event.stopPropagation(); setMessage(index % 2 === 0 ? "一条小鱼从海草旁游过，靠近后可以抓取。 " : "一只小虾藏在珊瑚边，靠近后可以抓取。 "); }}><i /><b /></button>)}</>}
-                    <div className={`beach-player ${divingAtSea ? "diving-player" : beachPlayer.y < 56 ? "swimming-player" : ""}`} style={{ left: `${beachPlayer.x}%`, top: `${beachPlayer.y}%` }}><span className="player-shadow" /><PlayerSprite facing={facing} sick={game.sick} />{divingAtSea && <i className="diving-mask" />}</div>
+                    {!divingAtSea && <><div className="beach-small-boat"><i /><b /><span>安安的小船</span></div>{(game.day + game.season) % 2 === 0 && <div className="beach-big-ship"><i /><i /><b>远处的大船</b></div>}<div className="anan-beach-bucket"><i /><b /><span>雨水桶</span></div><button style={personClothesStyle("安安")} className="anan-beach-friend anan-character" onClick={() => interactWithPerson("安安", "安安：海风好舒服！我们可以抓螃蟹、游泳，也可以坐在船边钓鱼。 ")}><i /><em className="anan-pigtails" /><b /><span>安安</span></button>{BEACH_CRABS.map((crab, index) => beachCrabs[index] && <button key={`beach-crab-${index}`} className={`beach-crab crab-${index + 1}`} style={{ left: `${crab.x}%`, top: `${crab.y}%` }} onClick={(event) => { event.stopPropagation(); catchBeachCrab(index); }} aria-label={`第 ${index + 1} 只沙滩螃蟹，靠近后点击抓起`}><i /><i /><b /></button>)}</>}
+                    {divingAtSea && <><div className="underwater-rays"><i /><i /><i /></div><div className="coral coral-one"><i /><i /><i /></div><div className="coral coral-two"><i /><i /></div>{BEACH_CRABS.map((creature, index) => seaCreatures[index] && <button key={`sea-creature-${index}`} className={`sea-creature ${index % 2 === 0 ? "tiny-fish" : "tiny-shrimp"}`} style={{ left: `${creature.x}%`, top: `${Math.max(26, creature.y - 18)}%` }} onClick={(event) => { event.stopPropagation(); setMessage(index % 2 === 0 ? "一条小鱼从海草旁游过，靠近后可以抓起。 " : "一只小虾藏在珊瑚边，靠近后可以抓起。 "); }}><i /><b /></button>)}</>}
+                    <div className={`beach-player ${divingAtSea ? "diving-player" : beachPlayer.y < 61 ? "swimming-player" : ""}`} style={{ left: `${beachPlayer.x}%`, top: `${beachPlayer.y}%` }}><span className="player-shadow" /><PlayerSprite facing={facing} sick={game.sick} />{divingAtSea && <i className="diving-mask" />}</div>
                   </div>
-                  <div className="anan-beach-actions"><button className="crab-catch-action" onClick={divingAtSea ? catchSeaCreature : catchBeachCrab}>夹子抓取</button><button onClick={() => { setDivingAtSea((current) => !current); setBeachPlayer({ x: 48, y: 64 }); setMessage(divingAtSea ? "脱下潜水服回到沙滩。 " : "安安把潜水服递给小禾。穿好后直接潜进海里啦！ "); }}>{divingAtSea ? "返回沙滩" : "穿潜水服下海"}</button><button onClick={fishAtSea}>在小船旁海钓</button><button onClick={() => { setAnanBeachOpen(false); setDivingAtSea(false); setMessage("和安安坐巴士回到了青禾农场。 "); }}>坐巴士回家</button></div>
+                  <div className="anan-beach-actions"><button className="crab-catch-action" onClick={() => divingAtSea ? catchSeaCreature() : catchBeachCrab()}>抓起</button>{!divingAtSea && <button onClick={() => { const goingSwimming = beachPlayer.y >= 61; setBeachPlayer({ x: 48, y: goingSwimming ? 45 : 72 }); setMessage(goingSwimming ? "小禾走进海水里游泳啦！ " : "小禾从浅海游回了沙滩。 "); }}>{beachPlayer.y >= 61 ? "走进海水游泳" : "游回沙滩"}</button>}<button onClick={() => { setDivingAtSea((current) => !current); setBeachPlayer({ x: 48, y: divingAtSea ? 72 : 64 }); setMessage(divingAtSea ? "脱下潜水服回到沙滩。 " : "安安把潜水服递给小禾。穿好后直接潜进海里啦！ "); }}>{divingAtSea ? "返回沙滩" : "穿潜水服下海"}</button><button onClick={fishAtSea}>在小船旁海钓</button><button onClick={() => { setAnanBeachOpen(false); setDivingAtSea(false); setMessage("和安安坐巴士回到了青禾农场。 "); }}>坐巴士回家</button></div>
                   <footer><span>{message}</span><small>键盘、方向按钮或点击画面都能移动</small></footer>
                 </section>
               </div>
