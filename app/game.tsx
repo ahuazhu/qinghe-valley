@@ -834,10 +834,10 @@ export default function FarmGame() {
   }, [game, ready, saveStorageKey]);
 
   useEffect(() => {
-    if (!ready || localStorage.getItem("qinghe-dream-preview-v86")) return;
-    localStorage.setItem("qinghe-dream-preview-v86", "shown");
+    if (!ready || localStorage.getItem("qinghe-dream-preview-v88")) return;
+    localStorage.setItem("qinghe-dream-preview-v88", "shown");
     const previousPreview = Number(localStorage.getItem("qinghe-last-preview-dream") ?? -1);
-    const previewChoices = DREAM_STORIES.map((_, index) => index).filter((index) => index !== previousPreview && index % 8 !== previousPreview % 8);
+    const previewChoices = DREAM_STORIES.map((_, index) => index).filter((index) => index % 16 >= 8 && index !== previousPreview && index % 16 !== previousPreview % 16);
     const previewDream = previewChoices[Math.floor(Math.random() * previewChoices.length)] ?? 0;
     localStorage.setItem("qinghe-last-preview-dream", String(previewDream));
     setDreamScene(previewDream);
@@ -1109,7 +1109,7 @@ export default function FarmGame() {
 
   const advanceOrdinaryDream = useCallback((nextX: number, nextY: number) => {
     if (dreamScene === null || dreamPhase !== "outside") return false;
-    const dreamVariant = dreamScene % 8;
+    const dreamVariant = dreamScene % 16;
     if (dreamOddity >= 4) {
       const wakeTrigger = (
         (dreamVariant === 0 && nextX >= 10 && nextY >= 4)
@@ -1120,6 +1120,14 @@ export default function FarmGame() {
         || (dreamVariant === 5 && nextX >= 8 && nextY <= 3)
         || (dreamVariant === 6 && nextX >= 5 && nextX <= 7 && nextY >= 4)
         || (dreamVariant === 7 && nextX <= 1 && nextY >= 4)
+        || (dreamVariant === 8 && nextX <= 2 && nextY >= 5)
+        || (dreamVariant === 9 && nextX >= 8 && nextY >= 5)
+        || (dreamVariant === 10 && nextX >= 9 && nextY <= 3)
+        || (dreamVariant === 11 && nextX >= 4 && nextX <= 7 && nextY <= 1)
+        || (dreamVariant === 12 && nextX >= 9 && nextY >= 5)
+        || (dreamVariant === 13 && nextX <= 2 && nextY <= 2)
+        || (dreamVariant === 14 && nextX >= 5 && nextX <= 7 && nextY >= 6)
+        || (dreamVariant === 15 && nextX >= 4 && nextX <= 8 && nextY >= 2 && nextY <= 5)
       );
       if (!wakeTrigger) return false;
       const wakeMessages = [
@@ -1131,6 +1139,14 @@ export default function FarmGame() {
         "小禾重新走到那扇不太对劲的家门前。推门的一刻，自己从真正的床上醒了过来。 ",
         "小禾站到田地中央，幼苗们一起跳完一支舞，还向小禾鞠躬。掌声响起时，小禾在被窝里醒了。 ",
         "小禾跟着苍白的小动物走到草地尽头，它钻进晨光里，小禾也在床上睁开了眼睛。 ",
+        "小禾沿着越来越小的脚印走完最后一步，脚下变成柔软的被子，梦也结束了。 ",
+        "小禾数完水面最后一颗星星，星光轻轻一闪，睁眼时已经是早晨。 ",
+        "小禾对着会眨眼的窗户眨了三次眼，再睁开时看见了真正的农舍窗户。 ",
+        "小禾追上那个偷偷散步的稻草人，它站回原位的瞬间，梦里的风停了。 ",
+        "草地小火车载着小禾绕完一圈，终点站的门一开，小禾就在床上醒了。 ",
+        "小禾接住飘下来的羊毛，天空中的小羊变成云朵，梦安静地结束了。 ",
+        "小禾走到彩虹雨的尽头，最后一滴雨变成晨光，小禾从被窝里醒来。 ",
+        "小禾站在两个月亮正中间，影子重新合成一个，眼前也变回熟悉的房间。 ",
       ];
       setDreamScene(null);
       setDreamPhase("inside");
@@ -1154,6 +1170,14 @@ export default function FarmGame() {
       || (dreamVariant === 5 && nextX >= 8 && nextY <= 3)
       || (dreamVariant === 6 && nextX >= 3 && nextX <= 8 && nextY >= 4)
       || (dreamVariant === 7 && nextX >= 5 && nextX <= 7 && nextY >= 2 && nextY <= 4)
+      || (dreamVariant === 8 && nextX >= 9 && nextY <= 2)
+      || (dreamVariant === 9 && nextX <= 3 && nextY >= 4)
+      || (dreamVariant === 10 && nextX >= 8 && nextY >= 3 && nextY <= 5)
+      || (dreamVariant === 11 && nextX >= 4 && nextX <= 7 && nextY <= 2)
+      || (dreamVariant === 12 && nextX <= 4 && nextY >= 6)
+      || (dreamVariant === 13 && nextX >= 7 && nextY >= 5)
+      || (dreamVariant === 14 && nextX <= 2 && nextY <= 2)
+      || (dreamVariant === 15 && nextX >= 4 && nextX <= 8 && nextY >= 2 && nextY <= 5)
     );
     if (secretTrigger) {
       setDreamOddity(1);
@@ -2006,6 +2030,7 @@ export default function FarmGame() {
   const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "forest" ? forestItemName(heldItem.id) : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : heldItem.kind === "herb" ? "药材" : heldItem.kind === "resin" ? "树脂" : heldItem.kind === "matches" ? "火柴" : heldItem.kind === "product" ? (heldItem.id === "egg" ? "鸡蛋" : heldItem.id === "milk" ? "牛奶" : "羊毛") : heldItem.kind === "petGift" ? (heldItem.id === "feather" ? "宠物羽毛" : heldItem.id === "softFur" ? "兔子软毛" : "探险小骨头") : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].title : RARE_ARTIFACTS[heldItem.id].title : "";
   const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "forest" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : heldItem.kind === "seed" ? `${heldItem.id}-seeds` : heldItem.kind === "herb" ? "herb" : heldItem.kind === "resin" ? "resin" : heldItem.kind === "matches" ? "matches" : heldItem.kind === "product" ? heldItem.id : heldItem.kind === "petGift" ? heldItem.id : heldItem.kind === "book" ? "book" : "artifact" : "";
   const renderCarriedItem = () => heldItem ? <span className={`held-overhead held-${carriedItemClass}`} title={carriedItemName} aria-label={`举着${carriedItemName}`}><i className="held-pixel-object" aria-hidden="true" /><span className="held-item-name">{carriedItemName}</span></span> : null;
+  const renderIndoorRoofRain = () => (game.weather === "rain" || game.weather === "thunder") ? <div className="indoor-roof-rain" aria-hidden="true">{Array.from({ length: 14 }, (_, index) => <i key={`roof-rain-${index}`} />)}</div> : null;
   const renderWearables = () => <>{game.equippedOutfit !== "default" && <span className={`worn-outfit worn-${game.equippedOutfit}`} aria-label={game.equippedOutfit === "redCoat" ? "穿着红色节日外套" : "穿着蓝色旅行套装"} />}{game.umbrellaOpen && <span className="player-umbrella" aria-label="撑着彩色雨伞"><i /></span>}</>;
 
   const giveHeldItem = (person: string) => {
@@ -3165,7 +3190,7 @@ export default function FarmGame() {
     }) : [];
     const petBirthMessage = petBirthTypes.length ? ` 农舍旁传来小小的叫声：${petBirthTypes.map((pet) => pet.name).join("、")}家庭生活满五年，生下了一只小宝宝！` : "";
     const nextAbsoluteDay = (nextYear - 1) * 112 + nextSeason * 28 + nextDayNumber;
-    const dreamChoices = DREAM_STORIES.map((_, index) => index).filter((index) => index !== game.lastDreamVariant && index % 8 !== game.lastDreamVariant % 8);
+    const dreamChoices = DREAM_STORIES.map((_, index) => index).filter((index) => index !== game.lastDreamVariant && index % 16 !== game.lastDreamVariant % 16);
     const dreamTonight = nextAbsoluteDay - game.lastDreamAbsoluteDay >= 5 && Math.random() < .14
       ? dreamChoices[Math.floor(Math.random() * dreamChoices.length)] ?? 0
       : null;
@@ -4009,7 +4034,7 @@ export default function FarmGame() {
   }
 
   return (
-    <main className={`game-shell ${embeddedMode ? "embedded-game" : ""} ${dreamScene !== null ? `dream-reality-active dream-reality-${dreamOddity} dream-variant-${dreamScene % 8}` : ""}`}>
+    <main className={`game-shell ${embeddedMode ? "embedded-game" : ""} ${dreamScene !== null ? `dream-reality-active dream-reality-${dreamOddity} dream-variant-${dreamScene % 16}` : ""}`}>
       {mallOpen && mallFloor === 1 && <button className="mall-pet-food-kiosk" onClick={buyPetFood}><i /><span><b>宠物补给柜</b><small>平价宠物粮 · 25 金币 / 10份</small></span></button>}
       {petHospitalOpen && <div className="pet-hospital-overlay" role="dialog" aria-modal="true" aria-label="远方新区宠物医院"><section className="pet-hospital-panel"><header><div><span>远方新区动物健康中心</span><h2>青禾宠物医院</h2></div><div className="pet-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setPetHospitalOpen(false)}>×</button></header><div className="pet-hospital-room"><aside><button className="pet-vet"><i /><b /></button><strong>宠物医生苏苏</strong><small>检查 · 配药 · 恢复健康</small><span className="vet-counter" /></aside><div className="pet-patient-list">{game.pets.length === 0 ? <p>小禾还没有领养宠物，可以先去旁边的宠物之家看看。</p> : game.pets.map((pet) => { const sick = game.sickPetIds.includes(pet.id); const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name; return <article key={`patient-${pet.id}`} className={sick ? "sick-patient" : ""}><div className={`pet-patient-art pet-${pet.type} ${sick ? "sick-pet" : ""}`}><i /><b /></div><span><strong>{petName} · {pet.sex}</strong><small>{sick ? "颜色发灰 · 眼睛下垂 · 很不舒服" : "精神很好 · 不需要治疗"}</small></span><button disabled={!sick} onClick={() => treatPetAtHospital(pet.id)}>{sick ? "检查配药 · 35金币" : "健康"}</button></article>; })}</div></div><footer><span>{message}</span><button onClick={() => setPetHospitalOpen(false)}>离开宠物医院</button></footer></section></div>}
       <header className="topbar">
@@ -4136,7 +4161,7 @@ export default function FarmGame() {
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
           <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "mysteryRoad" ? "mystery-road-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} weather-world-${game.weather} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome || friendHomeOpen || mallOpen ? "interior-open" : ""} ${playingWithAnan ? "playing-with-anan" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "mysteryRoad" ? "▤" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
-            {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /><i className="dream-backward-birds" /><i className="dream-long-shadow" /><i className="dream-floating-light" /><i className="dream-pale-animal" /><i className="dream-cookie-rain" /><i className="dream-dancing-crops" /><i className="dream-bubble-fish" /></div>}
+            {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /><i className="dream-backward-birds" /><i className="dream-long-shadow" /><i className="dream-floating-light" /><i className="dream-pale-animal" /><i className="dream-cookie-rain" /><i className="dream-dancing-crops" /><i className="dream-bubble-fish" /><i className="dream-tiny-footprints" /><i className="dream-pond-stars" /><i className="dream-winking-window" /><i className="dream-walking-scarecrow" /><i className="dream-grass-train" /><i className="dream-floating-sheep" /><i className="dream-rainbow-rain" /><i className="dream-twin-moons" /></div>}
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
             {(game.weather === "rain" || game.weather === "thunder") && <div className="rain-weather-layer" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div>}
@@ -4312,6 +4337,7 @@ export default function FarmGame() {
             {friendHomeOpen && (
               <div className="shop-overlay neighbor-home-interior anan-home-interior" role="presentation">
                 <section className="service-panel neighbor-home-panel anan-home-panel" role="dialog" aria-modal="true" aria-labelledby="anan-home-title">
+                  {renderIndoorRoofRain()}
                   <header><div><span>青禾农场西边 · 朋友的家</span><h2 id="anan-home-title">安安的林边小屋</h2></div><button onClick={() => { setFriendHomeOpen(false); setMessage("从安安的林边小屋出来了。 "); }} aria-label="离开安安的家">×</button></header>
                   <div className="interior-room neighbor-room anan-home-room" onClick={walkInsidePointer}>
                     <div className="room-window"><i /><i /></div><div className="room-rug" />
@@ -4332,6 +4358,7 @@ export default function FarmGame() {
             {neighborInterior && (
               <div className={`shop-overlay neighbor-home-interior home-${neighborInterior}`} role="presentation">
                 <section className="service-panel neighbor-home-panel" role="dialog" aria-modal="true" aria-labelledby="neighbor-home-title">
+                  {renderIndoorRoofRain()}
                   <header><div><span>居民的家</span><h2 id="neighbor-home-title">{neighborInterior === "eastNeighbor" ? "林婶的果园小屋" : neighborInterior === "southNeighbor" ? "鲁师傅的山脚院子" : "叶老师的林间书屋"}</h2></div><button onClick={() => { setNeighborInterior(null); setBuilderOpen(false); setMessage("从居民家的门口出来了。 "); }}>×</button></header>
                   <div className="interior-room neighbor-room" onClick={walkInsidePointer}>
                     <div className="room-window"><i /><i /></div><div className="room-rug" />
@@ -4354,6 +4381,7 @@ export default function FarmGame() {
             {residentHomeInfo && residentHome && (
               <div className="shop-overlay resident-home-interior" role="presentation">
                 <section className="service-panel resident-home-panel" role="dialog" aria-modal="true" aria-labelledby="resident-home-title">
+                  {renderIndoorRoofRain()}
                   <header><div><span>青禾住宅坡 · 私人住宅</span><h2 id="resident-home-title">{residentHomeInfo.home}</h2></div><button onClick={() => { setResidentHome(null); setMessage("从居民自己的房子里出来了。 "); }}>×</button></header>
                   <div className="interior-room resident-home-room" onClick={walkInsidePointer}>
                     <div className="room-window"><i /><i /></div><div className="room-rug" />
@@ -4474,6 +4502,7 @@ export default function FarmGame() {
             {activeBuilding === "farmhouse" && (
               <div className="shop-overlay interior-farmhouse" role="presentation">
                 <section className="service-panel farmhouse-panel" role="dialog" aria-modal="true" aria-labelledby="farmhouse-title">
+                  {renderIndoorRoofRain()}
                   <header><div><span>{activeVillageInfo.farm}室内</span><h2 id="farmhouse-title">{displayName}的农舍</h2></div><button onClick={leaveBuilding} aria-label={`离开${displayName}的农舍`}>×</button></header>
                   <div className={`interior-room farmhouse-room ${game.upgrades.house ? "expanded-farmhouse-room" : ""} farmhouse-level-${game.upgrades.house} ${isNight ? "night-room" : ""} ${isNight && stoveLit ? "stove-lit-room" : ""} ${isNight && game.equipment.lampOn ? "lamp-lit-room" : ""} ${bedtimePhase === "tuckedIn" || bedtimePhase === "waking" ? "bedtime-sleeping" : ""}`} onClick={walkInsidePointer}>
                     <div className="room-window"><i /><i /></div>
@@ -4504,6 +4533,7 @@ export default function FarmGame() {
             {activeBuilding === "supermarket" && (
               <div className="shop-overlay" role="presentation">
                 <section className="shop-panel" role="dialog" aria-modal="true" aria-labelledby="shop-title">
+                  {renderIndoorRoofRain()}
                   <header><div><span>青禾镇杂货</span><h2 id="shop-title">青禾超市</h2></div><div className="shop-wallet"><small>你的金币</small><strong>● {game.coins}</strong></div><button onClick={leaveBuilding} aria-label="离开商店">×</button></header>
                   <div className="shopkeeper"><button style={personClothesStyle(supermarketClerk)} className={`shopkeeper-face ${supermarketReliefWorker ? "relief-worker" : ""}`} onClick={() => interactWithPerson(supermarketClerk, `${supermarketClerk}：${supermarketReliefWorker?.greeting ?? "欢迎呀，小禾！今天想带点什么回农场？"}`)} aria-label={heldItem ? `把${carriedItemName}送给${supermarketClerk}` : `和${supermarketClerk}交谈`}><i /><b /></button><p><strong>{supermarketClerk}{supermarketReliefWorker ? " · 今日代班" : ""}</strong>{heldItem ? `小禾正举着${carriedItemName}，点击${supermarketClerk}就能送给他。` : supermarketReliefWorker?.greeting ?? (currentFestival?.id === "seeds" ? "种子分享日快乐！今天所有水果和蔬菜种子都免费。" : "欢迎呀，小禾！今天想带点什么回农场？")}</p><div className={`player indoor-player indoor-shop-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: "0" }}>{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div></div>
                   {currentFestival?.id === "seeds" && <><div className="free-seed-festival"><strong>种子分享日 · 全部免费</strong><span>西瓜、番茄、土豆、南瓜、蓝莓等 8 种种子</span><button onClick={takeFreeSeedBundle}>免费领取 8 种种子大礼包</button></div><div className="shop-festival-guests" aria-label="参加种子分享日的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：种子分享日真热闹，大家都领到了喜欢的种子！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div></>}
@@ -4530,6 +4560,7 @@ export default function FarmGame() {
             {activeBuilding && activeBuilding !== "supermarket" && activeBuilding !== "farmhouse" && (
               <div className={`shop-overlay interior-${activeBuilding}`} role="presentation">
                 <section className="service-panel" role="dialog" aria-modal="true" aria-labelledby="building-title">
+                  {renderIndoorRoofRain()}
                   <header>
                     <div><span>青禾镇室内</span><h2 id="building-title">{BUILDING_INFO[activeBuilding].name}</h2></div>
                     <button onClick={leaveBuilding} aria-label={`离开${BUILDING_INFO[activeBuilding].name}`}>×</button>
