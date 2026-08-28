@@ -834,9 +834,12 @@ export default function FarmGame() {
   }, [game, ready, saveStorageKey]);
 
   useEffect(() => {
-    if (!ready || localStorage.getItem("qinghe-dream-preview-v85")) return;
-    localStorage.setItem("qinghe-dream-preview-v85", "shown");
-    const previewDream = Math.floor(Math.random() * DREAM_STORIES.length);
+    if (!ready || localStorage.getItem("qinghe-dream-preview-v86")) return;
+    localStorage.setItem("qinghe-dream-preview-v86", "shown");
+    const previousPreview = Number(localStorage.getItem("qinghe-last-preview-dream") ?? -1);
+    const previewChoices = DREAM_STORIES.map((_, index) => index).filter((index) => index !== previousPreview && index % 8 !== previousPreview % 8);
+    const previewDream = previewChoices[Math.floor(Math.random() * previewChoices.length)] ?? 0;
+    localStorage.setItem("qinghe-last-preview-dream", String(previewDream));
     setDreamScene(previewDream);
     setDreamPhase("inside");
     setDreamSurreal(false);
@@ -1105,23 +1108,63 @@ export default function FarmGame() {
   }, [multiplayerSession?.deviceId, onlinePlayers, scene, switchVillage, worldVillage]);
 
   const advanceOrdinaryDream = useCallback((nextX: number, nextY: number) => {
-    if (dreamScene === null || dreamPhase !== "outside" || dreamOddity >= 4) return;
-    const secretTrigger = dreamOddity === 0 && (
-      (dreamScene % 4 === 0 && scene === "farm" && nextX >= 10)
-      || (dreamScene % 4 === 1 && nextY <= 1)
-      || (dreamScene % 4 === 2 && nextX <= (scene === "farm" ? 0 : 1))
-      || (dreamScene % 4 === 3 && nextY >= 6)
+    if (dreamScene === null || dreamPhase !== "outside") return false;
+    const dreamVariant = dreamScene % 8;
+    if (dreamOddity >= 4) {
+      const wakeTrigger = (
+        (dreamVariant === 0 && nextX >= 10 && nextY >= 4)
+        || (dreamVariant === 1 && nextX <= 3 && nextY <= 2)
+        || (dreamVariant === 2 && nextX >= 5 && nextX <= 7 && nextY >= 6)
+        || (dreamVariant === 3 && nextX >= 5 && nextX <= 7 && nextY <= 1)
+        || (dreamVariant === 4 && nextX <= 3 && nextY <= 3)
+        || (dreamVariant === 5 && nextX >= 8 && nextY <= 3)
+        || (dreamVariant === 6 && nextX >= 5 && nextX <= 7 && nextY >= 4)
+        || (dreamVariant === 7 && nextX <= 1 && nextY >= 4)
+      );
+      if (!wakeTrigger) return false;
+      const wakeMessages = [
+        "小禾终于追上黑影。黑影转过身的一瞬间，四周安静下来——小禾在自己的床上醒了。 ",
+        "小禾走到逆飞的鸟群下面，听见翅膀声突然变成闹钟声，随后在床上睁开眼睛。 ",
+        "小禾踩住那道不属于自己的长影子，影子像水一样散开，眼前变回了熟悉的被子。 ",
+        "小禾走到漂浮的微光下，光点轻轻落在额头上，睁眼时已经回到农舍的床上。 ",
+        "小禾靠近倒着缩小的水纹，水面映出正在睡觉的自己，再抬头时梦已经醒了。 ",
+        "小禾重新走到那扇不太对劲的家门前。推门的一刻，自己从真正的床上醒了过来。 ",
+        "小禾站到田地中央，所有幼苗同时转向自己。风声停下后，小禾在被窝里醒了。 ",
+        "小禾跟着苍白的小动物走到草地尽头，它钻进晨光里，小禾也在床上睁开了眼睛。 ",
+      ];
+      setDreamScene(null);
+      setDreamPhase("inside");
+      setDreamSurreal(false);
+      setDreamOddity(0);
+      setDreamOdditySteps(0);
+      setScene("farm");
+      setActiveBuilding("farmhouse");
+      setIndoorPlayer({ x: 12, y: 70 });
+      setBedtimePhase("waking");
+      setMessage(wakeMessages[dreamVariant]);
+      playTone(920);
+      return true;
+    }
+    const secretTrigger = dreamOddity === 0 && scene === "farm" && (
+      (dreamVariant === 0 && nextX >= 10)
+      || (dreamVariant === 1 && nextY <= 1)
+      || (dreamVariant === 2 && nextX <= 0)
+      || (dreamVariant === 3 && nextY >= 6)
+      || (dreamVariant === 4 && nextX <= 3 && nextY <= 3)
+      || (dreamVariant === 5 && nextX >= 8 && nextY <= 3)
+      || (dreamVariant === 6 && nextX >= 3 && nextX <= 8 && nextY >= 4)
+      || (dreamVariant === 7 && nextX >= 5 && nextX <= 7 && nextY >= 2 && nextY <= 4)
     );
     if (secretTrigger) {
       setDreamOddity(1);
       setDreamOdditySteps(0);
-      return;
+      return false;
     }
-    if (dreamOddity <= 0) return;
+    if (dreamOddity <= 0) return false;
     const nextOdditySteps = dreamOdditySteps + 1;
     if (nextOdditySteps < 7) {
       setDreamOdditySteps(nextOdditySteps);
-      return;
+      return false;
     }
     const nextOddity = Math.min(4, dreamOddity + 1);
     setDreamOddity(nextOddity);
@@ -1131,6 +1174,7 @@ export default function FarmGame() {
       setMessage("小禾终于确定：这个熟悉的世界确实有哪里不对。 ");
       playTone(820);
     }
+    return false;
   }, [dreamOddity, dreamOdditySteps, dreamPhase, dreamScene, dreamSurreal, scene]);
 
   const move = useCallback((dx: number, dy: number) => {
@@ -1189,7 +1233,7 @@ export default function FarmGame() {
       x: Math.max(scene === "farm" ? -3 : 0, Math.min(scene === "farm" ? 14 : 11, player.x + dx)),
       y: Math.max(0, Math.min(7, player.y + dy)),
     };
-    advanceOrdinaryDream(next.x, next.y);
+    if (advanceOrdinaryDream(next.x, next.y)) return;
     if (scene === "farm") {
       const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length;
       const hasGate = game.placedCrafts.some((craft) => craft.type === "gate");
@@ -3121,8 +3165,9 @@ export default function FarmGame() {
     }) : [];
     const petBirthMessage = petBirthTypes.length ? ` 农舍旁传来小小的叫声：${petBirthTypes.map((pet) => pet.name).join("、")}家庭生活满五年，生下了一只小宝宝！` : "";
     const nextAbsoluteDay = (nextYear - 1) * 112 + nextSeason * 28 + nextDayNumber;
+    const dreamChoices = DREAM_STORIES.map((_, index) => index).filter((index) => index !== game.lastDreamVariant && index % 8 !== game.lastDreamVariant % 8);
     const dreamTonight = nextAbsoluteDay - game.lastDreamAbsoluteDay >= 5 && Math.random() < .14
-      ? (game.lastDreamVariant + 1 + Math.floor(Math.random() * (DREAM_STORIES.length - 1))) % DREAM_STORIES.length
+      ? dreamChoices[Math.floor(Math.random() * dreamChoices.length)] ?? 0
       : null;
     const allPetsFed = game.pets.length > 0 && game.petFood >= game.pets.length;
     const featherGain = allPetsFed && nextAbsoluteDay % 2 === 0 ? game.pets.filter((pet) => pet.type === "chick" || pet.type === "duck").length : 0;
@@ -3887,7 +3932,7 @@ export default function FarmGame() {
       return;
     }
     const destination = { x: Math.max(0, Math.min(11, Math.round((percentX - 4) / 7.7))), y: Math.max(0, Math.min(7, Math.round((percentY - 8) / 10.5))) };
-    advanceOrdinaryDream(destination.x, destination.y);
+    if (advanceOrdinaryDream(destination.x, destination.y)) return;
     if (scene === "farm") {
       const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length;
       const hasGate = game.placedCrafts.some((craft) => craft.type === "gate");
@@ -3964,7 +4009,7 @@ export default function FarmGame() {
   }
 
   return (
-    <main className={`game-shell ${embeddedMode ? "embedded-game" : ""} ${dreamScene !== null ? `dream-reality-active dream-reality-${dreamOddity}` : ""}`}>
+    <main className={`game-shell ${embeddedMode ? "embedded-game" : ""} ${dreamScene !== null ? `dream-reality-active dream-reality-${dreamOddity} dream-variant-${dreamScene % 8}` : ""}`}>
       {mallOpen && mallFloor === 1 && <button className="mall-pet-food-kiosk" onClick={buyPetFood}><i /><span><b>宠物补给柜</b><small>平价宠物粮 · 25 金币 / 10份</small></span></button>}
       {petHospitalOpen && <div className="pet-hospital-overlay" role="dialog" aria-modal="true" aria-label="远方新区宠物医院"><section className="pet-hospital-panel"><header><div><span>远方新区动物健康中心</span><h2>青禾宠物医院</h2></div><div className="pet-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setPetHospitalOpen(false)}>×</button></header><div className="pet-hospital-room"><aside><button className="pet-vet"><i /><b /></button><strong>宠物医生苏苏</strong><small>检查 · 配药 · 恢复健康</small><span className="vet-counter" /></aside><div className="pet-patient-list">{game.pets.length === 0 ? <p>小禾还没有领养宠物，可以先去旁边的宠物之家看看。</p> : game.pets.map((pet) => { const sick = game.sickPetIds.includes(pet.id); const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name; return <article key={`patient-${pet.id}`} className={sick ? "sick-patient" : ""}><div className={`pet-patient-art pet-${pet.type} ${sick ? "sick-pet" : ""}`}><i /><b /></div><span><strong>{petName} · {pet.sex}</strong><small>{sick ? "颜色发灰 · 眼睛下垂 · 很不舒服" : "精神很好 · 不需要治疗"}</small></span><button disabled={!sick} onClick={() => treatPetAtHospital(pet.id)}>{sick ? "检查配药 · 35金币" : "健康"}</button></article>; })}</div></div><footer><span>{message}</span><button onClick={() => setPetHospitalOpen(false)}>离开宠物医院</button></footer></section></div>}
       <header className="topbar">
@@ -4091,7 +4136,7 @@ export default function FarmGame() {
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
           <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "mysteryRoad" ? "mystery-road-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} weather-world-${game.weather} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome || friendHomeOpen || mallOpen ? "interior-open" : ""} ${playingWithAnan ? "playing-with-anan" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "mysteryRoad" ? "▤" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
-            {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /></div>}
+            {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /><i className="dream-backward-birds" /><i className="dream-long-shadow" /><i className="dream-floating-light" /><i className="dream-pale-animal" /></div>}
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
             {(game.weather === "rain" || game.weather === "thunder") && <div className="rain-weather-layer" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div>}
