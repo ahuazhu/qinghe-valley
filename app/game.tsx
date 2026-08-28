@@ -140,6 +140,8 @@ type GameState = {
   sickPetIds: string[];
   lastPetIllnessAbsoluteDay: number;
   missingPetId: string | null;
+  lastDreamAbsoluteDay: number;
+  lastDreamVariant: number;
   birthdayCakeYear: number;
   driverLicense: boolean;
   ownsCar: boolean;
@@ -241,6 +243,32 @@ const ITEM_DESCRIPTIONS: Record<string, string> = {
 
 const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 const SEASONS = ["春天", "夏天", "秋天", "冬天"];
+const DREAM_STORIES = [
+  "农舍轻轻漂过云层，田地在脚下变成了一座会旋转的小岛……",
+  "河水倒着流向天空，小鱼排成星座，慢慢游进月亮里面……",
+  "发光的巨大作物长得比村庄还高，小房子像积木一样散落四周……",
+  "屋顶带着整间农舍飞走了，云朵却落在草地上开出一片白花……",
+  "蓝色河流从星空垂下来，鱼儿乘着水花一层一层往上跳……",
+  "村庄缩进了一颗闪亮种子里，轻轻摇动就会传出钟声……",
+  "许多农舍围着月亮慢慢转圈，烟囱里冒出的却是彩色星星……",
+  "鱼塘飘到半空，水面朝下，却没有一滴水落到地面……",
+  "作物长出柔软的云朵叶子，整片田地像呼吸一样一起起伏……",
+  "一条看不见尽头的楼梯穿过农舍窗户，通向会唱歌的云端……",
+  "天空变成安静的深海，发光的小鱼从屋顶上方成群游过……",
+  "一条巨大的羊毛毯铺过山谷，树木和房子都在毯子上轻轻漂动……",
+  "树林里的每一棵树都长着钟表，风吹过时，时间发出叮叮当当的声音……",
+  "一架彩色楼梯从鱼塘伸进夜空，每走一级，脚下就开出一朵星星花……",
+  "鸡、牛和羊变得像山一样高，却小心翼翼地围着一颗小种子散步……",
+  "所有道路都变成柔软的丝带，带着小禾从一扇门飘进另一扇门……",
+  "月亮落进了水壶里，浇出的每一滴水都会变成一只会飞的小鱼……",
+  "整片农场被装进透明玻璃球，玻璃球外面是无边无际的紫色大海……",
+  "树木拔起树根排成队伍，慢慢走过田野，寻找新的地方晒太阳……",
+  "安静的云朵变成一群绵羊，在天空牧场里留下长长的银色羊毛……",
+  "山洞深处开着一扇亮晶晶的小门，门后面竟然还是同一个山洞……",
+  "一辆没有车轮的巴士沿着银河前进，每个站台都漂着一座小花园……",
+  "田里的每棵作物都举着一盏灯，远远看去像一座倒过来的星空……",
+  "海水退到天边后，沙滩下面露出一座会缓慢呼吸的蓝色村庄……",
+] as const;
 const SEASON_SHORT = ["春", "夏", "秋", "冬"];
 const WEATHER_INFO: Record<Weather, { name: string; temperature: string }> = {
   sunny: { name: "晴朗", temperature: "18°C" },
@@ -532,6 +560,8 @@ const makeNewGame = (): GameState => ({
   sickPetIds: [],
   lastPetIllnessAbsoluteDay: 0,
   missingPetId: null,
+  lastDreamAbsoluteDay: 0,
+  lastDreamVariant: -1,
   birthdayCakeYear: 0,
   driverLicense: false,
   ownsCar: false,
@@ -664,7 +694,8 @@ export default function FarmGame() {
   const [selectedPet, setSelectedPet] = useState<PetType>("cat");
   const [selectedPetSex, setSelectedPetSex] = useState<"男生" | "女生">("女生");
   const [bedtimePhase, setBedtimePhase] = useState<"walkingHome" | "tuckedIn" | "waking" | null>(null);
-  const [dreamScene, setDreamScene] = useState<0 | 1 | 2 | null>(null);
+  const [dreamScene, setDreamScene] = useState<number | null>(null);
+  const [dreamPlayer, setDreamPlayer] = useState({ x: 48, y: 62 });
   const [interiorFireLit, setInteriorFireLit] = useState(false);
   const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
   const [inspectedItem, setInspectedItem] = useState<string | null>(null);
@@ -1051,7 +1082,17 @@ export default function FarmGame() {
   }, [multiplayerSession?.deviceId, onlinePlayers, scene, switchVillage, worldVillage]);
 
   const move = useCallback((dx: number, dy: number) => {
-    if (ananBeachTraveling || bulkChestPrompt || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || bedtimePhase || dreamScene !== null) return;
+    if (dreamScene !== null) {
+      showWalking(dx, dy);
+      setDreamPlayer((current) => ({ x: Math.max(7, Math.min(93, current.x + dx * 4)), y: Math.max(18, Math.min(72, current.y + dy * 4)) }));
+      setMessage("小禾正在不可思议的梦境里自由走动……");
+      return;
+    }
+    if (bedtimePhase === "waking") {
+      setBedtimePhase(null);
+      setMessage("小禾掀开被子下床，可以继续走路了。 ");
+    } else if (bedtimePhase) return;
+    if (ananBeachTraveling || bulkChestPrompt || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen) return;
     if (ananBeachOpen) {
       showWalking(dx, dy);
       setBeachPlayer((current) => ({
@@ -2986,7 +3027,9 @@ export default function FarmGame() {
     }) : [];
     const petBirthMessage = petBirthTypes.length ? ` 农舍旁传来小小的叫声：${petBirthTypes.map((pet) => pet.name).join("、")}家庭生活满五年，生下了一只小宝宝！` : "";
     const nextAbsoluteDay = (nextYear - 1) * 112 + nextSeason * 28 + nextDayNumber;
-    const dreamTonight = nextAbsoluteDay % 6 === 0 ? (nextAbsoluteDay % 3) as 0 | 1 | 2 : null;
+    const dreamTonight = nextAbsoluteDay - game.lastDreamAbsoluteDay >= 5 && Math.random() < .14
+      ? (game.lastDreamVariant + 1 + Math.floor(Math.random() * (DREAM_STORIES.length - 1))) % DREAM_STORIES.length
+      : null;
     const allPetsFed = game.pets.length > 0 && game.petFood >= game.pets.length;
     const featherGain = allPetsFed && nextAbsoluteDay % 2 === 0 ? game.pets.filter((pet) => pet.type === "chick" || pet.type === "duck").length : 0;
     const softFurGain = allPetsFed && nextAbsoluteDay % 3 === 0 ? game.pets.filter((pet) => pet.type === "rabbit").length : 0;
@@ -3083,6 +3126,8 @@ export default function FarmGame() {
         sickPetIds: newlySickPet && !current.sickPetIds.includes(newlySickPet.id) ? [...current.sickPetIds, newlySickPet.id] : current.sickPetIds,
         lastPetIllnessAbsoluteDay: newlySickPet ? nextAbsoluteDay : current.lastPetIllnessAbsoluteDay,
         missingPetId: newlyMissingPet?.id ?? current.missingPetId,
+        lastDreamAbsoluteDay: dreamTonight === null ? current.lastDreamAbsoluteDay : nextAbsoluteDay,
+        lastDreamVariant: dreamTonight === null ? current.lastDreamVariant : dreamTonight,
         farmVisitor,
         treeStates,
         plantedTrees: current.plantedTrees.map((tree) => ({ ...tree, stage: tree.watered ? Math.min(3, tree.stage + 1) : tree.stage, watered: rainyMorning })),
@@ -3098,6 +3143,7 @@ export default function FarmGame() {
       };
     });
     setDreamScene(dreamTonight);
+    if (dreamTonight !== null) setDreamPlayer({ x: 48, y: 62 });
     setMessage(dreamTonight === null ? morningMessage : "夜里，小禾做了一个非常不真实的梦……");
     playTone(540);
   };
@@ -3846,7 +3892,7 @@ export default function FarmGame() {
 
       {bedtimePhase === "walkingHome" && <div className="bedtime-journey" role="status" aria-label="小禾自动回家睡觉"><div className="bedtime-sky"><i /></div><div className="bedtime-path"><span className="bedtime-walker"><PlayerSprite facing="right" sick={game.sick} /></span><i className="bedtime-house" /></div><strong>小禾正在自己走回农舍…</strong></div>}
 
-      {dreamScene !== null && <div className={`dream-overlay dream-scene-${dreamScene}`} role="dialog" aria-modal="true" aria-label="小禾不真实的梦境"><section className="dream-world"><div className="dream-stars"><i /><i /><i /><i /><i /></div><div className="dream-moon" />{dreamScene === 0 ? <><div className="dream-floating-house"><i /><b /><span /></div><div className="dream-cloud-islands"><i /><i /><i /></div><strong>农舍飘到了云朵上，田地像小岛一样在天空转圈……</strong></> : dreamScene === 1 ? <><div className="dream-reverse-river"><i /><i /><i /></div><div className="dream-upward-fish"><i /><i /><i /></div><strong>河水倒着流上天空，小鱼像星星一样向月亮游去……</strong></> : <><div className="dream-giant-radish"><i /><b /><em /></div><div className="dream-tiny-houses"><i /><i /><i /></div><strong>一根发光的大萝卜比整个村庄还高，房子变得像积木一样小……</strong></>}<span className="dreaming-player"><PlayerSprite facing="down" sick={false} /></span><button onClick={() => { setDreamScene(null); setMessage("早上七点，小禾从奇怪又漂亮的梦里醒来，仍然盖着被子躺在床上。 "); playTone(760); }}>从梦里醒来</button></section></div>}
+      {dreamScene !== null && <div className={`dream-overlay dream-scene-${dreamScene}`} role="dialog" aria-modal="true" aria-label="小禾不真实的梦境"><section className="dream-world" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; const bounds = event.currentTarget.getBoundingClientRect(); setDreamPlayer({ x: Math.max(7, Math.min(93, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(18, Math.min(72, ((event.clientY - bounds.top) / bounds.height) * 100)) }); showWalking(event.clientX - bounds.left - bounds.width * dreamPlayer.x / 100, event.clientY - bounds.top - bounds.height * dreamPlayer.y / 100); setMessage("小禾朝梦境里的奇怪景色走过去……"); }}><div className="dream-stars"><i /><i /><i /><i /><i /></div><div className="dream-moon" />{dreamScene % 6 === 0 ? <><div className="dream-floating-house"><i /><b /><span /></div><div className="dream-cloud-islands"><i /><i /><i /></div></> : dreamScene % 6 === 1 ? <><div className="dream-reverse-river"><i /><i /><i /></div><div className="dream-upward-fish"><i /><i /><i /></div></> : dreamScene % 6 === 2 ? <><div className="dream-giant-radish"><i /><b /><em /></div><div className="dream-tiny-houses"><i /><i /><i /></div></> : dreamScene % 6 === 3 ? <div className="dream-clock-forest"><i /><i /><i /><b /><b /></div> : dreamScene % 6 === 4 ? <div className="dream-star-stair"><i /><i /><i /><i /><i /></div> : <div className="dream-giant-animals"><i /><b /><em /></div>}<strong>{DREAM_STORIES[dreamScene]}</strong><span className={`dreaming-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${dreamPlayer.x}%`, top: `${dreamPlayer.y}%` }}><PlayerSprite facing={facing} sick={false} /></span><button onClick={() => { setDreamScene(null); setMessage("早上七点，小禾从奇怪又漂亮的梦里醒来，仍然盖着被子躺在床上。 "); playTone(760); }}>从梦里醒来</button></section></div>}
 
       {bulkChestPrompt && (
         <div className="bulk-chest-prompt" role="dialog" aria-modal="true" aria-label={`是否把所有${RESOURCE_INFO[bulkChestPrompt].name}放进收纳箱`}>
