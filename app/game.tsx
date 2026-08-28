@@ -989,7 +989,7 @@ export default function FarmGame() {
   }, []);
 
   const crossSceneBoundary = useCallback((destination: { x: number; y: number }, dx: number, dy: number) => {
-    if (scene === "farm" && worldVillage === "maple" && dx < 0 && destination.x === 0) {
+    if (scene === "farm" && worldVillage === "maple" && dx < 0 && destination.x === -3) {
       const friend = onlinePlayers.find((onlinePlayer) => onlinePlayer.deviceId !== multiplayerSession?.deviceId && onlinePlayer.online && onlinePlayer.currentVillage === "qinghe");
       switchVillage("qinghe");
       setScene(friend?.scene ?? "farm");
@@ -997,17 +997,17 @@ export default function FarmGame() {
       setMessage(friend ? `沿着左边山路到了青禾村，一进村就看见了${friend.playerName}！` : "沿着左边山路到了青禾村。朋友来到同一个场景后就会出现。 ");
       return true;
     }
-    if (scene === "farm" && worldVillage === "qinghe" && dx < 0 && destination.x === 0) {
+    if (scene === "farm" && worldVillage === "qinghe" && dx < 0 && destination.x === -3) {
       setScene("westFriendFarm"); setPlayer({ x: 11, y: 5 }); setMessage("沿着农场左边的草路，来到安安的小农场。 "); return true;
     }
     if (scene === "westFriendFarm" && dx > 0 && destination.x === 11) {
-      setScene("farm"); setPlayer({ x: 0, y: 5 }); setMessage("从安安的小农场回到青禾农场。 "); return true;
+      setScene("farm"); setPlayer({ x: -2, y: 5 }); setMessage("从安安的小农场回到青禾农场最左边的草地区域。 "); return true;
     }
-    if (scene === "farm" && dx > 0 && destination.x === 11) {
+    if (scene === "farm" && dx > 0 && destination.x === 14) {
       setScene("town"); setPlayer({ x: 0, y: 5 }); setMessage(`欢迎来到${VILLAGE_INFO[worldVillage].name}！走到道路边缘就能继续前往其他地方。`); return true;
     }
     if (scene === "town" && dx < 0 && destination.x === 0) {
-      setScene("farm"); setPlayer({ x: 11, y: 5 }); setMessage("回到农场啦。今天还想种些什么？"); return true;
+      setScene("farm"); setPlayer({ x: 13, y: 5 }); setMessage("回到农场最右边的草路啦。继续往里走才会到农田。 "); return true;
     }
     if (scene === "town" && dx > 0 && destination.x === 11) {
       setScene("eastNeighbor"); setPlayer({ x: 0, y: 5 }); setMessage("来到林婶的果园小屋，林婶正在门口散步。 "); return true;
@@ -1099,7 +1099,7 @@ export default function FarmGame() {
     }
 
     const next = {
-      x: Math.max(0, Math.min(11, player.x + dx)),
+      x: Math.max(scene === "farm" ? -3 : 0, Math.min(scene === "farm" ? 14 : 11, player.x + dx)),
       y: Math.max(0, Math.min(7, player.y + dy)),
     };
     if (scene === "farm") {
