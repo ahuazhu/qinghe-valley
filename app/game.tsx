@@ -22,9 +22,11 @@ type PlacedCraft = { id: string; type: CraftType; x: number; y: number; rotation
 type PlantedTree = { id: string; x: number; y: number; stage: number; watered: boolean };
 type FencePlacementSlot = { id: string; x: number; y: number; rotation: 0 | 90 };
 type ForestItem = "pinecone" | "pineNut";
-type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "resin" } | { kind: "matches" } | { kind: "product"; id: "egg" | "milk" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
+type PetType = "cat" | "dog" | "chick" | "duck" | "rabbit" | "hamster";
+type PetRecord = { id: string; type: PetType; sex: "男生" | "女生"; bornDay: number; bornYear: number };
+type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "resin" } | { kind: "matches" } | { kind: "product"; id: "egg" | "milk" | "wool" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
 type ShippingItemGroup = "resource" | "seed" | "craft" | "single";
-type ShippingSingleField = "wood" | "stone" | "herbs" | "pinecones" | "pineNuts" | "resin" | "eggs" | "milk" | "cookies" | "crabs" | "shrimp";
+type ShippingSingleField = "wood" | "stone" | "herbs" | "pinecones" | "pineNuts" | "resin" | "eggs" | "milk" | "wool" | "cookies" | "crabs" | "shrimp";
 type ShippingCatalogItem = { id: string; name: string; short: string; price: number; group: ShippingItemGroup; key: string };
 
 type OnlinePlayer = {
@@ -116,8 +118,10 @@ type GameState = {
   animalPen: boolean;
   chickens: number;
   cows: number;
+  sheep: number;
   eggs: number;
   milk: number;
+  wool: number;
   cookies: number;
   crabs: number;
   shrimp: number;
@@ -125,6 +129,10 @@ type GameState = {
   lastAnanCookieDay: string;
   lastEggDay: number;
   lastMilkDay: number;
+  lastWoolDay: number;
+  rainExposure: number;
+  pets: PetRecord[];
+  lastPetBirthYears: Partial<Record<PetType, number>>;
   birthdayCakeYear: number;
   driverLicense: boolean;
   ownsCar: boolean;
@@ -263,6 +271,14 @@ const GROUND_SUPPLIES = [
 ] as const;
 
 const GROUND_SUPPLY_PRICES = [45, 55, 160, 220, 220, 50, 60, 60] as const;
+const PET_CATALOG: Array<{ id: PetType; name: string; personality: string; food: string; water: string; price: number }> = [
+  { id: "cat", name: "三花猫", personality: "亲人、爱晒太阳，也喜欢追会动的小东西", food: "1 小碗猫粮", water: "1 小碗清水", price: 260 },
+  { id: "dog", name: "柴犬", personality: "热情、勇敢，会跟着主人在农场巡逻", food: "2 小碗狗粮", water: "2 小碗清水", price: 320 },
+  { id: "chick", name: "绒毛小鸡", personality: "好奇、胆子小，喜欢跟同伴挤在一起", food: "1 小把谷粒", water: "半小碗清水", price: 120 },
+  { id: "duck", name: "小鸭", personality: "活泼、爱玩水，走路时会摇摇摆摆", food: "1 小把鸭粮", water: "1 小盆清水", price: 150 },
+  { id: "rabbit", name: "垂耳兔", personality: "温柔、安静，开心时会轻轻蹦跳", food: "1 份青草和胡萝卜", water: "1 小碗清水", price: 220 },
+  { id: "hamster", name: "仓鼠", personality: "机灵、喜欢囤食物，夜里最有精神", food: "半小勺杂粮", water: "半小瓶清水", price: 90 },
+];
 const CRAFT_RECIPES: Record<CraftType, { name: string; short: string; description: string; wood: number; stone: number; resin?: number }> = {
   chest: { name: "木箱", short: "箱", description: "摆放后可以存放收获", wood: 8, stone: 0 },
   fence: { name: "木栅栏", short: "栏", description: "8 段围栏能挡住偷吃作物的小动物", wood: 4, stone: 0 },
@@ -286,6 +302,7 @@ const SHIPPING_CATALOG: ShippingCatalogItem[] = [
   { id: "single:resin", name: "树脂", short: "脂", price: 32, group: "single", key: "resin" },
   { id: "single:eggs", name: "鸡蛋", short: "蛋", price: 55, group: "single", key: "eggs" },
   { id: "single:milk", name: "牛奶", short: "奶", price: 82, group: "single", key: "milk" },
+  { id: "single:wool", name: "羊毛", short: "毛", price: 96, group: "single", key: "wool" },
   { id: "single:cookies", name: "安安的饼干", short: "饼", price: 95, group: "single", key: "cookies" },
   { id: "single:crabs", name: "海边螃蟹", short: "蟹", price: 78, group: "single", key: "crabs" },
   { id: "single:shrimp", name: "海边小虾", short: "虾", price: 72, group: "single", key: "shrimp" },
@@ -482,8 +499,10 @@ const makeNewGame = (): GameState => ({
   animalPen: false,
   chickens: 0,
   cows: 0,
+  sheep: 0,
   eggs: 0,
   milk: 0,
+  wool: 0,
   cookies: 0,
   crabs: 0,
   shrimp: 0,
@@ -491,6 +510,10 @@ const makeNewGame = (): GameState => ({
   lastAnanCookieDay: "",
   lastEggDay: 0,
   lastMilkDay: 0,
+  lastWoolDay: 0,
+  rainExposure: 0,
+  pets: [],
+  lastPetBirthYears: {},
   birthdayCakeYear: 0,
   driverLicense: false,
   ownsCar: false,
@@ -506,7 +529,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
   const defaults = makeNewGame();
   if (!saved) return defaults;
   try {
-    const parsed = JSON.parse(saved) as Partial<GameState> & { sheep?: number };
+    const parsed = JSON.parse(saved) as Partial<GameState>;
     if (!parsed.tiles || parsed.tiles.length < 32) return defaults;
     return {
       ...defaults,
@@ -534,7 +557,8 @@ const restoreVillageGame = (saved: string | null): GameState => {
       npcHealedDays: parsed.npcHealedDays ?? {},
       lastSchoolAttendance: parsed.lastSchoolAttendance ?? "",
       seasonExcursionCompleted: parsed.seasonExcursionCompleted ?? false,
-      cows: parsed.cows ?? parsed.sheep ?? 0,
+      cows: parsed.cows ?? 0,
+      sheep: parsed.sheep ?? 0,
       mallItems: { ...defaults.mallItems, ...(parsed.mallItems ?? {}) },
     };
   } catch {
@@ -613,7 +637,14 @@ export default function FarmGame() {
   const [carRouteTarget, setCarRouteTarget] = useState<"district" | "farm">("district");
   const [carRouteStep, setCarRouteStep] = useState(0);
   const [carHeading, setCarHeading] = useState<"forward" | "left" | "right" | "back">("forward");
+  const [carStopped, setCarStopped] = useState(false);
+  const [trafficLight, setTrafficLight] = useState<"red" | "green">("green");
   const [mallOpen, setMallOpen] = useState(false);
+  const [mallFloor, setMallFloor] = useState<1 | 2 | 3>(1);
+  const [petShopOpen, setPetShopOpen] = useState(false);
+  const [selectedPet, setSelectedPet] = useState<PetType>("cat");
+  const [selectedPetSex, setSelectedPetSex] = useState<"男生" | "女生">("女生");
+  const [bedtimePhase, setBedtimePhase] = useState<"walkingHome" | "tuckedIn" | "waking" | null>(null);
   const [interiorFireLit, setInteriorFireLit] = useState(false);
   const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
   const [inspectedItem, setInspectedItem] = useState<string | null>(null);
@@ -637,6 +668,7 @@ export default function FarmGame() {
   const herbClickTimerRef = useRef<number | null>(null);
   const forestClickTimerRef = useRef<number | null>(null);
   const matchesClickTimerRef = useRef<number | null>(null);
+  const woolClickTimerRef = useRef<number | null>(null);
   const walkTimerRef = useRef<number | null>(null);
   const farmActionTimerRef = useRef<number | null>(null);
   const excursionTimerRef = useRef<number | null>(null);
@@ -648,6 +680,7 @@ export default function FarmGame() {
   const fishingMarkerDirectionRef = useRef(1);
   const fishingBaitUsedRef = useRef(false);
   const beachRespawnTimersRef = useRef<number[]>([]);
+  const bedtimeTimersRef = useRef<number[]>([]);
   const multiplayerStatusRef = useRef({ player, game });
   const splitLeftRef = useRef<HTMLIFrameElement | null>(null);
   const splitRightRef = useRef<HTMLIFrameElement | null>(null);
@@ -663,7 +696,7 @@ export default function FarmGame() {
     const saved = localStorage.getItem(storageKey);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved) as GameState & { sheep?: number };
+        const parsed = JSON.parse(saved) as GameState;
         if (parsed.tiles?.length >= 32) {
           const defaults = makeNewGame();
           setGame({
@@ -689,7 +722,8 @@ export default function FarmGame() {
             pinecones: parsed.pinecones ?? 0,
             pineNuts: parsed.pineNuts ?? 0,
             resin: parsed.resin ?? 0,
-            cows: parsed.cows ?? parsed.sheep ?? 0,
+            cows: parsed.cows ?? 0,
+            sheep: parsed.sheep ?? 0,
             groundSupplies: defaults.groundSupplies.map((defaultVisible, index) => parsed.groundSupplies?.[index] ?? defaultVisible),
             treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
             plantedTrees: (parsed.plantedTrees ?? []).map((tree) => ({ ...tree, watered: tree.watered ?? false })),
@@ -844,10 +878,58 @@ export default function FarmGame() {
     return () => window.clearInterval(clock);
   }, [ready]);
 
+  useEffect(() => {
+    const rainy = game.weather === "rain" || game.weather === "thunder";
+    const indoors = Boolean(activeBuilding || neighborInterior || residentHome || friendHomeOpen || farmInterior || mallOpen || petShopOpen || ananBeachOpen);
+    if (!ready) return;
+    if (!rainy || indoors || game.umbrellaOpen) {
+      if (game.rainExposure > 0) setGame((current) => ({ ...current, rainExposure: 0 }));
+      return;
+    }
+    if (game.sick) return;
+    const rainTimer = window.setInterval(() => {
+      setGame((current) => {
+        const rainExposure = current.rainExposure + 5;
+        if (rainExposure < 60 || current.sick) return { ...current, rainExposure };
+        setMessage("小禾在雨里淋得太久，冷得发抖，嘴角也变成了伤心的样子。快去诊所检查或回家休息吧。");
+        playTone(210);
+        return { ...current, rainExposure, sick: true, diagnosed: false, lastIllnessDay: current.day };
+      });
+    }, 5_000);
+    return () => window.clearInterval(rainTimer);
+  }, [activeBuilding, ananBeachOpen, farmInterior, friendHomeOpen, game.rainExposure, game.sick, game.umbrellaOpen, game.weather, mallOpen, neighborInterior, petShopOpen, ready, residentHome]);
+
+  useEffect(() => {
+    if (!carTraveling || carStopped || ![0, 3, 5].includes(carRouteStep)) return;
+    const driveTimer = window.setTimeout(() => {
+      if (carRouteStep === 0) {
+        setCarRouteStep(1);
+        setTrafficLight("red");
+        setMessage("前方红灯亮了，及时按下刹车停车。 ");
+        return;
+      }
+      if (carRouteStep === 3) {
+        setCarRouteStep(4);
+        setMessage("公路在前方出现第二个九十度弯口，请看道路形状转向。 ");
+        return;
+      }
+      setCarTraveling(false);
+      setCarStopped(false);
+      if (carRouteTarget === "district") {
+        setScene("mysteryRoad"); setPlayer({ x: 6, y: 5 }); setMessage("你安全驾驶汽车到达了远方新区！三层青禾大商场就在前方。 ");
+      } else {
+        setScene("westFriendFarm"); setPlayer({ x: 6, y: 4 }); setMessage("你安全驾驶汽车回到了安安的小农场。 ");
+      }
+      playTone(900);
+    }, carRouteStep === 5 ? 1_350 : 1_700);
+    return () => window.clearTimeout(driveTimer);
+  }, [carRouteStep, carRouteTarget, carStopped, carTraveling]);
+
   useEffect(() => () => {
     if (eatTimerRef.current) window.clearTimeout(eatTimerRef.current);
     if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
     if (matchesClickTimerRef.current) window.clearTimeout(matchesClickTimerRef.current);
+    if (woolClickTimerRef.current) window.clearTimeout(woolClickTimerRef.current);
     if (farmActionTimerRef.current) window.clearTimeout(farmActionTimerRef.current);
     if (excursionTimerRef.current) window.clearTimeout(excursionTimerRef.current);
     if (fishingWaitTimerRef.current) window.clearTimeout(fishingWaitTimerRef.current);
@@ -855,6 +937,8 @@ export default function FarmGame() {
     if (fishingMarkerTimerRef.current) window.clearInterval(fishingMarkerTimerRef.current);
     beachRespawnTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     beachRespawnTimersRef.current = [];
+    bedtimeTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    bedtimeTimersRef.current = [];
   }, []);
 
   useEffect(() => {
@@ -947,7 +1031,7 @@ export default function FarmGame() {
   }, [multiplayerSession?.deviceId, onlinePlayers, scene, switchVillage, worldVillage]);
 
   const move = useCallback((dx: number, dy: number) => {
-    if (ananBeachTraveling || bulkChestPrompt || drivingSchoolOpen || carTraveling || mallOpen) return;
+    if (ananBeachTraveling || bulkChestPrompt || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || bedtimePhase) return;
     if (ananBeachOpen) {
       showWalking(dx, dy);
       setBeachPlayer((current) => ({
@@ -971,6 +1055,7 @@ export default function FarmGame() {
       return;
     }
     if (activeBuilding) {
+      if (bedtimePhase === "waking") setBedtimePhase(null);
       setIndoorPlayer((current) => ({
         x: Math.max(26, Math.min(76, current.x + dx * 5)),
         y: Math.max(65, Math.min(74, current.y + dy * 4)),
@@ -1017,7 +1102,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, bulkChestPrompt, carTraveling, chestOpen, shippingBinOpen, craftingOpen, crossSceneBoundary, divingAtSea, drivingSchoolOpen, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, mallOpen, neighborInterior, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, carTraveling, chestOpen, shippingBinOpen, craftingOpen, crossSceneBoundary, divingAtSea, drivingSchoolOpen, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, mallOpen, neighborInterior, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1087,6 +1172,11 @@ export default function FarmGame() {
         setMessage("收起制作手册。");
         return;
       }
+      if (key === "escape" && petShopOpen) {
+        setPetShopOpen(false);
+        setMessage("离开青禾宠物之家，回到清河文化街。 ");
+        return;
+      }
       if (key === "escape" && activeBuilding) {
         const building = BUILDING_INFO[activeBuilding];
         setActiveBuilding(null);
@@ -1111,7 +1201,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, chestOpen, shippingBinOpen, craftingOpen, embeddedMode, farmInterior, friendHomeOpen, move, neighborInterior, ranchOpen, residentHome, splitScreen]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, chestOpen, shippingBinOpen, craftingOpen, embeddedMode, farmInterior, friendHomeOpen, move, neighborInterior, petShopOpen, ranchOpen, residentHome, splitScreen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -1435,38 +1525,45 @@ export default function FarmGame() {
       return;
     }
     setGame((current) => ({ ...current, wood: current.wood - 12, stone: current.stone - 4, animalPen: true }));
-    setMessage("动物围栏建好了！现在可以去牧场买鸡和奶牛。 ");
+    setMessage("动物围栏建好了！现在可以去牧场买鸡、奶牛和绵羊。 ");
     playTone(760);
   };
 
-  const buyFarmAnimal = (animal: "chicken" | "cow") => {
+  const buyFarmAnimal = (animal: "chicken" | "cow" | "sheep") => {
     if (!game.animalPen) {
       setMessage("先在牧场委托建一个动物围栏，动物才有安全的家。 ");
       playTone(220);
       return;
     }
-    const price = animal === "chicken" ? 180 : 350;
+    const price = animal === "chicken" ? 180 : animal === "cow" ? 350 : 300;
+    const animalName = animal === "chicken" ? "小鸡" : animal === "cow" ? "奶牛" : "绵羊";
     if (game.coins < price) {
-      setMessage(`金币不够，买${animal === "chicken" ? "鸡" : "奶牛"}需要 ${price} 金币。`);
+      setMessage(`金币不够，买${animalName}需要 ${price} 金币。`);
       playTone(220);
       return;
     }
-    setGame((current) => ({ ...current, coins: current.coins - price, [animal === "chicken" ? "chickens" : "cows"]: current[animal === "chicken" ? "chickens" : "cows"] + 1 }));
-    setMessage(`买到一只${animal === "chicken" ? "小鸡" : "奶牛"}，它已经住进农场旁的围栏。`);
+    const field = animal === "chicken" ? "chickens" : animal === "cow" ? "cows" : "sheep";
+    setGame((current) => ({ ...current, coins: current.coins - price, [field]: current[field] + 1 }));
+    setMessage(`买到一只${animalName}，它已经住进农场旁的围栏。`);
     playTone(820);
   };
 
-  const collectAnimalProduct = (animal: "chicken" | "cow") => {
+  const collectAnimalProduct = (animal: "chicken" | "cow" | "sheep") => {
     if (animal === "chicken") {
       if (game.chickens <= 0) { setMessage("围栏里还没有鸡，可以去牧场购买。 "); return; }
       if (game.lastEggDay === game.day) { setMessage("今天的鸡蛋已经收过了，明早再来吧。 "); return; }
       setGame((current) => ({ ...current, eggs: current.eggs + current.chickens, lastEggDay: current.day }));
       setMessage(`从鸡窝收到了 ${game.chickens} 枚鸡蛋！`);
-    } else {
+    } else if (animal === "cow") {
       if (game.cows <= 0) { setMessage("围栏里还没有牛，可以去牧场购买。 "); return; }
       if (game.lastMilkDay === game.day) { setMessage("今天已经挤过牛奶了，明早再来吧。 "); return; }
       setGame((current) => ({ ...current, milk: current.milk + current.cows, lastMilkDay: current.day }));
       setMessage(`给每头牛挤奶，得到 ${game.cows} 瓶新鲜牛奶！`);
+    } else {
+      if (game.sheep <= 0) { setMessage("围栏里还没有绵羊，可以去牧场购买。 "); return; }
+      if (game.lastWoolDay === game.day) { setMessage("今天已经给绵羊梳过毛了，明早再来吧。 "); return; }
+      setGame((current) => ({ ...current, wool: current.wool + current.sheep, lastWoolDay: current.day }));
+      setMessage(`给绵羊梳理毛发，收到了 ${game.sheep} 团柔软羊毛！羊毛可以卖、送人，3 团还能做成保暖毛毯。`);
     }
     playTone(760);
   };
@@ -1595,15 +1692,15 @@ export default function FarmGame() {
     playTone(900);
   };
 
-  const pickUpAnimalProduct = (product: "egg" | "milk") => {
-    const field = product === "egg" ? "eggs" : "milk";
+  const pickUpAnimalProduct = (product: "egg" | "milk" | "wool") => {
+    const field = product === "egg" ? "eggs" : product === "milk" ? "milk" : "wool";
     if (game[field] <= 0) {
-      setMessage(product === "egg" ? "现在还没有鸡蛋，点击围栏里的鸡收取。" : "现在还没有牛奶，点击围栏里的牛挤奶。 ");
+      setMessage(product === "egg" ? "现在还没有鸡蛋，点击围栏里的鸡收取。" : product === "milk" ? "现在还没有牛奶，点击围栏里的牛挤奶。 " : "现在还没有羊毛，点击围栏里的绵羊梳毛。 ");
       return;
     }
     setHeldItem({ kind: "product", id: product });
     setSelectedResource(null);
-    setMessage(`双击拿起了${product === "egg" ? "鸡蛋" : "牛奶"}，现在能看到它真实的像素样子，也可以送给居民。`);
+    setMessage(`双击拿起了${product === "egg" ? "鸡蛋" : product === "milk" ? "牛奶" : "羊毛"}，现在能看到它真实的像素样子，也可以送给居民。`);
     playTone(620);
   };
 
@@ -1678,7 +1775,7 @@ export default function FarmGame() {
     playTone(supply.kind === "tool" ? 920 : supply.kind === "food" ? 760 : supply.kind === "herb" ? 820 : 660);
   };
 
-  const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "forest" ? forestItemName(heldItem.id) : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : heldItem.kind === "herb" ? "药材" : heldItem.kind === "resin" ? "树脂" : heldItem.kind === "matches" ? "火柴" : heldItem.kind === "product" ? (heldItem.id === "egg" ? "鸡蛋" : "牛奶") : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].title : RARE_ARTIFACTS[heldItem.id].title : "";
+  const carriedItemName = heldItem ? heldItem.kind === "material" ? (heldItem.id === "wood" ? "木头" : "石材") : heldItem.kind === "forest" ? forestItemName(heldItem.id) : heldItem.kind === "resource" ? RESOURCE_INFO[heldItem.id].name : heldItem.kind === "seed" ? `${CROP_INFO[heldItem.id].name}种子包` : heldItem.kind === "herb" ? "药材" : heldItem.kind === "resin" ? "树脂" : heldItem.kind === "matches" ? "火柴" : heldItem.kind === "product" ? (heldItem.id === "egg" ? "鸡蛋" : heldItem.id === "milk" ? "牛奶" : "羊毛") : heldItem.kind === "book" ? LOST_BOOKS[heldItem.id].title : RARE_ARTIFACTS[heldItem.id].title : "";
   const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "forest" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : heldItem.kind === "seed" ? `${heldItem.id}-seeds` : heldItem.kind === "herb" ? "herb" : heldItem.kind === "resin" ? "resin" : heldItem.kind === "matches" ? "matches" : heldItem.kind === "product" ? heldItem.id : heldItem.kind === "book" ? "book" : "artifact" : "";
   const renderCarriedItem = () => heldItem ? <span className={`held-overhead held-${carriedItemClass}`} title={carriedItemName} aria-label={`举着${carriedItemName}`}><i className="held-pixel-object" aria-hidden="true" /><span className="held-item-name">{carriedItemName}</span></span> : null;
   const renderWearables = () => <>{game.equippedOutfit !== "default" && <span className={`worn-outfit worn-${game.equippedOutfit}`} aria-label={game.equippedOutfit === "redCoat" ? "穿着红色节日外套" : "穿着蓝色旅行套装"} />}{game.umbrellaOpen && <span className="player-umbrella" aria-label="撑着彩色雨伞"><i /></span>}</>;
@@ -1759,7 +1856,7 @@ export default function FarmGame() {
       else if (heldItem.kind === "resin") next = { ...current, resin: Math.max(0, current.resin - 1) };
       else if (heldItem.kind === "matches") next = { ...current, crafted: { ...current.crafted, matches: Math.max(0, current.crafted.matches - 1) } };
       else if (heldItem.kind === "product") {
-        const field = heldItem.id === "egg" ? "eggs" : "milk";
+        const field = heldItem.id === "egg" ? "eggs" : heldItem.id === "milk" ? "milk" : "wool";
         next = { ...current, [field]: Math.max(0, current[field] - 1) };
       }
       else next = { ...current, bookBag: current.bookBag.filter((bookId) => bookId !== heldItem.id) };
@@ -1993,7 +2090,7 @@ export default function FarmGame() {
       upgrades: { ...current.upgrades, [item]: item === "house" ? current.upgrades.house + 1 : 1 },
       tiles: item === "field" ? [...current.tiles, ...makeTiles(8)] : current.tiles,
     }));
-    const installed = item === "house" ? ["暖光灯", "自动水箱", "料理台"][houseLevel] : item === "field" ? "8 格新农田" : item === "storage" ? "自动售卖加价 10% 的仓库" : item === "greenhouse" ? "每天自动照料作物的温室" : item === "pond" ? "每次多钓 1 条鱼的大鱼塘" : item === "stoneWall" ? "阻挡小动物的农场石墙" : "更宽敞的农场地盘";
+    const installed = item === "house" ? ["暖光灯", "自动水箱", "料理台"][houseLevel] : item === "field" ? "8 格新农田" : item === "storage" ? "自动售卖加价 10% 的仓库" : item === "greenhouse" ? "隔日自动洒水、人工浇水时加速两阶段的温室" : item === "pond" ? "每次多钓 1 条鱼的大鱼塘" : item === "stoneWall" ? "阻挡小动物的农场石墙" : "更宽敞的农场地盘";
     setMessage(`鲁师傅完成了${recipe.name}，并安装了${installed}！`);
     playTone(820);
   };
@@ -2807,11 +2904,22 @@ export default function FarmGame() {
     if (plantedCropIndexes.length && nextDayNumber % 4 === 0 && !animalProtected) farmVisitor = "animal";
     else if (plantedCropIndexes.length && placedScarecrows < 2 && nextDayNumber % 3 === 0 && (placedScarecrows === 0 || nextDayNumber % 9 === 0)) farmVisitor = "crow";
     const eatenCropIndex = farmVisitor ? plantedCropIndexes[0] : -1;
+    const lightningCropIndex = game.weather === "thunder" && plantedCropIndexes.length && Math.random() < .28
+      ? (plantedCropIndexes.find((index) => index !== eatenCropIndex) ?? -1)
+      : -1;
     const visitorMessage = farmVisitor === "crow"
       ? placedScarecrows === 1 ? " 一只乌鸦还是偶尔飞来吃掉了 1 株幼苗；再放一个稻草人就能完全防住。" : " 一群乌鸦飞进农田，吃掉了 1 株幼苗；放稻草人可以保护作物。"
       : farmVisitor === "animal"
         ? " 一只小动物跑进农田吃掉了 1 株幼苗；围满 8 段栅栏或修建石墙就能挡住它。"
         : "";
+    const lightningMessage = lightningCropIndex >= 0 ? " 昨夜一道雷落进田里，劈坏了 1 株作物；雷雨天的这种情况并不常见。" : "";
+    const petBirthTypes = nextYear > game.year ? PET_CATALOG.filter((pet) => {
+      const sameType = game.pets.filter((ownedPet) => ownedPet.type === pet.id);
+      const hasPair = sameType.some((ownedPet) => ownedPet.sex === "男生") && sameType.some((ownedPet) => ownedPet.sex === "女生");
+      const familyStartYear = game.lastPetBirthYears[pet.id] ?? Math.max(0, ...sameType.map((ownedPet) => ownedPet.bornYear ?? game.year));
+      return hasPair && nextYear - familyStartYear >= 5;
+    }) : [];
+    const petBirthMessage = petBirthTypes.length ? ` 农舍旁传来小小的叫声：${petBirthTypes.map((pet) => pet.name).join("、")}家庭生活满五年，生下了一只小宝宝！` : "";
     const morningMessageBase = becameSick
       ? "早上七点醒来，小禾看起来没什么精神，嘴角变成了伤心的样子。"
       : remainsSick
@@ -2820,7 +2928,7 @@ export default function FarmGame() {
     const birthdayMessage = nextSeason === 0 && nextDayNumber === 19 ? ` 今天是第 ${nextYear} 年春天第十九天，也是小禾的二月十九日生日！大家已经带着蛋糕来到农舍，回家就能开生日派对。` : "";
     const shippingMessage = shippedItemCount > 0 ? ` 昨晚大号出货箱卖出了 ${shippedItemCount} 件东西，赚到 ${shippedEarnings} 金币！` : "";
     const weatherMessage = nextWeather === "sunny" ? " 今天阳光很好。" : nextWeather === "cloudy" ? " 今天是阴天，云层把太阳遮住了。" : nextWeather === "rain" ? " 今天下雨，农田和树苗会自动浇水。" : " 今天有雷雨，天空偶尔会打雷闪电，出门记得撑伞。";
-    const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${weatherMessage}${shippingMessage}${visitorMessage}${birthdayMessage}`;
+    const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${weatherMessage}${shippingMessage}${visitorMessage}${lightningMessage}${petBirthMessage}${birthdayMessage}`;
     setShippingReport(shippedItemCount > 0 ? { itemCount: shippedItemCount, earnings: shippedEarnings } : null);
     setGame((current) => {
       const treeStates = [...current.treeStates];
@@ -2855,6 +2963,13 @@ export default function FarmGame() {
         axe: toolUpgradeDays.axe > 0,
         rod: toolUpgradeDays.rod > 0,
       };
+      const greenhouseAutoDay = Boolean(current.upgrades.greenhouse) && current.day % 2 === 0;
+      const lastPetBirthYears = { ...current.lastPetBirthYears };
+      const pets = [...current.pets];
+      petBirthTypes.forEach((pet, index) => {
+        pets.push({ id: `${pet.id}-baby-${nextYear}-${index}`, type: pet.id, sex: (nextYear + index) % 2 ? "女生" : "男生", bornDay: nextDayNumber, bornYear: nextYear });
+        lastPetBirthYears[pet.id] = nextYear;
+      });
       return {
         ...current,
         year: nextYear,
@@ -2869,10 +2984,13 @@ export default function FarmGame() {
         energy: remainsSick ? 65 : 100,
         sick: remainsSick,
         diagnosed: false,
+        rainExposure: 0,
         lastIllnessDay: becameSick ? nextDayNumber : current.lastIllnessDay,
         water: current.toolUpgrades.water ? 18 : 12,
         toolUpgrades,
         toolUpgradeDays,
+        pets,
+        lastPetBirthYears,
         farmVisitor,
         treeStates,
         plantedTrees: current.plantedTrees.map((tree) => ({ ...tree, stage: tree.watered ? Math.min(3, tree.stage + 1) : tree.stage, watered: rainyMorning })),
@@ -2880,10 +2998,10 @@ export default function FarmGame() {
         groundBooks,
         groundArtifacts,
         groundSupplies,
-        tiles: current.tiles.map((tile, index) => index === eatenCropIndex
+        tiles: current.tiles.map((tile, index) => index === eatenCropIndex || index === lightningCropIndex
           ? { state: "soil", stage: 0, watered: false }
           : tile.state === "crop"
-            ? { ...tile, stage: tile.watered || current.upgrades.greenhouse ? Math.min(3, tile.stage + 1) : tile.stage, watered: rainyMorning }
+            ? { ...tile, stage: Math.min(3, tile.stage + (tile.watered ? (current.upgrades.greenhouse ? 2 : 1) : greenhouseAutoDay ? 1 : 0)), watered: rainyMorning }
             : tile),
       };
     });
@@ -2892,9 +3010,43 @@ export default function FarmGame() {
   };
 
   const sleepAtHome = () => {
-    nextDay();
-    setActiveBuilding(null);
-    setPlayer(BUILDING_INFO.farmhouse.exit);
+    if (bedtimePhase) return;
+    setIndoorPlayer({ x: 12, y: 70 });
+    setBedtimePhase("tuckedIn");
+    setMessage("小禾躺到床上，被子自动盖好了。晚安……");
+    playTone(420);
+    const sleepTimer = window.setTimeout(() => {
+      nextDay();
+      setScene("farm");
+      setActiveBuilding("farmhouse");
+      setIndoorPlayer({ x: 12, y: 70 });
+      setBedtimePhase("waking");
+    }, 1_250);
+    bedtimeTimersRef.current.push(sleepTimer);
+  };
+
+  const endDayFromAnywhere = () => {
+    if (bedtimePhase) return;
+    setCraftingOpen(false); setChestOpen(false); setShippingBinOpen(false); setMapOpen(false); setBuilderOpen(false); setRanchOpen(false); setMallOpen(false); setPetShopOpen(false);
+    setNeighborInterior(null); setResidentHome(null); setFriendHomeOpen(false); setFarmInterior(null); setActiveBuilding(null);
+    setScene("farm");
+    setPlayer({ x: 8, y: 4 });
+    setBedtimePhase("walkingHome");
+    setMessage("天晚了。你不用操作，小禾正在自己沿路走回农舍。 ");
+    playTone(380);
+    const enterTimer = window.setTimeout(() => {
+      setActiveBuilding("farmhouse");
+      setIndoorPlayer({ x: 12, y: 70 });
+      setBedtimePhase("tuckedIn");
+      setMessage("小禾走进房间、爬上床，被子自动盖好了。晚安……");
+    }, 1_350);
+    const wakeTimer = window.setTimeout(() => {
+      nextDay();
+      setActiveBuilding("farmhouse");
+      setIndoorPlayer({ x: 12, y: 70 });
+      setBedtimePhase("waking");
+    }, 2_650);
+    bedtimeTimersRef.current.push(enterTimer, wakeTimer);
   };
 
   const eatBirthdayCake = () => {
@@ -3270,14 +3422,17 @@ export default function FarmGame() {
     setCarRouteTarget("district");
     setCarRouteStep(0);
     setCarHeading("forward");
-    setMessage("汽车发动了！请看道路指示牌，自己控制前进和转弯。 ");
+    setCarStopped(false);
+    setTrafficLight("green");
+    setMessage("汽车发动后会自动前进。遇到红灯按刹车，看到道路九十度转弯时按左转或右转。 ");
   };
 
-  const driveCar = (action: "forward" | "left" | "right" | "uturn") => {
+  const driveCar = (action: "forward" | "brake" | "left" | "right" | "uturn") => {
     if (!carTraveling) return;
     if (action === "uturn") {
       setCarHeading("back");
       setCarTraveling(false);
+      setCarStopped(false);
       const returnScene = carRouteTarget === "district" ? "westFriendFarm" : "mysteryRoad";
       setScene(returnScene);
       setPlayer({ x: 6, y: 5 });
@@ -3285,33 +3440,41 @@ export default function FarmGame() {
       playTone(420);
       return;
     }
-    const route = carRouteTarget === "district" ? ["forward", "right", "forward", "left", "forward"] : ["forward", "left", "forward", "right", "forward"];
-    const expected = route[carRouteStep];
+    if (action === "brake") {
+      setCarStopped(true);
+      setMessage(carRouteStep === 1 && trafficLight === "red" ? "在停止线前安全刹住了！等绿灯亮起会自动继续到转弯处。 " : "汽车已经刹停。按前进即可继续行驶。 ");
+      playTone(340);
+      if (carRouteStep === 1 && trafficLight === "red") {
+        const lightTimer = window.setTimeout(() => {
+          setTrafficLight("green"); setCarRouteStep(2); setCarStopped(false); setMessage("绿灯亮了，汽车继续前进，前方道路即将九十度转弯。 "); playTone(620);
+        }, 1_050);
+        bedtimeTimersRef.current.push(lightTimer);
+      }
+      return;
+    }
+    if (action === "forward") {
+      if (carRouteStep === 1 && trafficLight === "red") {
+        setMessage("红灯不能继续前进，请按刹车停在停止线前。 "); playTone(210); return;
+      }
+      if (carRouteStep === 2 || carRouteStep === 4) {
+        setMessage("道路已经九十度转弯，直行会离开路面，请按正确方向转弯。 "); playTone(210); return;
+      }
+      setCarStopped(false); setCarHeading("forward"); setMessage("松开刹车，汽车继续自动前进。 "); playTone(520); return;
+    }
+    const expected = carRouteTarget === "district"
+      ? (carRouteStep === 2 ? "right" : carRouteStep === 4 ? "left" : null)
+      : (carRouteStep === 2 ? "left" : carRouteStep === 4 ? "right" : null);
     setCarHeading(action);
     if (action !== expected) {
-      setMessage(action === "forward" ? "前面不能直行，请看路口指示牌选择转弯。 " : `这个路口不能${action === "left" ? "左转" : "右转"}，请看指示牌再操作。`);
-      playTone(220);
+      setMessage(`车轮转向了${action === "left" ? "左边" : "右边"}，但道路弯向另一侧，请看清路面再转。`); playTone(220);
       return;
     }
-    const nextStep = carRouteStep + 1;
-    setCarRouteStep(nextStep);
-    playTone(560 + nextStep * 45);
-    if (nextStep < route.length) {
-      const nextAction = route[nextStep];
-      setMessage(`行驶顺利。下一个路口请${nextAction === "forward" ? "继续前进" : nextAction === "left" ? "向左转" : "向右转"}。`);
-      return;
-    }
-    setCarTraveling(false);
-    if (carRouteTarget === "district") {
-      setScene("mysteryRoad");
-      setPlayer({ x: 6, y: 5 });
-      setMessage("你亲自驾驶汽车到达了远方新区！这里先建好了青禾大商场。 ");
-    } else {
-      setScene("westFriendFarm");
-      setPlayer({ x: 6, y: 4 });
-      setMessage("你亲自驾驶汽车回到了安安的小农场。 ");
-    }
-    playTone(900);
+    setCarStopped(false);
+    setCarRouteStep(carRouteStep + 1);
+    const straightTimer = window.setTimeout(() => setCarHeading("forward"), 480);
+    bedtimeTimersRef.current.push(straightTimer);
+    setMessage("顺着道路完成九十度转弯，汽车继续沿车道自动前进。 ");
+    playTone(690);
   };
 
   const buyMallItem = (name: string, price: number, energy = 0, item?: MallItem) => {
@@ -3328,6 +3491,39 @@ export default function FarmGame() {
     }));
     setMessage(energy ? `买下${name}并品尝了，恢复 ${energy} 点体力。` : `买下了${name}，已经放进左边的商场物品背包。`);
     playTone(720);
+  };
+
+  const useWoolBlanket = () => {
+    if (game.wool < 3) {
+      setMessage(`制作一条保暖毛毯需要 3 团羊毛，现在有 ${game.wool} 团。羊毛也可以卖掉或送给居民。`);
+      return;
+    }
+    setGame((current) => ({ ...current, wool: current.wool - 3, energy: Math.min(100, current.energy + 30) }));
+    setMessage("用 3 团羊毛做成了柔软毛毯，盖着休息了一会儿，恢复 30 点体力！");
+    playTone(780);
+  };
+
+  const clickWool = () => {
+    if (woolClickTimerRef.current) window.clearTimeout(woolClickTimerRef.current);
+    woolClickTimerRef.current = window.setTimeout(useWoolBlanket, 230);
+  };
+
+  const doubleClickWool = () => {
+    if (woolClickTimerRef.current) window.clearTimeout(woolClickTimerRef.current);
+    pickUpAnimalProduct("wool");
+  };
+
+  const buyPet = () => {
+    const pet = PET_CATALOG.find((entry) => entry.id === selectedPet)!;
+    if (game.coins < pet.price) {
+      setMessage(`领养${pet.name}需要 ${pet.price} 金币，现在的钱不够。`);
+      playTone(210);
+      return;
+    }
+    const petRecord: PetRecord = { id: `${pet.id}-${Date.now()}`, type: pet.id, sex: selectedPetSex, bornDay: game.day, bornYear: game.year };
+    setGame((current) => ({ ...current, coins: current.coins - pet.price, pets: [...current.pets, petRecord] }));
+    setMessage(`领养了${selectedPetSex}${pet.name}！它已经住进农舍旁的小宠物院。养到同种的一男一女，之后有机会生小宝宝。`);
+    playTone(880);
   };
 
   const wearMallOutfit = (outfit: "redCoat" | "blueOutfit") => {
@@ -3353,7 +3549,7 @@ export default function FarmGame() {
   };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || shippingBinOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || ananBeachOpen || ananBeachTraveling || drivingSchoolOpen || carTraveling || mallOpen) return;
+    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || shippingBinOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || ananBeachOpen || ananBeachTraveling || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || bedtimePhase) return;
     if ((event.target as HTMLElement).closest("button, input, .shop-overlay")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
@@ -3449,6 +3645,8 @@ export default function FarmGame() {
 
   const walkInsidePointer = (event: MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button")) return;
+    if (bedtimePhase === "tuckedIn") return;
+    if (bedtimePhase === "waking") setBedtimePhase(null);
     const bounds = event.currentTarget.getBoundingClientRect();
     const destination = { x: Math.max(20, Math.min(80, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(62, Math.min(76, ((event.clientY - bounds.top) / bounds.height) * 100)) };
     showWalking(destination.x - indoorPlayer.x, destination.y - indoorPlayer.y);
@@ -3516,9 +3714,13 @@ export default function FarmGame() {
 
       {drivingSchoolOpen && <div className="driving-school-overlay" role="dialog" aria-modal="true" aria-label="青禾驾驶学校"><section className="driving-school-panel"><header><div><span>青禾谷安全驾驶中心</span><h2>青禾驾驶学校</h2></div><button onClick={() => setDrivingSchoolOpen(false)} aria-label="离开驾校">×</button></header>{game.driverLicense ? <div className="license-earned"><i>驾</i><strong>青禾谷驾驶证</strong><span>持证人：{displayName}</span><p>理论考试和驾驶练习都已通过。秋天道路通车后，就可以买车出发了。</p><button onClick={() => { setGame((current) => ({ ...current, driverLicense: false })); setDrivingQuizStep(0); setDrivingPracticeStep(0); setMessage("开始重新练习驾照考试。 "); }}>重新练习考试</button></div> : drivingQuizStep < DRIVING_QUESTIONS.length ? <div className="driving-theory"><span>理论考试 · 第 {drivingQuizStep + 1}/{DRIVING_QUESTIONS.length} 题</span><strong>{DRIVING_QUESTIONS[drivingQuizStep].question}</strong><div>{DRIVING_QUESTIONS[drivingQuizStep].answers.map((answer, index) => <button key={answer} onClick={() => answerDrivingQuestion(index)}>{answer}</button>)}</div><small>答错会从第一题重新开始，认真想一想。</small></div> : <div className="driving-practice"><span>驾驶练习 · 小汽车绕桩</span><div className={`practice-road practice-step-${drivingPracticeStep}`}><i className="practice-car" /><b /><b /><b /></div><strong>{drivingPracticeStep === 0 ? "第一步：向左转" : drivingPracticeStep === 1 ? "第二步：向右绕桩" : drivingPracticeStep === 2 ? "第三步：停进停车框" : "练习完成"}</strong><div><button onClick={() => doDrivingPractice(0)}>← 左转</button><button onClick={() => doDrivingPractice(1)}>右转 →</button><button onClick={() => doDrivingPractice(2)}>▣ 停车</button></div></div>}<footer><span>{game.driverLicense ? "已经取得驾照" : "先通过理论，再完成驾驶练习"}</span><button onClick={() => setDrivingSchoolOpen(false)}>离开驾校</button></footer></section></div>}
 
-      {mallOpen && <div className="mall-overlay" role="dialog" aria-modal="true" aria-label="青禾大商场"><section className="mall-panel"><header><div><span>远方新区购物中心</span><h2>青禾大商场</h2></div><div className="mall-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setMallOpen(false)} aria-label="离开商场">×</button></header><div className="mall-aisles"><article><h3>服装区</h3><button onClick={() => buyMallItem("红色节日外套", 260, 0, "redCoat")}><i className="mall-coat red-coat" /><span><b>红色节日外套</b><small>260 金币 · 可穿着</small></span></button><button onClick={() => buyMallItem("蓝色旅行套装", 320, 0, "blueOutfit")}><i className="mall-coat blue-coat" /><span><b>蓝色旅行套装</b><small>320 金币 · 可穿着</small></span></button></article><article><h3>食品区</h3><button onClick={() => buyMallItem("奶油蛋糕", 80, 30)}><i className="mall-cake" /><span><b>奶油蛋糕</b><small>80 金币 · 体力 +30</small></span></button><button onClick={() => buyMallItem("水果便当", 55, 20)}><i className="mall-lunch" /><span><b>水果便当</b><small>55 金币 · 体力 +20</small></span></button></article><article><h3>百货区</h3><button onClick={() => buyMallItem("彩色雨伞", 120, 0, "umbrella")}><i className="mall-umbrella" /><span><b>彩色雨伞</b><small>120 金币 · 可以撑开</small></span></button><button onClick={() => buyMallItem("家庭种子礼盒", 180, 0, "seedBox")}><i className="mall-seed-box" /><span><b>家庭种子礼盒</b><small>180 金币 · 可打开</small></span></button></article></div><footer><span>衣服、雨伞和礼盒买完会进入商场物品背包。</span><button onClick={() => setMallOpen(false)}>走出商场</button></footer></section></div>}
+      {mallOpen && <div className="mall-overlay" role="dialog" aria-modal="true" aria-label="青禾大商场"><section className="mall-panel three-floor-mall"><header><div><span>远方新区购物中心 · {mallFloor} 楼</span><h2>青禾大商场</h2></div><div className="mall-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setMallOpen(false)} aria-label="离开商场">×</button></header><div className="mall-building-interior"><aside className="mall-elevator" aria-label="商场电梯"><strong>电梯</strong>{([1, 2, 3] as const).map((floor) => <button key={floor} className={mallFloor === floor ? "active" : ""} onClick={() => { setMallFloor(floor); setMessage(`电梯到达 ${floor} 楼，门打开了。`); playTone(540 + floor * 60); }}>{floor}F</button>)}<i /><small>点击楼层</small></aside><div className={`mall-floor mall-floor-${mallFloor}`}><div className="mall-floor-sign"><b>{mallFloor}F</b><span>{mallFloor === 1 ? "美食与生鲜" : mallFloor === 2 ? "服装与旅行用品" : "家居、园艺与户外"}</span></div><div className="mall-aisles">{mallFloor === 1 ? <><article><h3>麦香烘焙店</h3><button onClick={() => buyMallItem("奶油蛋糕", 80, 30)}><i className="mall-cake" /><span><b>奶油蛋糕</b><small>80 金币 · 体力 +30</small></span></button><button onClick={() => buyMallItem("热牛角包", 38, 12)}><i className="mall-cake bread" /><span><b>热牛角包</b><small>38 金币 · 体力 +12</small></span></button></article><article><h3>田园生鲜店</h3><button onClick={() => buyMallItem("水果便当", 55, 20)}><i className="mall-lunch" /><span><b>水果便当</b><small>55 金币 · 体力 +20</small></span></button><button onClick={() => buyMallItem("暖汤套餐", 68, 25)}><i className="mall-lunch soup" /><span><b>暖汤套餐</b><small>68 金币 · 体力 +25</small></span></button></article><article><h3>山谷咖啡角</h3><button onClick={() => buyMallItem("热拿铁", 35, 10)}><i className="mall-coffee" /><span><b>热拿铁</b><small>35 金币 · 体力 +10</small></span></button></article></> : mallFloor === 2 ? <><article><h3>四季衣橱</h3><button onClick={() => buyMallItem("红色节日外套", 260, 0, "redCoat")}><i className="mall-coat red-coat" /><span><b>红色节日外套</b><small>260 金币 · 可穿着</small></span></button><button onClick={() => buyMallItem("蓝色旅行套装", 320, 0, "blueOutfit")}><i className="mall-coat blue-coat" /><span><b>蓝色旅行套装</b><small>320 金币 · 可穿着</small></span></button></article><article><h3>雨天旅行铺</h3><button onClick={() => buyMallItem("彩色雨伞", 120, 0, "umbrella")}><i className="mall-umbrella" /><span><b>彩色雨伞</b><small>120 金币 · 撑伞不会淋病</small></span></button></article><article><h3>配饰小店</h3><button onClick={() => buyMallItem("柔软围巾", 75, 8)}><i className="mall-scarf" /><span><b>柔软围巾</b><small>75 金币 · 休息体力 +8</small></span></button></article></> : <><article><h3>阳台园艺店</h3><button onClick={() => buyMallItem("家庭种子礼盒", 180, 0, "seedBox")}><i className="mall-seed-box" /><span><b>家庭种子礼盒</b><small>180 金币 · 可打开</small></span></button></article><article><h3>温暖家居店</h3><button onClick={() => buyMallItem("柔软靠垫", 90, 15)}><i className="mall-cushion" /><span><b>柔软靠垫</b><small>90 金币 · 体力 +15</small></span></button></article><article><h3>山野户外店</h3><button onClick={() => buyMallItem("登山补给包", 70, 25)}><i className="mall-hiking" /><span><b>登山补给包</b><small>70 金币 · 体力 +25</small></span></button></article></>}</div></div></div><footer><span>乘电梯可以到三层不同商店，衣服、雨伞和礼盒会进入背包。</span><button onClick={() => setMallOpen(false)}>走出商场</button></footer></section></div>}
 
-      {carTraveling && <div className="car-travel-overlay" role="dialog" aria-modal="true" aria-label="自己驾驶汽车"><div className="travel-sky"><i /><i /></div><div className={`travel-road route-step-${carRouteStep}`}><span className={`travel-car car-heading-${carHeading}`}><i /><i /></span><div className="road-intersection" /><div className="driving-road-sign"><span>下一个动作</span><strong>{(carRouteTarget === "district" ? ["前进", "右转", "前进", "左转", "前进"] : ["前进", "左转", "前进", "右转", "前进"])[carRouteStep] ?? "到达"}</strong><small>{carRouteTarget === "district" ? "远方新区方向" : "安安农场方向"}</small></div></div><strong>你正在亲自驾驶 · 路程 {carRouteStep}/5</strong><div className="car-driving-controls"><button onClick={() => driveCar("left")}>↶<span>左转</span></button><button onClick={() => driveCar("forward")}>↑<span>前进</span></button><button onClick={() => driveCar("right")}>↷<span>右转</span></button><button className="uturn-control" onClick={() => driveCar("uturn")}>↩<span>掉头返回</span></button></div></div>}
+      {petShopOpen && <div className="pet-shop-overlay" role="dialog" aria-modal="true" aria-label="青禾宠物店"><section className="pet-shop-panel"><header><div><span>清河文化街</span><h2>青禾宠物之家</h2></div><div className="pet-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setPetShopOpen(false)} aria-label="离开宠物店">×</button></header><div className="pet-shop-scene"><aside className="pet-counter"><button style={personClothesStyle("小桃")} className="pet-clerk" onClick={() => setMessage("店员小桃：慢慢看吧，点击玻璃房里的宠物，就能了解它的性格和照料方法。 ")}><i /><b /></button><strong>店员小桃</strong><small>领养咨询 · 日常照料</small><span className="counter-desk"><i /></span></aside><div className="pet-glass-room" aria-label="宠物们会在玻璃活动区跑动和嬉戏">{PET_CATALOG.map((pet, index) => <button key={pet.id} className={`shop-pet pet-${pet.id} pet-motion-${index + 1} ${selectedPet === pet.id ? "selected" : ""}`} onClick={() => { setSelectedPet(pet.id); setMessage(`正在查看${pet.name}的信息。`); }} aria-label={`查看${pet.name}信息`}><i /><b /><span>{pet.name}</span></button>)}<i className="glass-shine" /><span className="pet-toy toy-ball" /><span className="pet-toy toy-tunnel" /></div></div>{(() => { const pet = PET_CATALOG.find((entry) => entry.id === selectedPet)!; const ownedMale = game.pets.filter((owned) => owned.type === pet.id && owned.sex === "男生").length; const ownedFemale = game.pets.filter((owned) => owned.type === pet.id && owned.sex === "女生").length; return <div className="pet-information"><div className={`pet-profile-art pet-${pet.id}`}><i /><b /></div><div><span>宠物资料</span><h3>{pet.name}</h3><p><b>性格：</b>{pet.personality}</p><p><b>每天吃：</b>{pet.food}　<b>每天喝：</b>{pet.water}</p><small>家里已有：男生 {ownedMale} 只 · 女生 {ownedFemale} 只。同种一男一女生活满五年，会生一只宝宝。</small></div><div className="pet-adopt-controls"><span>选择性别</span><div><button className={selectedPetSex === "男生" ? "active" : ""} onClick={() => setSelectedPetSex("男生")}>男生</button><button className={selectedPetSex === "女生" ? "active" : ""} onClick={() => setSelectedPetSex("女生")}>女生</button></div><button onClick={buyPet}>领养 · ● {pet.price}</button></div></div>; })()}<footer><span>{message}</span><button onClick={() => setPetShopOpen(false)}>离开宠物店</button></footer></section></div>}
+
+      {carTraveling && <div className={`car-travel-overlay ${carStopped ? "car-stopped" : "car-moving"}`} role="dialog" aria-modal="true" aria-label="自己驾驶汽车"><div className="travel-sky"><i /><i /></div><div className={`travel-road route-step-${carRouteStep} turn-${carRouteTarget === "district" ? carRouteStep === 2 ? "right" : "left" : carRouteStep === 2 ? "left" : "right"}`}><div className="road-landscape"><i /><i /><i /><i /></div><span className={`travel-car car-heading-${carHeading}`}><i /><i /></span><div className="road-intersection" /><div className="road-branch" />{carRouteStep === 1 && <div className={`traffic-light traffic-${trafficLight}`} aria-label={`${trafficLight === "red" ? "红" : "绿"}灯`}><i /><b /><em /><span /></div>}<div className="road-stop-line" /></div><strong>{carStopped ? "车辆已经刹停" : "车辆正在自动前进"} · 路程 {Math.min(carRouteStep, 5)}/5</strong><small className="driving-dashboard">观察红绿灯和道路真实弯向，不再显示“下一步动作”。</small><div className="car-driving-controls"><button onClick={() => driveCar("left")}>↶<span>左转</span></button><button className="brake-control" onClick={() => driveCar("brake")}>■<span>刹车</span></button><button className="forward-control" onClick={() => driveCar("forward")}>↑<span>前进</span></button><button onClick={() => driveCar("right")}>↷<span>右转</span></button><button className="uturn-control" onClick={() => driveCar("uturn")}>↩<span>掉头返回</span></button></div></div>}
+
+      {bedtimePhase === "walkingHome" && <div className="bedtime-journey" role="status" aria-label="小禾自动回家睡觉"><div className="bedtime-sky"><i /></div><div className="bedtime-path"><span className="bedtime-walker"><PlayerSprite facing="right" sick={game.sick} /></span><i className="bedtime-house" /></div><strong>小禾正在自己走回农舍…</strong></div>}
 
       {bulkChestPrompt && (
         <div className="bulk-chest-prompt" role="dialog" aria-modal="true" aria-label={`是否把所有${RESOURCE_INFO[bulkChestPrompt].name}放进收纳箱`}>
@@ -3542,7 +3744,7 @@ export default function FarmGame() {
             <div className="meter-label"><span>体力</span><b>{game.energy}/100</b></div>
             <div className="meter"><i style={{ width: `${game.energy}%` }} /></div>
           </div>
-          <button className="sleep-button sleep-under-energy" onClick={nextDay}><span>☾</span><div><strong>结束今天</strong><small>回家睡一觉</small></div><b>›</b></button>
+          <button className="sleep-button sleep-under-energy" onClick={endDayFromAnywhere} disabled={Boolean(bedtimePhase)}><span>☾</span><div><strong>结束今天</strong><small>自动走回家上床</small></div><b>›</b></button>
           <div className="harvest-log">
             <div className="section-title"><span>资源记录</span><button className="auto-sell-button" onClick={sellBackpack}>自动售卖</button></div>
             <div className="seed-record">
@@ -3561,6 +3763,7 @@ export default function FarmGame() {
               <button className={heldItem?.kind === "resin" ? "resource-item resin-record held-material" : "resource-item resin-record"} onDoubleClick={pickUpResin} title="双击拿起绿色树脂"><span className="harvest-icon resin-icon" /><p>树脂<strong>{game.resin}</strong><small>双击拿起 · 做火柴</small></p></button>
               <button className={heldItem?.kind === "product" && heldItem.id === "egg" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => setMessage(`农场鸡蛋共有 ${game.eggs} 枚。每只鸡每天产 1 枚，双击可以拿起来。`)} onDoubleClick={() => pickUpAnimalProduct("egg")} title="双击拿起鸡蛋"><span className="harvest-icon egg-icon" /><p>鸡蛋<strong>{game.eggs}</strong><small>双击拿起</small></p></button>
               <button className={heldItem?.kind === "product" && heldItem.id === "milk" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => setMessage(`新鲜牛奶共有 ${game.milk} 瓶。每头奶牛每天产 1 瓶，双击可以拿起来。`)} onDoubleClick={() => pickUpAnimalProduct("milk")} title="双击拿起牛奶"><span className="harvest-icon milk-icon" /><p>牛奶<strong>{game.milk}</strong><small>双击拿起</small></p></button>
+              <button className={heldItem?.kind === "product" && heldItem.id === "wool" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={clickWool} onDoubleClick={doubleClickWool} title="单击用3团做毛毯，双击拿起羊毛"><span className="harvest-icon wool-icon" /><p>羊毛<strong>{game.wool}</strong><small>单击做毛毯 · 双击拿起</small></p></button>
               <button className="resource-item anan-cookie-item" onClick={eatAnanCookie} title="点击食用，恢复 18 点体力"><span className="harvest-icon cookie-icon" /><p>安安的饼干<strong>{game.cookies}</strong><small>单击食用</small></p></button>
               <button className="resource-item beach-food-item" onClick={eatCrab} title="点击食用，恢复 20 点体力"><span className="harvest-icon crab-icon" /><p>海边螃蟹<strong>{game.crabs}</strong><small>单击食用</small></p></button>
               <button className="resource-item beach-food-item" onClick={eatShrimp} title="点击食用，恢复 12 点体力"><span className="harvest-icon shrimp-icon" /><p>海边小虾<strong>{game.shrimp}</strong><small>单击食用</small></p></button>
@@ -3623,7 +3826,8 @@ export default function FarmGame() {
                 <button className={`farm-cave ${isNight ? "night-active" : ""}`} onClick={() => { setFarmInterior("cave"); setInteriorFireLit(false); setMessage("走进青禾山洞，里面很暗，可以使用火柴照明。 "); }} aria-label="进入青禾山洞"><i /><b /><em /><span>青禾山洞<small>点击进入探险</small></span></button>
                 <button className={`farm-camp ${isNight ? "night-active" : ""}`} onClick={() => { setFarmInterior("camp"); setInteriorFireLit(false); setMessage("掀开门帘进入溪边帐篷，可以使用火柴点亮露营灯。 "); }} aria-label="进入溪边帐篷"><i /><i /><b /><em /><span>溪边露营地 · 点击进入</span></button>
                 <button className="animal-ranch" onClick={() => { setRanchOpen(true); setMessage("来到青禾动物牧场，这里可以买鸡和奶牛，也能委托修建动物围栏。 "); }} aria-label="进入青禾动物牧场"><i className="ranch-roof" /><i className="ranch-wall" /><i className="ranch-door" /><b>青禾动物牧场</b><small>鸡 · 奶牛 · 围栏</small></button>
-                {game.animalPen && <div className="animal-pen" aria-label={`动物围栏，${game.chickens}只鸡，${game.cows}头奶牛`}><span className="pen-rail rail-top" /><span className="pen-rail rail-bottom" /><span className="pen-post post-one" /><span className="pen-post post-two" /><span className="pen-post post-three" /><span className="pen-post post-four" />{Array.from({ length: game.chickens }).map((_, index) => <button key={`chicken-${index}`} className={`farm-animal chicken chicken-${index + 1}`} onClick={() => collectAnimalProduct("chicken")} aria-label="小鸡，点击收鸡蛋"><i /><b /><em /></button>)}{Array.from({ length: game.cows }).map((_, index) => <button key={`cow-${index}`} className={`farm-animal cow cow-${index + 1}`} onClick={() => collectAnimalProduct("cow")} aria-label="奶牛，点击挤牛奶"><i /><b /><em /></button>)}<strong>{game.chickens || game.cows ? `鸡 ${game.chickens} · 牛 ${game.cows}` : "动物围栏已建好"}</strong><small>每只鸡每日 1 蛋 · 每头牛每日 1 奶</small></div>}
+                {game.animalPen && <div className="animal-pen" aria-label={`动物围栏，${game.chickens}只鸡，${game.cows}头奶牛，${game.sheep}只绵羊`}><span className="pen-rail rail-top" /><span className="pen-rail rail-bottom" /><span className="pen-post post-one" /><span className="pen-post post-two" /><span className="pen-post post-three" /><span className="pen-post post-four" />{Array.from({ length: game.chickens }).map((_, index) => <button key={`chicken-${index}`} className={`farm-animal chicken chicken-${index + 1}`} onClick={() => collectAnimalProduct("chicken")} aria-label="小鸡，点击收鸡蛋"><i /><b /><em /></button>)}{Array.from({ length: game.cows }).map((_, index) => <button key={`cow-${index}`} className={`farm-animal cow cow-${index + 1}`} onClick={() => collectAnimalProduct("cow")} aria-label="奶牛，点击挤牛奶"><i /><b /><em /></button>)}{Array.from({ length: game.sheep }).map((_, index) => <button key={`sheep-${index}`} className={`farm-animal sheep sheep-${index + 1}`} onClick={() => collectAnimalProduct("sheep")} aria-label="绵羊，点击收羊毛"><i /><b /><em /></button>)}<strong>{game.chickens || game.cows || game.sheep ? `鸡 ${game.chickens} · 牛 ${game.cows} · 羊 ${game.sheep}` : "动物围栏已建好"}</strong><small>每天可收鸡蛋、牛奶和羊毛</small></div>}
+                {game.pets.length > 0 && <div className="farm-pet-yard" aria-label={`小禾领养的 ${game.pets.length} 只宠物`}><span className="pet-yard-fence" />{game.pets.slice(0, 8).map((pet, index) => <button key={pet.id} className={`farm-pet pet-${pet.type} farm-pet-${index + 1}`} onClick={() => setMessage(`${PET_CATALOG.find((entry) => entry.id === pet.type)?.name}（${pet.sex}）开心地跑来和小禾玩。`)}><i /><b /></button>)}<strong>宠物小院 · {game.pets.length} 只</strong></div>}
 
                 <div className={`field ${game.tiles.length > 32 ? "expanded-field" : ""}`} aria-label={`${game.tiles.length} 格农田`}>
                   {game.tiles.map((tile, index) => (
@@ -3662,9 +3866,9 @@ export default function FarmGame() {
               <>
                 <div className="new-district-road"><i /><i /><i /></div>
                 <div className="new-district-sign"><strong>远方新区</strong><span>更多地方正在等待建设</span></div>
-                <button className="grand-mall-building" onClick={(event) => { event.stopPropagation(); setMallOpen(true); setMessage("走进青禾大商场，服装、食品和百货区都开门了。 "); }} aria-label="进入青禾大商场"><i className="mall-roof" /><i className="mall-body" /><i className="mall-door" /><i className="mall-windows" /><strong>青禾大商场</strong><small>服装 · 食品 · 百货 · 点击进入</small></button>
+                <button className="grand-mall-building" onClick={(event) => { event.stopPropagation(); setMallFloor(1); setMallOpen(true); setMessage("走进三层青禾大商场，一楼是食品店，乘电梯还能去二楼和三楼。 "); }} aria-label="进入青禾大商场"><i className="mall-roof" /><i className="mall-body" /><i className="mall-door" /><i className="mall-windows" /><strong>青禾大商场</strong><small>三层商场 · 电梯换楼层</small></button>
                 <div className="district-plots"><i /><i /><i /><span>待建设区域</span></div>
-                <button className="return-car" onClick={(event) => { event.stopPropagation(); setCarTraveling(true); setCarRouteTarget("farm"); setCarRouteStep(0); setCarHeading("forward"); setMessage("汽车发动了！请自己驾驶，按照路口指示返回安安的小农场。 "); }}><i /><b>自己开车返回</b><small>前进 · 转弯 · 掉头</small></button>
+                <button className="return-car" onClick={(event) => { event.stopPropagation(); setCarTraveling(true); setCarRouteTarget("farm"); setCarRouteStep(0); setCarHeading("forward"); setCarStopped(false); setTrafficLight("green"); setMessage("汽车自动前进。遇到红灯按刹车，看到路面弯向哪边就按哪边转向。 "); }}><i /><b>自己开车返回</b><small>自动前进 · 刹车 · 转弯</small></button>
               </>
             ) : scene === "town" ? (
               <>
@@ -3696,6 +3900,7 @@ export default function FarmGame() {
                 <button className="town-building townhall culture-townhall" onClick={() => { setActiveBuilding("townhall"); setMessage("进入镇公所，周镇长正在整理公告栏。 "); }} aria-label="进入镇公所"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>镇公所</strong><small>公告 · 活动 · 居民委托</small></button>
                 <button className="town-building school culture-school" onClick={() => { setActiveBuilding("school"); setMessage(`进入青禾学校。今天是${WEEKDAYS[(game.day - 1) % 7]}，${[0, 2, 4, 6].includes((game.day - 1) % 7) ? "可以听课并领取 50 金币学习奖励。" : "今天没有课程，可以参观教室。"}`); }} aria-label="进入青禾学校"><span className="building-roof" /><span className="school-bell" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>青禾学校</strong><small>英语 · 语文 · 数学 · 农场知识</small></button>
                 {activeVillage === "qinghe" && <button className="town-building museum culture-museum" onClick={() => { setActiveBuilding("museum"); setMessage("进入青禾博物馆。沈馆长正在整理展柜。 "); }} aria-label="进入青禾博物馆"><span className="building-roof" /><span className="museum-dome" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>青禾博物馆</strong><small>稀奇物品收藏</small></button>}
+                <button className="town-building culture-pet-shop" onClick={(event) => { event.stopPropagation(); setPetShopOpen(true); setSelectedPet("cat"); setMessage("走进青禾宠物之家，右边玻璃活动区里的小动物正在跑动和嬉戏。 "); }} aria-label="进入青禾宠物店"><span className="building-roof" /><span className="building-body" /><span className="building-door" /><span className="building-windows" /><strong>宠物之家</strong><small>猫狗 · 小鸡小鸭 · 小宠物</small></button>
                 <div className="culture-sign"><strong>清河文化街</strong><span>镇公所 · 青禾学校 · 青禾博物馆</span></div>
                 <button className="edge-gate culture-north-gate" onClick={() => { setScene("northNeighbor"); setPlayer({ x: 6, y: 7 }); setMessage("穿过文化街后面的林间小路，来到叶老师的北林书屋。 "); }}><span>北林书屋</span><b>↑</b><small>在文化街后面</small></button>
                 <button className="edge-gate culture-residential-gate" onClick={() => { setScene("residentialDistrict"); setPlayer({ x: 0, y: 5 }); setMessage("来到青禾住宅坡，每位居民都有自己的院地和房子。 "); }}><span>青禾住宅坡</span><b>→</b><small>居民们各自的家</small></button>
@@ -3882,8 +4087,8 @@ export default function FarmGame() {
               <div className="shop-overlay ranch-overlay" role="presentation">
                 <section className="ranch-panel" role="dialog" aria-modal="true" aria-labelledby="ranch-title">
                   <header><div><span>青禾农场北坡</span><h2 id="ranch-title">青禾动物牧场</h2></div><div className="ranch-wallet"><small>现有金币</small><strong>● {game.coins}</strong></div><button onClick={() => setRanchOpen(false)} aria-label="离开动物牧场">×</button></header>
-                  <div className="ranch-scene"><div className="pixel-rancher" style={personClothesStyle("小桃")}><i /><b /><em /></div><div><strong>牧场管理员小桃</strong><p>先给动物建好围栏，再把鸡和奶牛带回农场。每只鸡每天产 1 枚鸡蛋，每头牛每天产 1 瓶牛奶。</p></div></div>
-                  <div className="ranch-products"><article><span className="ranch-product-icon pen-icon">栏</span><div><strong>动物木围栏</strong><small>12 木 · 4 石 · 建在农田旁边</small></div><button onClick={buildAnimalPen} disabled={game.animalPen}>{game.animalPen ? "已经建好" : "委托修建"}</button></article><article><span className="ranch-product-icon chicken-icon">鸡</span><div><strong>小鸡</strong><small>每只每天产 1 枚鸡蛋</small></div><button onClick={() => buyFarmAnimal("chicken")} disabled={!game.animalPen}>● 180</button></article><article><span className="ranch-product-icon cow-icon">牛</span><div><strong>奶牛</strong><small>每头每天产 1 瓶牛奶</small></div><button onClick={() => buyFarmAnimal("cow")} disabled={!game.animalPen}>● 350</button></article></div>
+                  <div className="ranch-scene"><div className="pixel-rancher" style={personClothesStyle("小桃")}><i /><b /><em /></div><div><strong>牧场管理员小桃</strong><p>先给动物建好围栏，再把鸡、奶牛和绵羊带回农场。它们每天都能产出不同物品。</p></div></div>
+                  <div className="ranch-products"><article><span className="ranch-product-icon pen-icon">栏</span><div><strong>动物木围栏</strong><small>12 木 · 4 石 · 建在农田旁边</small></div><button onClick={buildAnimalPen} disabled={game.animalPen}>{game.animalPen ? "已经建好" : "委托修建"}</button></article><article><span className="ranch-product-icon chicken-icon">鸡</span><div><strong>小鸡</strong><small>每只每天产 1 枚鸡蛋</small></div><button onClick={() => buyFarmAnimal("chicken")} disabled={!game.animalPen}>● 180</button></article><article><span className="ranch-product-icon cow-icon">牛</span><div><strong>奶牛</strong><small>每头每天产 1 瓶牛奶</small></div><button onClick={() => buyFarmAnimal("cow")} disabled={!game.animalPen}>● 350</button></article><article><span className="ranch-product-icon sheep-icon">羊</span><div><strong>绵羊</strong><small>每天梳出 1 团羊毛 · 可做毛毯</small></div><button onClick={() => buyFarmAnimal("sheep")} disabled={!game.animalPen}>● 300</button></article></div>
                   <footer><span>{message}</span><button onClick={() => setRanchOpen(false)}>回到大农场</button></footer>
                 </section>
               </div>
@@ -3919,10 +4124,11 @@ export default function FarmGame() {
               <div className="shop-overlay interior-farmhouse" role="presentation">
                 <section className="service-panel farmhouse-panel" role="dialog" aria-modal="true" aria-labelledby="farmhouse-title">
                   <header><div><span>{activeVillageInfo.farm}室内</span><h2 id="farmhouse-title">{displayName}的农舍</h2></div><button onClick={leaveBuilding} aria-label={`离开${displayName}的农舍`}>×</button></header>
-                  <div className={`interior-room farmhouse-room ${game.upgrades.house ? "expanded-farmhouse-room" : ""} farmhouse-level-${game.upgrades.house} ${isNight ? "night-room" : ""} ${isNight && stoveLit ? "stove-lit-room" : ""} ${isNight && game.equipment.lampOn ? "lamp-lit-room" : ""}`} onClick={walkInsidePointer}>
+                  <div className={`interior-room farmhouse-room ${game.upgrades.house ? "expanded-farmhouse-room" : ""} farmhouse-level-${game.upgrades.house} ${isNight ? "night-room" : ""} ${isNight && stoveLit ? "stove-lit-room" : ""} ${isNight && game.equipment.lampOn ? "lamp-lit-room" : ""} ${bedtimePhase === "tuckedIn" || bedtimePhase === "waking" ? "bedtime-sleeping" : ""}`} onClick={walkInsidePointer}>
                     <div className="room-window"><i /><i /></div>
                     {isBirthday && <><div className="birthday-banner">二月十九日 · {displayName}生日快乐！</div><div className="birthday-loft" aria-label="生日派对时可以跑上去的小阁楼"><i /><b /><span>小阁楼</span></div><div className="birthday-house-guests" aria-label="会在农舍里跑动、看窗户、跳床和玩耍的所有朋友">{BIRTHDAY_GUESTS.map((name, index) => <button key={`birthday-${name}`} style={personClothesStyle(name)} className={`birthday-guest birthday-guest-${index + 1} birthday-behavior-${index % 5} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：生日快乐！我们刚才在屋里跑来跑去、看窗外，还轮流在床上跳呢！`)} aria-label={`和参加生日派对的${name}聊天`}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><button className={`birthday-cake ${game.birthdayCakeYear === game.year ? "cake-eaten" : ""}`} onClick={eatBirthdayCake} aria-label="分享生日蛋糕恢复体力"><i /><b /><em /><span>{game.birthdayCakeYear === game.year ? "蛋糕已经分享完" : "点击吃生日蛋糕 · 恢复40体力"}</span></button></>}
                     <button className="house-bed" onClick={sleepAtHome} aria-label="点击床睡到第二天"><i /><b /><span>点击睡觉</span></button>
+                    {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && <div className={`sleeping-player-in-bed ${bedtimePhase}`} aria-label={bedtimePhase === "waking" ? "小禾第二天在床上醒来" : "小禾盖着被子睡觉"}><i className="sleep-head" /><b className="sleep-blanket" /><span>{bedtimePhase === "waking" ? "早上七点 · 点击房间起床" : "盖好被子睡觉中…"}</span></div>}
                     <div className="house-table"><i /><i /></div>
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     {game.upgrades.house >= 1 && <button className={`house-equipment house-lamp ${game.equipment.lampOn ? "active" : ""}`} onClick={() => { setGame((current) => ({ ...current, equipment: { ...current.equipment, lampOn: !current.equipment.lampOn } })); setMessage(game.equipment.lampOn ? "关掉了暖光灯。" : "暖光灯亮起来，夜晚的房间变得明亮了！"); }}><i />暖光灯</button>}
