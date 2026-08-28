@@ -695,6 +695,8 @@ export default function FarmGame() {
   const [selectedPetSex, setSelectedPetSex] = useState<"男生" | "女生">("女生");
   const [bedtimePhase, setBedtimePhase] = useState<"walkingHome" | "tuckedIn" | "waking" | null>(null);
   const [dreamScene, setDreamScene] = useState<number | null>(null);
+  const [dreamPhase, setDreamPhase] = useState<"inside" | "outside">("inside");
+  const [dreamSurreal, setDreamSurreal] = useState(false);
   const [dreamPlayer, setDreamPlayer] = useState({ x: 48, y: 62 });
   const [interiorFireLit, setInteriorFireLit] = useState(false);
   const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
@@ -1084,8 +1086,33 @@ export default function FarmGame() {
   const move = useCallback((dx: number, dy: number) => {
     if (dreamScene !== null) {
       showWalking(dx, dy);
-      setDreamPlayer((current) => ({ x: Math.max(7, Math.min(93, current.x + dx * 4)), y: Math.max(18, Math.min(72, current.y + dy * 4)) }));
-      setMessage("小禾正在不可思议的梦境里自由走动……");
+      const nextDreamPosition = { x: Math.max(5, Math.min(95, dreamPlayer.x + dx * 4)), y: Math.max(10, Math.min(94, dreamPlayer.y + dy * 4)) };
+      if (dreamPhase === "inside" && nextDreamPosition.y <= 18) {
+        setDreamPhase("outside");
+        setDreamPlayer({ x: 50, y: 68 });
+        setMessage("小禾推开小房子的门，外面的风一下吹了进来……");
+        playTone(610);
+        return;
+      }
+      const secretReveal = dreamPhase === "outside" && !dreamSurreal && ((dreamScene % 4 === 0 && nextDreamPosition.x >= 89) || (dreamScene % 4 === 1 && nextDreamPosition.y <= 14) || (dreamScene % 4 === 2 && nextDreamPosition.x <= 9) || (dreamScene % 4 === 3 && nextDreamPosition.y >= 88));
+      if (secretReveal) {
+        setDreamSurreal(true);
+        setDreamPlayer({ x: 50, y: 64 });
+        setMessage("就在这一瞬间，刚才还很普通的地方突然发生了不可思议的变化……");
+        playTone(920);
+        return;
+      }
+      const secretWake = dreamPhase === "outside" && dreamSurreal && (nextDreamPosition.y >= 92 || (dreamScene % 5 === 1 && nextDreamPosition.x >= 94) || (dreamScene % 5 === 2 && nextDreamPosition.x <= 6));
+      if (secretWake) {
+        setDreamScene(null);
+        setDreamPhase("inside");
+        setDreamSurreal(false);
+        setMessage(nextDreamPosition.y >= 92 ? "小禾从高处踩空，身体轻轻往下一坠——睁开眼时，已经回到床上了。 " : "小禾碰到了梦里一个奇怪的地方，眼前突然一亮，再睁眼时已经回到床上。 ");
+        playTone(820);
+        return;
+      }
+      setDreamPlayer(nextDreamPosition);
+      setMessage(dreamPhase === "inside" ? "小禾在安静的小房子里走动。 " : "小禾在房子外面的梦境里自由走动……");
       return;
     }
     if (bedtimePhase === "waking") {
@@ -1177,7 +1204,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, carTraveling, chestOpen, shippingBinOpen, craftingOpen, crossSceneBoundary, divingAtSea, dreamScene, drivingSchoolOpen, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, mallOpen, neighborInterior, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, carTraveling, chestOpen, shippingBinOpen, craftingOpen, crossSceneBoundary, divingAtSea, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, mallOpen, neighborInterior, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1259,6 +1286,8 @@ export default function FarmGame() {
       }
       if (key === "escape" && dreamScene !== null) {
         setDreamScene(null);
+        setDreamPhase("inside");
+        setDreamSurreal(false);
         setMessage("小禾从奇怪的梦里醒来，发现自己仍然盖着被子躺在床上。 ");
         return;
       }
@@ -3143,7 +3172,11 @@ export default function FarmGame() {
       };
     });
     setDreamScene(dreamTonight);
-    if (dreamTonight !== null) setDreamPlayer({ x: 48, y: 62 });
+    if (dreamTonight !== null) {
+      setDreamPhase("inside");
+      setDreamSurreal(false);
+      setDreamPlayer({ x: 48, y: 70 });
+    }
     setMessage(dreamTonight === null ? morningMessage : "夜里，小禾做了一个非常不真实的梦……");
     playTone(540);
   };
@@ -3892,7 +3925,7 @@ export default function FarmGame() {
 
       {bedtimePhase === "walkingHome" && <div className="bedtime-journey" role="status" aria-label="小禾自动回家睡觉"><div className="bedtime-sky"><i /></div><div className="bedtime-path"><span className="bedtime-walker"><PlayerSprite facing="right" sick={game.sick} /></span><i className="bedtime-house" /></div><strong>小禾正在自己走回农舍…</strong></div>}
 
-      {dreamScene !== null && <div className={`dream-overlay dream-scene-${dreamScene}`} role="dialog" aria-modal="true" aria-label="小禾不真实的梦境"><section className="dream-world" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; const bounds = event.currentTarget.getBoundingClientRect(); setDreamPlayer({ x: Math.max(7, Math.min(93, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(18, Math.min(72, ((event.clientY - bounds.top) / bounds.height) * 100)) }); showWalking(event.clientX - bounds.left - bounds.width * dreamPlayer.x / 100, event.clientY - bounds.top - bounds.height * dreamPlayer.y / 100); setMessage("小禾朝梦境里的奇怪景色走过去……"); }}><div className="dream-stars"><i /><i /><i /><i /><i /></div><div className="dream-moon" />{dreamScene % 6 === 0 ? <><div className="dream-floating-house"><i /><b /><span /></div><div className="dream-cloud-islands"><i /><i /><i /></div></> : dreamScene % 6 === 1 ? <><div className="dream-reverse-river"><i /><i /><i /></div><div className="dream-upward-fish"><i /><i /><i /></div></> : dreamScene % 6 === 2 ? <><div className="dream-giant-radish"><i /><b /><em /></div><div className="dream-tiny-houses"><i /><i /><i /></div></> : dreamScene % 6 === 3 ? <div className="dream-clock-forest"><i /><i /><i /><b /><b /></div> : dreamScene % 6 === 4 ? <div className="dream-star-stair"><i /><i /><i /><i /><i /></div> : <div className="dream-giant-animals"><i /><b /><em /></div>}<strong>{DREAM_STORIES[dreamScene]}</strong><span className={`dreaming-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${dreamPlayer.x}%`, top: `${dreamPlayer.y}%` }}><PlayerSprite facing={facing} sick={false} /></span><button onClick={() => { setDreamScene(null); setMessage("早上七点，小禾从奇怪又漂亮的梦里醒来，仍然盖着被子躺在床上。 "); playTone(760); }}>从梦里醒来</button></section></div>}
+      {dreamScene !== null && <div className={`dream-overlay dream-scene-${dreamScene}`} role="dialog" aria-modal="true" aria-label="小禾正在梦境里"><section className={`dream-world dream-phase-${dreamPhase} ${dreamSurreal ? "dream-is-surreal" : "dream-is-ordinary"}`} onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; const bounds = event.currentTarget.getBoundingClientRect(); const nextPosition = { x: Math.max(5, Math.min(95, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(10, Math.min(94, ((event.clientY - bounds.top) / bounds.height) * 100)) }; showWalking(nextPosition.x - dreamPlayer.x, nextPosition.y - dreamPlayer.y); if (dreamPhase === "inside" && nextPosition.y <= 25) { setDreamPhase("outside"); setDreamPlayer({ x: 50, y: 68 }); setMessage("小禾推开房门走了出去……"); return; } const secretReveal = dreamPhase === 'outside' && !dreamSurreal && ((dreamScene % 4 === 0 && nextPosition.x >= 89) || (dreamScene % 4 === 1 && nextPosition.y <= 14) || (dreamScene % 4 === 2 && nextPosition.x <= 9) || (dreamScene % 4 === 3 && nextPosition.y >= 88)); if (secretReveal) { setDreamSurreal(true); setDreamPlayer({ x: 50, y: 58 }); setMessage('四周突然变得不一样了……'); playTone(720); return; } const secretWake = dreamPhase === 'outside' && dreamSurreal && (nextPosition.y >= 91 || (dreamScene % 4 === 1 && nextPosition.x >= 92) || (dreamScene % 4 === 2 && nextPosition.x <= 8) || (dreamScene % 4 === 3 && nextPosition.y <= 13)); if (secretWake) { setDreamScene(null); setDreamPhase('inside'); setDreamSurreal(false); setMessage(nextPosition.y >= 91 ? '小禾一脚踏空，从高处落了下去——再睁眼时已经躺回床上。 ' : '眼前突然闪过一道亮光，小禾从梦里醒来了。 '); playTone(820); return; } setDreamPlayer(nextPosition); setMessage(dreamPhase === 'inside' ? '小禾在安静的小房子里走动。 ' : dreamSurreal ? '小禾继续往梦境深处走去……' : '小禾在房子外的普通院子里走动。 '); }}>{dreamPhase === "inside" ? <><div className="dream-small-house"><i className="dream-room-wall" /><i className="dream-room-window" /><i className="dream-room-bed" /><i className="dream-room-table" /><button className="dream-room-door" onClick={() => { setDreamPhase("outside"); setDreamPlayer({ x: 50, y: 68 }); setMessage("小禾打开房门，走到了房子外面……"); playTone(610); }} aria-label="打开小房子的门"><i /><span>打开门</span></button></div><strong>小禾醒在一间安静的小房子里。窗外看起来有些不对劲……</strong></> : !dreamSurreal ? <><div className="dream-normal-yard"><i className="dream-normal-sky" /><i className="dream-normal-grass" /><div className="dream-normal-house"><i /><b /><span /></div><div className="dream-normal-tree"><i /><b /></div><div className="dream-normal-fence"><i /><i /><i /><i /></div><i className="dream-normal-path" /><i className="dream-normal-pond" /></div><strong>房子外面只是一个安静、普通的小院子。</strong></> : <><div className="dream-stars"><i /><i /><i /><i /><i /></div><div className="dream-moon" />{dreamScene % 6 === 0 ? <><div className="dream-floating-house"><i /><b /><span /></div><div className="dream-cloud-islands"><i /><i /><i /></div></> : dreamScene % 6 === 1 ? <><div className="dream-reverse-river"><i /><i /><i /></div><div className="dream-upward-fish"><i /><i /><i /></div></> : dreamScene % 6 === 2 ? <><div className="dream-giant-radish"><i /><b /><em /></div><div className="dream-tiny-houses"><i /><i /><i /></div></> : dreamScene % 6 === 3 ? <div className="dream-clock-forest"><i /><i /><i /><b /><b /></div> : dreamScene % 6 === 4 ? <div className="dream-star-stair"><i /><i /><i /><i /><i /></div> : <div className="dream-giant-animals"><i /><b /><em /></div>}<strong>{DREAM_STORIES[dreamScene]}</strong></>}<span className={`dreaming-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${dreamPlayer.x}%`, top: `${dreamPlayer.y}%` }}><PlayerSprite facing={facing} sick={false} /></span></section></div>}
 
       {bulkChestPrompt && (
         <div className="bulk-chest-prompt" role="dialog" aria-modal="true" aria-label={`是否把所有${RESOURCE_INFO[bulkChestPrompt].name}放进收纳箱`}>
