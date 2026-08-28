@@ -834,8 +834,8 @@ export default function FarmGame() {
   }, [game, ready, saveStorageKey]);
 
   useEffect(() => {
-    if (!ready || localStorage.getItem("qinghe-dream-preview-v88")) return;
-    localStorage.setItem("qinghe-dream-preview-v88", "shown");
+    if (!ready || localStorage.getItem("qinghe-dream-preview-v89")) return;
+    localStorage.setItem("qinghe-dream-preview-v89", "shown");
     const previousPreview = Number(localStorage.getItem("qinghe-last-preview-dream") ?? -1);
     const previewChoices = DREAM_STORIES.map((_, index) => index).filter((index) => index % 16 >= 8 && index !== previousPreview && index % 16 !== previousPreview % 16);
     const previewDream = previewChoices[Math.floor(Math.random() * previewChoices.length)] ?? 0;
