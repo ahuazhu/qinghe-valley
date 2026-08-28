@@ -1124,12 +1124,12 @@ export default function FarmGame() {
       if (!wakeTrigger) return false;
       const wakeMessages = [
         "小禾终于追上黑影。黑影转过身的一瞬间，四周安静下来——小禾在自己的床上醒了。 ",
-        "小禾走到逆飞的鸟群下面，听见翅膀声突然变成闹钟声，随后在床上睁开眼睛。 ",
+        "小禾追着倒着飞的小鸟跑了一圈，小鸟忽然排成笑脸，清脆的叫声把小禾从梦里叫醒了。 ",
         "小禾踩住那道不属于自己的长影子，影子像水一样散开，眼前变回了熟悉的被子。 ",
-        "小禾走到漂浮的微光下，光点轻轻落在额头上，睁眼时已经回到农舍的床上。 ",
-        "小禾靠近倒着缩小的水纹，水面映出正在睡觉的自己，再抬头时梦已经醒了。 ",
+        "小禾接住最后一颗漂浮的彩灯，彩灯变成一把亮晶晶的糖果，笑着笑着就在床上醒了。 ",
+        "小禾靠近冒泡的水纹，一群圆滚滚的小鱼把水花吹成彩虹，再抬头时梦已经醒了。 ",
         "小禾重新走到那扇不太对劲的家门前。推门的一刻，自己从真正的床上醒了过来。 ",
-        "小禾站到田地中央，所有幼苗同时转向自己。风声停下后，小禾在被窝里醒了。 ",
+        "小禾站到田地中央，幼苗们一起跳完一支舞，还向小禾鞠躬。掌声响起时，小禾在被窝里醒了。 ",
         "小禾跟着苍白的小动物走到草地尽头，它钻进晨光里，小禾也在床上睁开了眼睛。 ",
       ];
       setDreamScene(null);
@@ -4136,7 +4136,7 @@ export default function FarmGame() {
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
           <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "mysteryRoad" ? "mystery-road-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} weather-world-${game.weather} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome || friendHomeOpen || mallOpen ? "interior-open" : ""} ${playingWithAnan ? "playing-with-anan" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "mysteryRoad" ? "▤" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
-            {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /><i className="dream-backward-birds" /><i className="dream-long-shadow" /><i className="dream-floating-light" /><i className="dream-pale-animal" /></div>}
+            {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /><i className="dream-backward-birds" /><i className="dream-long-shadow" /><i className="dream-floating-light" /><i className="dream-pale-animal" /><i className="dream-cookie-rain" /><i className="dream-dancing-crops" /><i className="dream-bubble-fish" /></div>}
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
             {(game.weather === "rain" || game.weather === "thunder") && <div className="rain-weather-layer" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div>}
