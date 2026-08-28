@@ -664,6 +664,7 @@ export default function FarmGame() {
   const [selectedPet, setSelectedPet] = useState<PetType>("cat");
   const [selectedPetSex, setSelectedPetSex] = useState<"男生" | "女生">("女生");
   const [bedtimePhase, setBedtimePhase] = useState<"walkingHome" | "tuckedIn" | "waking" | null>(null);
+  const [dreamScene, setDreamScene] = useState<0 | 1 | 2 | null>(null);
   const [interiorFireLit, setInteriorFireLit] = useState(false);
   const [selectedResource, setSelectedResource] = useState<StorableResource | null>(null);
   const [inspectedItem, setInspectedItem] = useState<string | null>(null);
@@ -1050,7 +1051,7 @@ export default function FarmGame() {
   }, [multiplayerSession?.deviceId, onlinePlayers, scene, switchVillage, worldVillage]);
 
   const move = useCallback((dx: number, dy: number) => {
-    if (ananBeachTraveling || bulkChestPrompt || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || bedtimePhase) return;
+    if (ananBeachTraveling || bulkChestPrompt || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || bedtimePhase || dreamScene !== null) return;
     if (ananBeachOpen) {
       showWalking(dx, dy);
       setBeachPlayer((current) => ({
@@ -1060,11 +1061,25 @@ export default function FarmGame() {
       setMessage(divingAtSea ? "穿着潜水服在水下游动，靠近小鱼小虾后可以抓起。 " : "在海滩上自由走动，也可以走进浅海游泳。 ");
       return;
     }
-    if (craftingOpen || chestOpen || shippingBinOpen || ranchOpen || farmInterior) return;
+    if (craftingOpen || chestOpen || shippingBinOpen || ranchOpen) {
+      setCraftingOpen(false);
+      setChestOpen(false);
+      setShippingBinOpen(false);
+      setRanchOpen(false);
+      setMessage("已经自动收起打开的窗口，小禾继续走路。 ");
+    }
     const now = Date.now();
     if (now - lastMoveAtRef.current < 230) return;
     lastMoveAtRef.current = now;
     showWalking(dx, dy);
+    if (farmInterior) {
+      setIndoorPlayer((current) => ({
+        x: Math.max(18, Math.min(82, current.x + dx * 5)),
+        y: Math.max(58, Math.min(78, current.y + dy * 4)),
+      }));
+      setMessage(farmInterior === "cave" ? "小禾在山洞的小路上探索。 " : "小禾在帐篷里面走动。 ");
+      return;
+    }
     if (neighborInterior || residentHome || friendHomeOpen) {
       setIndoorPlayer((current) => ({
         x: Math.max(20, Math.min(80, current.x + dx * 5)),
@@ -1121,7 +1136,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, carTraveling, chestOpen, shippingBinOpen, craftingOpen, crossSceneBoundary, divingAtSea, drivingSchoolOpen, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, mallOpen, neighborInterior, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, carTraveling, chestOpen, shippingBinOpen, craftingOpen, crossSceneBoundary, divingAtSea, dreamScene, drivingSchoolOpen, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, mallOpen, neighborInterior, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1201,6 +1216,11 @@ export default function FarmGame() {
         setMessage("离开宠物医院，回到远方新区。 ");
         return;
       }
+      if (key === "escape" && dreamScene !== null) {
+        setDreamScene(null);
+        setMessage("小禾从奇怪的梦里醒来，发现自己仍然盖着被子躺在床上。 ");
+        return;
+      }
       if (key === "escape" && activeBuilding) {
         const building = BUILDING_INFO[activeBuilding];
         setActiveBuilding(null);
@@ -1225,7 +1245,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, chestOpen, shippingBinOpen, craftingOpen, embeddedMode, farmInterior, friendHomeOpen, move, neighborInterior, petHospitalOpen, petShopOpen, ranchOpen, residentHome, splitScreen]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, chestOpen, shippingBinOpen, craftingOpen, dreamScene, embeddedMode, farmInterior, friendHomeOpen, move, neighborInterior, petHospitalOpen, petShopOpen, ranchOpen, residentHome, splitScreen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -2966,6 +2986,7 @@ export default function FarmGame() {
     }) : [];
     const petBirthMessage = petBirthTypes.length ? ` 农舍旁传来小小的叫声：${petBirthTypes.map((pet) => pet.name).join("、")}家庭生活满五年，生下了一只小宝宝！` : "";
     const nextAbsoluteDay = (nextYear - 1) * 112 + nextSeason * 28 + nextDayNumber;
+    const dreamTonight = nextAbsoluteDay % 6 === 0 ? (nextAbsoluteDay % 3) as 0 | 1 | 2 : null;
     const allPetsFed = game.pets.length > 0 && game.petFood >= game.pets.length;
     const featherGain = allPetsFed && nextAbsoluteDay % 2 === 0 ? game.pets.filter((pet) => pet.type === "chick" || pet.type === "duck").length : 0;
     const softFurGain = allPetsFed && nextAbsoluteDay % 3 === 0 ? game.pets.filter((pet) => pet.type === "rabbit").length : 0;
@@ -3076,7 +3097,8 @@ export default function FarmGame() {
             : tile),
       };
     });
-    setMessage(morningMessage);
+    setDreamScene(dreamTonight);
+    setMessage(dreamTonight === null ? morningMessage : "夜里，小禾做了一个非常不真实的梦……");
     playTone(540);
   };
 
@@ -3649,7 +3671,7 @@ export default function FarmGame() {
   };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || shippingBinOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || ananBeachOpen || ananBeachTraveling || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || bedtimePhase) return;
+    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || shippingBinOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || ananBeachOpen || ananBeachTraveling || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || bedtimePhase || dreamScene !== null) return;
     if ((event.target as HTMLElement).closest("button, input, .shop-overlay")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
@@ -3823,6 +3845,8 @@ export default function FarmGame() {
       {carTraveling && <div className={`car-travel-overlay ${carStopped ? "car-stopped" : "car-moving"}`} role="dialog" aria-modal="true" aria-label="自己驾驶汽车"><div className="travel-sky"><i /><i /></div><div className={`travel-road route-step-${carRouteStep} turn-${carRouteTarget === "district" ? carRouteStep === 2 ? "right" : "left" : carRouteStep === 2 ? "left" : "right"}`}><div className="road-landscape"><i /><i /><i /><i /></div><span className={`travel-car car-heading-${carHeading}`}><i /><i /></span><div className="road-intersection" /><div className="road-branch" />{carRouteStep === 1 && <div className={`traffic-light traffic-${trafficLight}`} aria-label={`${trafficLight === "red" ? "红" : "绿"}灯`}><i /><b /><em /><span /></div>}<div className="road-stop-line" /></div><strong>{carStopped ? "车辆已经刹停" : "车辆正在自动前进"} · 路程 {Math.min(carRouteStep, 5)}/5</strong><small className="driving-dashboard">观察红绿灯和道路真实弯向，不再显示“下一步动作”。</small><div className="car-driving-controls"><button onClick={() => driveCar("left")}>↶<span>左转</span></button><button className="brake-control" onClick={() => driveCar("brake")}>■<span>刹车</span></button><button className="forward-control" onClick={() => driveCar("forward")}>↑<span>前进</span></button><button onClick={() => driveCar("right")}>↷<span>右转</span></button><button className="uturn-control" onClick={() => driveCar("uturn")}>↩<span>掉头返回</span></button></div></div>}
 
       {bedtimePhase === "walkingHome" && <div className="bedtime-journey" role="status" aria-label="小禾自动回家睡觉"><div className="bedtime-sky"><i /></div><div className="bedtime-path"><span className="bedtime-walker"><PlayerSprite facing="right" sick={game.sick} /></span><i className="bedtime-house" /></div><strong>小禾正在自己走回农舍…</strong></div>}
+
+      {dreamScene !== null && <div className={`dream-overlay dream-scene-${dreamScene}`} role="dialog" aria-modal="true" aria-label="小禾不真实的梦境"><section className="dream-world"><div className="dream-stars"><i /><i /><i /><i /><i /></div><div className="dream-moon" />{dreamScene === 0 ? <><div className="dream-floating-house"><i /><b /><span /></div><div className="dream-cloud-islands"><i /><i /><i /></div><strong>农舍飘到了云朵上，田地像小岛一样在天空转圈……</strong></> : dreamScene === 1 ? <><div className="dream-reverse-river"><i /><i /><i /></div><div className="dream-upward-fish"><i /><i /><i /></div><strong>河水倒着流上天空，小鱼像星星一样向月亮游去……</strong></> : <><div className="dream-giant-radish"><i /><b /><em /></div><div className="dream-tiny-houses"><i /><i /><i /></div><strong>一根发光的大萝卜比整个村庄还高，房子变得像积木一样小……</strong></>}<span className="dreaming-player"><PlayerSprite facing="down" sick={false} /></span><button onClick={() => { setDreamScene(null); setMessage("早上七点，小禾从奇怪又漂亮的梦里醒来，仍然盖着被子躺在床上。 "); playTone(760); }}>从梦里醒来</button></section></div>}
 
       {bulkChestPrompt && (
         <div className="bulk-chest-prompt" role="dialog" aria-modal="true" aria-label={`是否把所有${RESOURCE_INFO[bulkChestPrompt].name}放进收纳箱`}>
