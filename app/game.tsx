@@ -724,6 +724,7 @@ export default function FarmGame() {
   const forestClickTimerRef = useRef<number | null>(null);
   const matchesClickTimerRef = useRef<number | null>(null);
   const woolClickTimerRef = useRef<number | null>(null);
+  const animalProductClickTimerRef = useRef<number | null>(null);
   const walkTimerRef = useRef<number | null>(null);
   const farmActionTimerRef = useRef<number | null>(null);
   const excursionTimerRef = useRef<number | null>(null);
@@ -833,8 +834,8 @@ export default function FarmGame() {
   }, [game, ready, saveStorageKey]);
 
   useEffect(() => {
-    if (!ready || localStorage.getItem("qinghe-dream-preview-v84")) return;
-    localStorage.setItem("qinghe-dream-preview-v84", "shown");
+    if (!ready || localStorage.getItem("qinghe-dream-preview-v85")) return;
+    localStorage.setItem("qinghe-dream-preview-v85", "shown");
     const previewDream = Math.floor(Math.random() * DREAM_STORIES.length);
     setDreamScene(previewDream);
     setDreamPhase("inside");
@@ -842,6 +843,10 @@ export default function FarmGame() {
     setDreamOddity(0);
     setDreamOdditySteps(0);
     setDreamPlayer({ x: 48, y: 70 });
+    setScene("farm");
+    setActiveBuilding("farmhouse");
+    setIndoorPlayer({ x: 12, y: 70 });
+    setBedtimePhase("waking");
     setMessage("早上七点，小禾像平常一样在自己的床上睁开了眼睛。 ");
   }, [ready]);
 
@@ -998,6 +1003,7 @@ export default function FarmGame() {
     if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
     if (matchesClickTimerRef.current) window.clearTimeout(matchesClickTimerRef.current);
     if (woolClickTimerRef.current) window.clearTimeout(woolClickTimerRef.current);
+    if (animalProductClickTimerRef.current) window.clearTimeout(animalProductClickTimerRef.current);
     if (farmActionTimerRef.current) window.clearTimeout(farmActionTimerRef.current);
     if (excursionTimerRef.current) window.clearTimeout(excursionTimerRef.current);
     if (fishingWaitTimerRef.current) window.clearTimeout(fishingWaitTimerRef.current);
@@ -1098,55 +1104,36 @@ export default function FarmGame() {
     return false;
   }, [multiplayerSession?.deviceId, onlinePlayers, scene, switchVillage, worldVillage]);
 
-  const move = useCallback((dx: number, dy: number) => {
-    if (dreamScene !== null) {
-      showWalking(dx, dy);
-      const nextDreamPosition = { x: Math.max(5, Math.min(95, dreamPlayer.x + dx * 4)), y: Math.max(10, Math.min(94, dreamPlayer.y + dy * 4)) };
-      if (dreamPhase === "inside" && nextDreamPosition.y <= 18) {
-        setDreamPhase("outside");
-        setDreamPlayer({ x: 50, y: 68 });
-        setMessage("小禾像平常一样从自己的农舍走到了农场。 ");
-        playTone(610);
-        return;
-      }
-      const secretTrigger = dreamPhase === "outside" && dreamOddity === 0 && ((dreamScene % 4 === 0 && nextDreamPosition.x >= 89) || (dreamScene % 4 === 1 && nextDreamPosition.y <= 14) || (dreamScene % 4 === 2 && nextDreamPosition.x <= 9) || (dreamScene % 4 === 3 && nextDreamPosition.y >= 88));
-      if (secretTrigger) {
-        setDreamOddity(1);
-        setDreamOdditySteps(0);
-        setDreamPlayer(nextDreamPosition);
-        setMessage("小禾继续在熟悉的农场里走着。 ");
-        return;
-      }
-      if (dreamPhase === "outside" && dreamOddity > 0 && !dreamSurreal) {
-        const nextOdditySteps = dreamOdditySteps + 1;
-        if (nextOdditySteps >= 5) {
-          const nextOddity = Math.min(4, dreamOddity + 1);
-          setDreamOddity(nextOddity);
-          setDreamOdditySteps(0);
-          if (nextOddity >= 4) {
-            setDreamSurreal(true);
-            setMessage("熟悉的一切终于变得完全不对劲了……");
-            playTone(820);
-          }
-        } else {
-          setDreamOdditySteps(nextOdditySteps);
-        }
-      }
-      const secretWake = dreamPhase === "outside" && dreamSurreal && (nextDreamPosition.y >= 92 || (dreamScene % 5 === 1 && nextDreamPosition.x >= 94) || (dreamScene % 5 === 2 && nextDreamPosition.x <= 6));
-      if (secretWake) {
-        setDreamScene(null);
-        setDreamPhase("inside");
-        setDreamSurreal(false);
-        setDreamOddity(0);
-        setDreamOdditySteps(0);
-        setMessage(nextDreamPosition.y >= 92 ? "小禾从高处踩空，身体轻轻往下一坠——睁开眼时，已经回到床上了。 " : "小禾碰到了梦里一个奇怪的地方，眼前突然一亮，再睁眼时已经回到床上。 ");
-        playTone(820);
-        return;
-      }
-      setDreamPlayer(nextDreamPosition);
-      setMessage(dreamPhase === "inside" ? "小禾在安静的小房子里走动。 " : "小禾在房子外面的梦境里自由走动……");
+  const advanceOrdinaryDream = useCallback((nextX: number, nextY: number) => {
+    if (dreamScene === null || dreamPhase !== "outside" || dreamOddity >= 4) return;
+    const secretTrigger = dreamOddity === 0 && (
+      (dreamScene % 4 === 0 && scene === "farm" && nextX >= 10)
+      || (dreamScene % 4 === 1 && nextY <= 1)
+      || (dreamScene % 4 === 2 && nextX <= (scene === "farm" ? 0 : 1))
+      || (dreamScene % 4 === 3 && nextY >= 6)
+    );
+    if (secretTrigger) {
+      setDreamOddity(1);
+      setDreamOdditySteps(0);
       return;
     }
+    if (dreamOddity <= 0) return;
+    const nextOdditySteps = dreamOdditySteps + 1;
+    if (nextOdditySteps < 7) {
+      setDreamOdditySteps(nextOdditySteps);
+      return;
+    }
+    const nextOddity = Math.min(4, dreamOddity + 1);
+    setDreamOddity(nextOddity);
+    setDreamOdditySteps(0);
+    if (nextOddity >= 4) {
+      setDreamSurreal(true);
+      setMessage("小禾终于确定：这个熟悉的世界确实有哪里不对。 ");
+      playTone(820);
+    }
+  }, [dreamOddity, dreamOdditySteps, dreamPhase, dreamScene, dreamSurreal, scene]);
+
+  const move = useCallback((dx: number, dy: number) => {
     if (bedtimePhase === "waking") {
       setBedtimePhase(null);
       setMessage("小禾掀开被子下床，可以继续走路了。 ");
@@ -1202,6 +1189,7 @@ export default function FarmGame() {
       x: Math.max(scene === "farm" ? -3 : 0, Math.min(scene === "farm" ? 14 : 11, player.x + dx)),
       y: Math.max(0, Math.min(7, player.y + dy)),
     };
+    advanceOrdinaryDream(next.x, next.y);
     if (scene === "farm") {
       const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length;
       const hasGate = game.placedCrafts.some((craft) => craft.type === "gate");
@@ -1236,7 +1224,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, carTraveling, chestOpen, shippingBinOpen, craftingOpen, crossSceneBoundary, divingAtSea, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, mallOpen, neighborInterior, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, carTraveling, chestOpen, shippingBinOpen, craftingOpen, crossSceneBoundary, divingAtSea, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmGateOpen, farmInterior, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, mallOpen, neighborInterior, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1852,6 +1840,43 @@ export default function FarmGame() {
     setSelectedResource(null);
     setMessage(`双击拿起了${product === "egg" ? "鸡蛋" : product === "milk" ? "牛奶" : "羊毛"}，现在能看到它真实的像素样子，也可以送给居民。`);
     playTone(620);
+  };
+
+  const eatAnimalProduct = (product: "egg" | "milk") => {
+    const field = product === "egg" ? "eggs" : "milk";
+    const name = product === "egg" ? "鸡蛋" : "牛奶";
+    const energy = product === "egg" ? 12 : 20;
+    if (game[field] <= 0) {
+      setMessage(`现在没有${name}可以吃。`);
+      return;
+    }
+    if (game.energy >= 100) {
+      setMessage(`体力已经满了，先把${name}留在资源记录里。`);
+      return;
+    }
+    setGame((current) => ({
+      ...current,
+      energy: Math.min(100, current.energy + energy),
+      [field]: Math.max(0, current[field] - 1),
+    }));
+    setMessage(`吃了${name}，恢复 ${energy} 点体力。`);
+    playTone(product === "egg" ? 650 : 720);
+  };
+
+  const clickAnimalProduct = (product: "egg" | "milk") => {
+    if (animalProductClickTimerRef.current) window.clearTimeout(animalProductClickTimerRef.current);
+    animalProductClickTimerRef.current = window.setTimeout(() => {
+      eatAnimalProduct(product);
+      animalProductClickTimerRef.current = null;
+    }, 230);
+  };
+
+  const doubleClickAnimalProduct = (product: "egg" | "milk") => {
+    if (animalProductClickTimerRef.current) {
+      window.clearTimeout(animalProductClickTimerRef.current);
+      animalProductClickTimerRef.current = null;
+    }
+    pickUpAnimalProduct(product);
   };
 
   const pickUpPetGift = (gift: "feather" | "softFur" | "bone") => {
@@ -2883,6 +2908,7 @@ export default function FarmGame() {
   const leaveBuilding = () => {
     if (!activeBuilding) return;
     const building = BUILDING_INFO[activeBuilding];
+    const leavingDreamFarmhouse = dreamScene !== null && !dreamSurreal && activeBuilding === "farmhouse";
     if (excursionTimerRef.current) window.clearTimeout(excursionTimerRef.current);
     excursionTimerRef.current = null;
     setAmusementOpen(false);
@@ -2890,7 +2916,12 @@ export default function FarmGame() {
     setActiveBuilding(null);
     setInspectedItem(null);
     setPlayer(building.exit);
-    setMessage(`离开${building.name}，回到${activeBuilding === "townhall" || activeBuilding === "museum" ? "清河文化街" : "中心街"}。`);
+    if (leavingDreamFarmhouse) {
+      setDreamPhase("outside");
+      setMessage("小禾像平常一样走出农舍，回到了自己的农场。 ");
+    } else {
+      setMessage(`离开${building.name}，回到${activeBuilding === "townhall" || activeBuilding === "museum" ? "清河文化街" : activeBuilding === "farmhouse" ? "农场" : "中心街"}。`);
+    }
   };
 
   const returnToFarm = () => {
@@ -3603,12 +3634,8 @@ export default function FarmGame() {
   };
 
   const buyOrDriveCar = () => {
-    if (game.season === 0) {
-      setMessage("道路还在春季规划中，告示牌写着：夏季施工，秋季通车。先去驾校考驾照吧。 ");
-      return;
-    }
-    if (game.season === 1) {
-      setMessage("夏季正在封路施工，工人们正在钻地孔、铺路面。等到秋天道路就会成型。 ");
+    if (game.year === 1 && game.season === 0) {
+      setMessage("这是最开始的道路修建期。完成以后，道路就会永久通车，不会每年夏天重复施工。 ");
       return;
     }
     if (!game.driverLicense) {
@@ -3786,7 +3813,7 @@ export default function FarmGame() {
   };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || shippingBinOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || ananBeachOpen || ananBeachTraveling || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || bedtimePhase || dreamScene !== null) return;
+    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || shippingBinOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || ananBeachOpen || ananBeachTraveling || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || bedtimePhase) return;
     if ((event.target as HTMLElement).closest("button, input, .shop-overlay")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
@@ -3860,6 +3887,7 @@ export default function FarmGame() {
       return;
     }
     const destination = { x: Math.max(0, Math.min(11, Math.round((percentX - 4) / 7.7))), y: Math.max(0, Math.min(7, Math.round((percentY - 8) / 10.5))) };
+    advanceOrdinaryDream(destination.x, destination.y);
     if (scene === "farm") {
       const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length;
       const hasGate = game.placedCrafts.some((craft) => craft.type === "gate");
@@ -3892,14 +3920,19 @@ export default function FarmGame() {
   };
 
   const renderOrdinaryDreamSetting = () => dreamPhase === "inside" ? (
-    <div className="dream-copy-interior farmhouse-room">
-      <div className="room-window"><i /><i /></div>
-      <div className="house-bed"><i /><b /><span>小禾的床</span></div>
-      <div className="house-table"><i /><i /></div>
-      <div className="house-stove"><i /><b /><span /></div>
-      <div className="house-rug" />
-      <button className="house-door dream-copy-door" onClick={() => { setDreamPhase("outside"); setDreamPlayer({ x: 50, y: 68 }); setMessage("小禾像平常一样从农舍走到农场。 "); playTone(610); }} aria-label="从农舍走到农场"><span>出口</span></button>
-      <i className="dream-tiny-difference dream-room-difference" aria-hidden="true" />
+    <div className="dream-farmhouse-shell service-panel farmhouse-panel">
+      <header><div><span>{activeVillageInfo.farm}室内</span><h2>{displayName}的农舍</h2></div></header>
+      <div className={`dream-copy-interior farmhouse-room ${game.upgrades.house ? "expanded-farmhouse-room" : ""} farmhouse-level-${game.upgrades.house}`}>
+        <div className="room-window"><i /><i /></div>
+        <div className="house-bed"><i /><b /><span>小禾的床</span></div>
+        <div className="house-table"><i /><i /></div>
+        <div className="house-stove"><i /><b /><span /></div>
+        <div className="house-rug" />
+        <button className="house-door dream-copy-door" onClick={() => { setDreamPhase("outside"); setDreamPlayer({ x: 50, y: 68 }); setMessage("小禾像平常一样从农舍走到农场。 "); playTone(610); }} aria-label="从农舍走到农场"><span>出口</span></button>
+        <i className="dream-tiny-difference dream-room-difference" aria-hidden="true" />
+      </div>
+      <div className="service-dialogue"><strong>回到家啦</strong><p>床铺得软软的，炉灶还留着余温。可以从门口回到农场。</p></div>
+      <footer><span>{message}</span><small>方向键也可以走动</small></footer>
     </div>
   ) : (
     <div className={`dream-copy-farm farm-world season-${game.season} weather-world-${game.weather} dream-oddity-${dreamOddity}`}>
@@ -3931,7 +3964,7 @@ export default function FarmGame() {
   }
 
   return (
-    <main className={`game-shell ${embeddedMode ? "embedded-game" : ""}`}>
+    <main className={`game-shell ${embeddedMode ? "embedded-game" : ""} ${dreamScene !== null ? `dream-reality-active dream-reality-${dreamOddity}` : ""}`}>
       {mallOpen && mallFloor === 1 && <button className="mall-pet-food-kiosk" onClick={buyPetFood}><i /><span><b>宠物补给柜</b><small>平价宠物粮 · 25 金币 / 10份</small></span></button>}
       {petHospitalOpen && <div className="pet-hospital-overlay" role="dialog" aria-modal="true" aria-label="远方新区宠物医院"><section className="pet-hospital-panel"><header><div><span>远方新区动物健康中心</span><h2>青禾宠物医院</h2></div><div className="pet-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setPetHospitalOpen(false)}>×</button></header><div className="pet-hospital-room"><aside><button className="pet-vet"><i /><b /></button><strong>宠物医生苏苏</strong><small>检查 · 配药 · 恢复健康</small><span className="vet-counter" /></aside><div className="pet-patient-list">{game.pets.length === 0 ? <p>小禾还没有领养宠物，可以先去旁边的宠物之家看看。</p> : game.pets.map((pet) => { const sick = game.sickPetIds.includes(pet.id); const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name; return <article key={`patient-${pet.id}`} className={sick ? "sick-patient" : ""}><div className={`pet-patient-art pet-${pet.type} ${sick ? "sick-pet" : ""}`}><i /><b /></div><span><strong>{petName} · {pet.sex}</strong><small>{sick ? "颜色发灰 · 眼睛下垂 · 很不舒服" : "精神很好 · 不需要治疗"}</small></span><button disabled={!sick} onClick={() => treatPetAtHospital(pet.id)}>{sick ? "检查配药 · 35金币" : "健康"}</button></article>; })}</div></div><footer><span>{message}</span><button onClick={() => setPetHospitalOpen(false)}>离开宠物医院</button></footer></section></div>}
       <header className="topbar">
@@ -3977,7 +4010,7 @@ export default function FarmGame() {
         </section>
       </div>}
 
-      {drivingSchoolOpen && <div className="driving-school-overlay" role="dialog" aria-modal="true" aria-label="青禾驾驶学校"><section className="driving-school-panel"><header><div><span>青禾谷安全驾驶中心</span><h2>青禾驾驶学校</h2></div><button onClick={() => setDrivingSchoolOpen(false)} aria-label="离开驾校">×</button></header>{game.driverLicense ? <div className="license-earned"><i>驾</i><strong>青禾谷驾驶证</strong><span>持证人：{displayName}</span><p>理论考试和驾驶练习都已通过。秋天道路通车后，就可以买车出发了。</p><button onClick={() => { setGame((current) => ({ ...current, driverLicense: false })); setDrivingQuizStep(0); setDrivingPracticeStep(0); setMessage("开始重新练习驾照考试。 "); }}>重新练习考试</button></div> : drivingQuizStep < DRIVING_QUESTIONS.length ? <div className="driving-theory"><span>理论考试 · 第 {drivingQuizStep + 1}/{DRIVING_QUESTIONS.length} 题</span><strong>{DRIVING_QUESTIONS[drivingQuizStep].question}</strong><div>{DRIVING_QUESTIONS[drivingQuizStep].answers.map((answer, index) => <button key={answer} onClick={() => answerDrivingQuestion(index)}>{answer}</button>)}</div><small>答错会从第一题重新开始，认真想一想。</small></div> : <div className="driving-practice"><span>驾驶练习 · 小汽车绕桩</span><div className={`practice-road practice-step-${drivingPracticeStep}`}><i className="practice-car" /><b /><b /><b /></div><strong>{drivingPracticeStep === 0 ? "第一步：向左转" : drivingPracticeStep === 1 ? "第二步：向右绕桩" : drivingPracticeStep === 2 ? "第三步：停进停车框" : "练习完成"}</strong><div><button onClick={() => doDrivingPractice(0)}>← 左转</button><button onClick={() => doDrivingPractice(1)}>右转 →</button><button onClick={() => doDrivingPractice(2)}>▣ 停车</button></div></div>}<footer><span>{game.driverLicense ? "已经取得驾照" : "先通过理论，再完成驾驶练习"}</span><button onClick={() => setDrivingSchoolOpen(false)}>离开驾校</button></footer></section></div>}
+      {drivingSchoolOpen && <div className="driving-school-overlay" role="dialog" aria-modal="true" aria-label="青禾驾驶学校"><section className="driving-school-panel"><header><div><span>青禾谷安全驾驶中心</span><h2>青禾驾驶学校</h2></div><button onClick={() => setDrivingSchoolOpen(false)} aria-label="离开驾校">×</button></header>{game.driverLicense ? <div className="license-earned"><i>驾</i><strong>青禾谷驾驶证</strong><span>持证人：{displayName}</span><p>理论考试和驾驶练习都已通过。道路修好后会永久通车，现在可以去买车出发。</p><button onClick={() => { setGame((current) => ({ ...current, driverLicense: false })); setDrivingQuizStep(0); setDrivingPracticeStep(0); setMessage("开始重新练习驾照考试。 "); }}>重新练习考试</button></div> : drivingQuizStep < DRIVING_QUESTIONS.length ? <div className="driving-theory"><span>理论考试 · 第 {drivingQuizStep + 1}/{DRIVING_QUESTIONS.length} 题</span><strong>{DRIVING_QUESTIONS[drivingQuizStep].question}</strong><div>{DRIVING_QUESTIONS[drivingQuizStep].answers.map((answer, index) => <button key={answer} onClick={() => answerDrivingQuestion(index)}>{answer}</button>)}</div><small>答错会从第一题重新开始，认真想一想。</small></div> : <div className="driving-practice"><span>驾驶练习 · 小汽车绕桩</span><div className={`practice-road practice-step-${drivingPracticeStep}`}><i className="practice-car" /><b /><b /><b /></div><strong>{drivingPracticeStep === 0 ? "第一步：向左转" : drivingPracticeStep === 1 ? "第二步：向右绕桩" : drivingPracticeStep === 2 ? "第三步：停进停车框" : "练习完成"}</strong><div><button onClick={() => doDrivingPractice(0)}>← 左转</button><button onClick={() => doDrivingPractice(1)}>右转 →</button><button onClick={() => doDrivingPractice(2)}>▣ 停车</button></div></div>}<footer><span>{game.driverLicense ? "已经取得驾照" : "先通过理论，再完成驾驶练习"}</span><button onClick={() => setDrivingSchoolOpen(false)}>离开驾校</button></footer></section></div>}
 
       {mallOpen && <div className="mall-overlay" role="dialog" aria-modal="true" aria-label="青禾大商场"><section className="mall-panel three-floor-mall"><header><div><span>远方新区购物中心 · {mallFloor} 楼</span><h2>青禾大商场</h2></div><div className="mall-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setMallOpen(false)} aria-label="离开商场">×</button></header><div className="mall-building-interior"><aside className="mall-elevator" aria-label="商场电梯"><strong>电梯</strong>{([1, 2, 3] as const).map((floor) => <button key={floor} className={mallFloor === floor ? "active" : ""} onClick={() => { setMallFloor(floor); setMessage(`电梯到达 ${floor} 楼，门打开了。`); playTone(540 + floor * 60); }}>{floor}F</button>)}<i /><small>点击楼层</small></aside><div className={`mall-floor mall-floor-${mallFloor}`}><div className="mall-floor-sign"><b>{mallFloor}F</b><span>{mallFloor === 1 ? "美食与生鲜" : mallFloor === 2 ? "服装与旅行用品" : "家居、园艺与户外"}</span></div><div className="mall-aisles">{mallFloor === 1 ? <><article><h3>麦香烘焙店</h3><button onClick={() => buyMallItem("奶油蛋糕", 80, 30)}><i className="mall-cake" /><span><b>奶油蛋糕</b><small>80 金币 · 体力 +30</small></span></button><button onClick={() => buyMallItem("热牛角包", 38, 12)}><i className="mall-cake bread" /><span><b>热牛角包</b><small>38 金币 · 体力 +12</small></span></button></article><article><h3>田园生鲜店</h3><button onClick={() => buyMallItem("水果便当", 55, 20)}><i className="mall-lunch" /><span><b>水果便当</b><small>55 金币 · 体力 +20</small></span></button><button onClick={() => buyMallItem("暖汤套餐", 68, 25)}><i className="mall-lunch soup" /><span><b>暖汤套餐</b><small>68 金币 · 体力 +25</small></span></button></article><article><h3>山谷咖啡角</h3><button onClick={() => buyMallItem("热拿铁", 35, 10)}><i className="mall-coffee" /><span><b>热拿铁</b><small>35 金币 · 体力 +10</small></span></button></article></> : mallFloor === 2 ? <><article><h3>四季衣橱</h3><button onClick={() => buyMallItem("红色节日外套", 260, 0, "redCoat")}><i className="mall-coat red-coat" /><span><b>红色节日外套</b><small>260 金币 · 可穿着</small></span></button><button onClick={() => buyMallItem("蓝色旅行套装", 320, 0, "blueOutfit")}><i className="mall-coat blue-coat" /><span><b>蓝色旅行套装</b><small>320 金币 · 可穿着</small></span></button></article><article><h3>雨天旅行铺</h3><button onClick={() => buyMallItem("彩色雨伞", 120, 0, "umbrella")}><i className="mall-umbrella" /><span><b>彩色雨伞</b><small>120 金币 · 撑伞不会淋病</small></span></button></article><article><h3>配饰小店</h3><button onClick={() => buyMallItem("柔软围巾", 75, 8)}><i className="mall-scarf" /><span><b>柔软围巾</b><small>75 金币 · 休息体力 +8</small></span></button></article></> : <><article><h3>阳台园艺店</h3><button onClick={() => buyMallItem("家庭种子礼盒", 180, 0, "seedBox")}><i className="mall-seed-box" /><span><b>家庭种子礼盒</b><small>180 金币 · 可打开</small></span></button></article><article><h3>温暖家居店</h3><button onClick={() => buyMallItem("柔软靠垫", 90, 15)}><i className="mall-cushion" /><span><b>柔软靠垫</b><small>90 金币 · 体力 +15</small></span></button></article><article><h3>山野户外店</h3><button onClick={() => buyMallItem("登山补给包", 70, 25)}><i className="mall-hiking" /><span><b>登山补给包</b><small>70 金币 · 体力 +25</small></span></button></article></>}</div></div></div><footer><span>乘电梯可以到三层不同商店，衣服、雨伞和礼盒会进入背包。</span><button onClick={() => setMallOpen(false)}>走出商场</button></footer></section></div>}
 
@@ -3987,7 +4020,6 @@ export default function FarmGame() {
 
       {bedtimePhase === "walkingHome" && <div className="bedtime-journey" role="status" aria-label="小禾自动回家睡觉"><div className="bedtime-sky"><i /></div><div className="bedtime-path"><span className="bedtime-walker"><PlayerSprite facing="right" sick={game.sick} /></span><i className="bedtime-house" /></div><strong>小禾正在自己走回农舍…</strong></div>}
 
-      {dreamScene !== null && <div className={`dream-overlay dream-scene-${dreamScene}`} role="dialog" aria-modal="true" aria-label="小禾正在梦境里"><section className={`dream-world dream-phase-${dreamPhase} ${dreamSurreal ? "dream-is-surreal" : "dream-is-ordinary"} dream-oddity-${dreamOddity}`} onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; const bounds = event.currentTarget.getBoundingClientRect(); const nextPosition = { x: Math.max(5, Math.min(95, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(10, Math.min(94, ((event.clientY - bounds.top) / bounds.height) * 100)) }; showWalking(nextPosition.x - dreamPlayer.x, nextPosition.y - dreamPlayer.y); if (dreamPhase === "inside" && nextPosition.y <= 25) { setDreamPhase("outside"); setDreamPlayer({ x: 50, y: 68 }); setMessage("小禾像平常一样从自己的农舍走到了农场。 "); return; } const secretTrigger = dreamPhase === 'outside' && dreamOddity === 0 && ((dreamScene % 4 === 0 && nextPosition.x >= 89) || (dreamScene % 4 === 1 && nextPosition.y <= 14) || (dreamScene % 4 === 2 && nextPosition.x <= 9) || (dreamScene % 4 === 3 && nextPosition.y >= 88)); if (secretTrigger) { setDreamOddity(1); setDreamOdditySteps(0); setDreamPlayer(nextPosition); setMessage('小禾继续在熟悉的农场里走着。 '); return; } if (dreamPhase === 'outside' && dreamOddity > 0 && !dreamSurreal) { const nextOdditySteps = dreamOdditySteps + 1; if (nextOdditySteps >= 5) { const nextOddity = Math.min(4, dreamOddity + 1); setDreamOddity(nextOddity); setDreamOdditySteps(0); if (nextOddity >= 4) { setDreamSurreal(true); setMessage('熟悉的一切终于变得完全不对劲了……'); playTone(820); } } else { setDreamOdditySteps(nextOdditySteps); } } const secretWake = dreamPhase === 'outside' && dreamSurreal && (nextPosition.y >= 91 || (dreamScene % 4 === 1 && nextPosition.x >= 92) || (dreamScene % 4 === 2 && nextPosition.x <= 8) || (dreamScene % 4 === 3 && nextPosition.y <= 13)); if (secretWake) { setDreamScene(null); setDreamPhase('inside'); setDreamSurreal(false); setDreamOddity(0); setDreamOdditySteps(0); setMessage(nextPosition.y >= 91 ? '小禾一脚踏空，从高处落了下去——再睁眼时已经躺回床上。 ' : '眼前突然闪过一道亮光，小禾从梦里醒来了。 '); playTone(820); return; } setDreamPlayer(nextPosition); setMessage(dreamPhase === 'inside' ? '小禾在自己的农舍里走动。 ' : dreamSurreal ? '小禾继续往梦境深处走去……' : '小禾在和平常一样的农场里走动。 '); }}>{!dreamSurreal ? renderOrdinaryDreamSetting() : <><div className="dream-stars"><i /><i /><i /><i /><i /></div><div className="dream-moon" />{dreamScene % 6 === 0 ? <><div className="dream-floating-house"><i /><b /><span /></div><div className="dream-cloud-islands"><i /><i /><i /></div></> : dreamScene % 6 === 1 ? <><div className="dream-reverse-river"><i /><i /><i /></div><div className="dream-upward-fish"><i /><i /><i /></div></> : dreamScene % 6 === 2 ? <><div className="dream-giant-radish"><i /><b /><em /></div><div className="dream-tiny-houses"><i /><i /><i /></div></> : dreamScene % 6 === 3 ? <div className="dream-clock-forest"><i /><i /><i /><b /><b /></div> : dreamScene % 6 === 4 ? <div className="dream-star-stair"><i /><i /><i /><i /><i /></div> : <div className="dream-giant-animals"><i /><b /><em /></div>}<strong>{DREAM_STORIES[dreamScene]}</strong></>}<span className={`dreaming-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${dreamPlayer.x}%`, top: `${dreamPlayer.y}%` }}><PlayerSprite facing={facing} sick={false} /></span></section></div>}
 
       {bulkChestPrompt && (
         <div className="bulk-chest-prompt" role="dialog" aria-modal="true" aria-label={`是否把所有${RESOURCE_INFO[bulkChestPrompt].name}放进收纳箱`}>
@@ -4028,8 +4060,8 @@ export default function FarmGame() {
               <button className={heldItem?.kind === "forest" && heldItem.id === "pineNut" ? "resource-item held-material" : "resource-item"} onClick={clickPineNut} onDoubleClick={doubleClickPineNut} title="单击吃掉恢复体力，双击拿起"><span className="harvest-icon pine-nut-icon">子</span><p>松子<strong>{game.pineNuts}</strong><small>单击吃 · 双击拿</small></p></button>
               <button className={heldItem?.kind === "herb" ? "resource-item herb-record held-material" : "resource-item herb-record"} onClick={clickHerb} onDoubleClick={pickUpHerb} aria-label={`药材 ${game.herbs} 份，生病时单击使用，双击拿起送人`} title="生病时单击使用，双击拿起送人"><span className="harvest-icon herb-icon">药</span><p>药材<strong>{game.herbs}</strong><small>{game.sick ? "单击用 · 双击拿" : "双击拿起"}</small></p></button>
               <button className={heldItem?.kind === "resin" ? "resource-item resin-record held-material" : "resource-item resin-record"} onDoubleClick={pickUpResin} title="双击拿起绿色树脂"><span className="harvest-icon resin-icon" /><p>树脂<strong>{game.resin}</strong><small>双击拿起 · 做火柴</small></p></button>
-              <button className={heldItem?.kind === "product" && heldItem.id === "egg" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => setMessage(`农场鸡蛋共有 ${game.eggs} 枚。每只鸡每天产 1 枚，双击可以拿起来。`)} onDoubleClick={() => pickUpAnimalProduct("egg")} title="双击拿起鸡蛋"><span className="harvest-icon egg-icon" /><p>鸡蛋<strong>{game.eggs}</strong><small>双击拿起</small></p></button>
-              <button className={heldItem?.kind === "product" && heldItem.id === "milk" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => setMessage(`新鲜牛奶共有 ${game.milk} 瓶。每头奶牛每天产 1 瓶，双击可以拿起来。`)} onDoubleClick={() => pickUpAnimalProduct("milk")} title="双击拿起牛奶"><span className="harvest-icon milk-icon" /><p>牛奶<strong>{game.milk}</strong><small>双击拿起</small></p></button>
+              <button className={heldItem?.kind === "product" && heldItem.id === "egg" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => clickAnimalProduct("egg")} onDoubleClick={() => doubleClickAnimalProduct("egg")} title="单击食用，双击拿起鸡蛋"><span className="harvest-icon egg-icon" /><p>鸡蛋<strong>{game.eggs}</strong><small>单击吃 · 双击拿起</small></p></button>
+              <button className={heldItem?.kind === "product" && heldItem.id === "milk" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => clickAnimalProduct("milk")} onDoubleClick={() => doubleClickAnimalProduct("milk")} title="单击食用，双击拿起牛奶"><span className="harvest-icon milk-icon" /><p>牛奶<strong>{game.milk}</strong><small>单击喝 · 双击拿起</small></p></button>
               <button className={heldItem?.kind === "product" && heldItem.id === "wool" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={clickWool} onDoubleClick={doubleClickWool} title="单击打开制作手册，双击拿起羊毛"><span className="harvest-icon wool-icon" /><p>羊毛<strong>{game.wool}</strong><small>单击打开制作 · 双击拿起</small></p></button>
               <button className={heldItem?.kind === "petGift" && heldItem.id === "feather" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => setMessage(`小鸡和小鸭留下的羽毛共有 ${game.feathers} 根，双击可以拿起。`)} onDoubleClick={() => pickUpPetGift("feather")}><span className="harvest-icon feather-icon" /><p>羽毛<strong>{game.feathers}</strong><small>宠物每日可能赠送</small></p></button>
               <button className={heldItem?.kind === "petGift" && heldItem.id === "softFur" ? "resource-item animal-product-item held-material" : "resource-item animal-product-item"} onClick={() => setMessage(`兔子梳下的柔软绒毛共有 ${game.softFur} 团，双击可以拿起。`)} onDoubleClick={() => pickUpPetGift("softFur")}><span className="harvest-icon soft-fur-icon" /><p>兔子软毛<strong>{game.softFur}</strong><small>宠物每日可能赠送</small></p></button>
@@ -4059,6 +4091,7 @@ export default function FarmGame() {
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
           <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "mysteryRoad" ? "mystery-road-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${game.season} weather-world-${game.weather} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome || friendHomeOpen || mallOpen ? "interior-open" : ""} ${playingWithAnan ? "playing-with-anan" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "mysteryRoad" ? "▤" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
+            {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /></div>}
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
             {(game.weather === "rain" || game.weather === "thunder") && <div className="rain-weather-layer" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div>}
@@ -4127,9 +4160,9 @@ export default function FarmGame() {
                 <button className="friend-farm-shelter" onClick={(event) => { event.stopPropagation(); setFriendHomeOpen(true); setIndoorPlayer({ x: 34, y: 70 }); setMessage("走进安安的林边小屋，屋里摆着登山装备和野外收藏。 "); }} aria-label="进入安安的林边小屋"><i className="friend-shelter-roof" /><i className="friend-shelter-wall" /><i className="friend-shelter-door" /><strong>安安的林边小屋<small>点击进入拜访</small></strong></button>
                 {wildFriendVisit || wildFriendAtPlayerHome ? <button className="friend-away-note" onClick={() => setMessage(wildFriendAtPlayerHome ? `安安今天去${displayName}的农舍找你了，回自己家就能见到她。` : `安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}。`)}>安安出去玩了<small>今天在{wildFriendAtPlayerHome ? `${displayName}的农舍` : wildFriendVisit === "cave" ? "山洞" : "帐篷"}</small></button> : <button style={personClothesStyle("安安")} className="wild-friend-npc anan-character" onClick={() => interactWithPerson("安安", PERSON_DIALOGUES["安安"])} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和朋友安安聊天"}><i /><em className="anan-pigtails" /><b /><span>安安<small>{heldItem ? `送出${carriedItemName}` : "你的野外朋友"}</small></span></button>}
                 <div className="friend-farm-trees"><i /><i /><i /></div>
-                <div className={`seasonal-road road-season-${game.season}`} aria-label={game.season === 0 ? "春季道路规划区" : game.season === 1 ? "夏季道路施工区" : "已经通车的新公路"}><i className="road-surface" /><span>{game.season === 0 ? "道路规划中 · 夏季施工" : game.season === 1 ? "封路施工 · 秋季通车" : "远方新区公路 · 已通车"}</span>{game.season === 1 && <div className="road-workers"><b /><b /><b /><em /><em /></div>}</div>
+                <div className={`seasonal-road ${game.year === 1 && game.season === 0 ? "road-season-0" : "road-finished"}`} aria-label={game.year === 1 && game.season === 0 ? "最开始的道路修建区" : "已经永久通车的新公路"}><i className="road-surface" /><span>{game.year === 1 && game.season === 0 ? "最初修建中 · 完工后永久通车" : "远方新区公路 · 已永久通车"}</span>{game.year === 1 && game.season === 0 && <div className="road-workers"><b /><b /><b /><em /><em /></div>}</div>
                 <button className="driving-school-building" onClick={(event) => { event.stopPropagation(); setDrivingSchoolOpen(true); setDrivingQuizStep(game.driverLicense ? DRIVING_QUESTIONS.length : 0); setDrivingPracticeStep(game.driverLicense ? 3 : 0); setMessage(game.driverLicense ? "来到青禾驾校复习安全驾驶。 " : "进入青禾驾校，先参加汽车常识考试。 "); }}><i /><b>青禾驾驶学校</b><small>{game.driverLicense ? "已取得驾照 · 可以复习" : "理论考试 · 驾驶练习"}</small></button>
-                <button className={`road-car ${game.ownsCar ? "owned-car" : ""} ${game.season === 1 ? "road-closed" : ""}`} onClick={(event) => { event.stopPropagation(); buyOrDriveCar(); }}><i /><i /><b>{game.season === 0 ? "查看道路规划" : game.season === 1 ? "查看施工进度" : !game.driverLicense ? "先考驾照" : game.ownsCar ? "驾驶汽车去远方" : "购买汽车 · 3000金币"}</b></button>
+                <button className={`road-car ${game.ownsCar ? "owned-car" : ""} ${game.year === 1 && game.season === 0 ? "road-closed" : ""}`} onClick={(event) => { event.stopPropagation(); buyOrDriveCar(); }}><i /><i /><b>{game.year === 1 && game.season === 0 ? "查看最初修建进度" : !game.driverLicense ? "先考驾照" : game.ownsCar ? "驾驶汽车去远方" : "购买汽车 · 3000金币"}</b></button>
                 <button className="edge-gate friend-farm-return" onClick={() => { setScene("farm"); setPlayer({ x: 0, y: 5 }); setMessage("从安安的小农场回到青禾农场。 "); }}><span>返回青禾农场</span><b>→</b><small>一直向右走</small></button>
               </>
             ) : scene === "mysteryRoad" ? (
