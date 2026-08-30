@@ -26,7 +26,7 @@ type PetType = "cat" | "dog" | "chick" | "duck" | "rabbit" | "hamster";
 type PetRecord = { id: string; type: PetType; sex: "男生" | "女生"; bornDay: number; bornYear: number };
 type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "resin" } | { kind: "matches" } | { kind: "product"; id: "egg" | "milk" | "wool" } | { kind: "petGift"; id: "feather" | "softFur" | "bone" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
 type ShippingItemGroup = "resource" | "seed" | "craft" | "single";
-type ShippingSingleField = "wood" | "stone" | "herbs" | "pinecones" | "pineNuts" | "resin" | "eggs" | "milk" | "wool" | "feathers" | "softFur" | "petBones" | "cookies" | "crabs" | "shrimp";
+type ShippingSingleField = "wood" | "stone" | "diamonds" | "herbs" | "pinecones" | "pineNuts" | "resin" | "eggs" | "milk" | "wool" | "feathers" | "softFur" | "petBones" | "cookies" | "crabs" | "shrimp";
 type ShippingCatalogItem = { id: string; name: string; short: string; price: number; group: ShippingItemGroup; key: string };
 type AtticResource = "wood" | "stone" | "diamonds" | "herbs" | "resin" | "pinecones" | "pineNuts" | "eggs" | "milk" | "wool";
 
@@ -342,6 +342,7 @@ const SHIPPING_CATALOG: ShippingCatalogItem[] = [
   ...(Object.keys(CRAFT_RECIPES) as CraftType[]).map((craft) => ({ id: `craft:${craft}`, name: CRAFT_RECIPES[craft].name, short: CRAFT_RECIPES[craft].short, price: Math.max(25, CRAFT_RECIPES[craft].wood * 12 + CRAFT_RECIPES[craft].stone * 15 + (CRAFT_RECIPES[craft].resin ?? 0) * 22 + (CRAFT_RECIPES[craft].wool ?? 0) * 32), group: "craft" as const, key: craft })),
   { id: "single:wood", name: "木头", short: "木", price: 12, group: "single", key: "wood" },
   { id: "single:stone", name: "石材", short: "石", price: 15, group: "single", key: "stone" },
+  { id: "single:diamonds", name: "山洞钻石", short: "◆", price: 2800, group: "single", key: "diamonds" },
   { id: "single:herbs", name: "药材", short: "药", price: 38, group: "single", key: "herbs" },
   { id: "single:pinecones", name: "松果", short: "果", price: 20, group: "single", key: "pinecones" },
   { id: "single:pineNuts", name: "松子", short: "子", price: 16, group: "single", key: "pineNuts" },
