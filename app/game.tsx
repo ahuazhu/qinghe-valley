@@ -164,6 +164,7 @@ type GameState = {
   atticStorage: Record<AtticResource, number>;
   atticChestPlaced: boolean;
   atticPlacedCrafts: PlacedCraft[];
+  firstFloorNightstandPlaced: boolean;
 };
 
 const TOOL_INFO: Record<Tool, { icon: string; name: string; key: string }> = {
@@ -506,7 +507,7 @@ const ATTIC_PLACEMENT_SLOTS = [
 const OUTDOOR_CRAFTS: CraftType[] = ["chest", "fence", "gate", "scarecrow", "lamp", "bench", "sign"];
 const INDOOR_FURNITURE: CraftType[] = ["chest", "table", "floorLamp", "sofa", "bookshelf", "dresser", "nightstand"];
 const HANDCRAFTS: CraftType[] = ["matches", "blanket"];
-const ATTIC_FURNITURE: CraftType[] = INDOOR_FURNITURE;
+const ATTIC_FURNITURE: CraftType[] = INDOOR_FURNITURE.filter((item) => item !== "nightstand");
 const CRAFT_GROUPS: Array<{ title: string; note: string; items: CraftType[] }> = [
   { title: "室内家具", note: "做好后进入背包，只能摆进农舍二楼", items: INDOOR_FURNITURE },
   { title: "农场户外设施", note: "灯柱、长椅和方向牌都留在户外", items: OUTDOOR_CRAFTS.filter((item) => item !== "chest") },
@@ -675,6 +676,7 @@ const makeNewGame = (): GameState => ({
   atticStorage: { wood: 0, stone: 0, diamonds: 0, herbs: 0, resin: 0, pinecones: 0, pineNuts: 0, eggs: 0, milk: 0, wool: 0 },
   atticChestPlaced: false,
   atticPlacedCrafts: [],
+  firstFloorNightstandPlaced: false,
 });
 
 const staminaCost = (state: GameState, base: number) => state.showerBuff ? Math.max(1, Math.ceil(base * .7)) : base;
@@ -723,6 +725,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       atticStorage: { ...defaults.atticStorage, ...(parsed.atticStorage ?? {}) },
       atticChestPlaced: parsed.atticChestPlaced ?? false,
       atticPlacedCrafts: parsed.atticPlacedCrafts ?? [],
+      firstFloorNightstandPlaced: parsed.firstFloorNightstandPlaced ?? false,
     };
   } catch {
     return defaults;
@@ -942,6 +945,7 @@ export default function FarmGame() {
             atticStorage: { ...defaults.atticStorage, ...(parsed.atticStorage ?? {}) },
             atticChestPlaced: parsed.atticChestPlaced ?? false,
             atticPlacedCrafts: parsed.atticPlacedCrafts ?? [],
+            firstFloorNightstandPlaced: parsed.firstFloorNightstandPlaced ?? false,
           });
         }
       } catch {
@@ -1077,6 +1081,7 @@ export default function FarmGame() {
           atticStorage: { ...defaults.atticStorage, ...(data.save.atticStorage ?? {}) },
           atticChestPlaced: data.save.atticChestPlaced ?? false,
           atticPlacedCrafts: data.save.atticPlacedCrafts ?? [],
+          firstFloorNightstandPlaced: data.save.firstFloorNightstandPlaced ?? false,
         });
         setMessage("旧游戏的农田、金币、种子和物品已经全部转入网页版！");
         window.history.replaceState({}, "", window.location.pathname);
@@ -2802,6 +2807,21 @@ export default function FarmGame() {
       setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 30), crafted: { ...current.crafted, blanket: Math.max(0, current.crafted.blanket - 1) } }));
       setMessage("盖上自己制作的柔软羊毛毯休息了一会儿，恢复 30 点体力！");
       playTone(780);
+      return;
+    }
+    if (item === "nightstand") {
+      if (activeBuilding !== "farmhouse" || houseFloor !== 1) {
+        setMessage("床边小柜应该摆在床边。请先回到农舍一楼，再点击背包里的床边小柜。 ");
+        playTone(480);
+        return;
+      }
+      if (game.firstFloorNightstandPlaced) {
+        setMessage("床边已经摆好一个小柜了。点击小柜可以喝温水恢复体力。 ");
+        return;
+      }
+      setGame((current) => ({ ...current, crafted: { ...current.crafted, nightstand: Math.max(0, current.crafted.nightstand - 1) }, firstFloorNightstandPlaced: true }));
+      setMessage("把床边小柜稳稳摆到一楼床头旁边了，杯子里装着温水。 ");
+      playTone(740);
       return;
     }
     if (INDOOR_FURNITURE.includes(item)) {
@@ -5276,6 +5296,7 @@ export default function FarmGame() {
                     {game.upgrades.secondFloor > 0 && <button className="house-stairs" onClick={(event) => { event.stopPropagation(); setHouseFloor(2); setUpstairsRoom(null); setAtticStorageOpen(false); setSelectedAtticCraft(null); setMessage("走上楼梯，来到宽敞的二楼。这里的家具要从背包里选择后自己摆放。 "); }}><i /><span>上二楼</span></button>}
                     {isBirthday && <><div className="birthday-banner">二月十九日 · {displayName}生日快乐！</div><div className="birthday-loft" aria-label="生日派对时可以跑上去的小阁楼"><i /><b /><span>小阁楼</span></div><div className="birthday-house-guests" aria-label="会在农舍里跑动、看窗户、跳床和玩耍的所有朋友">{BIRTHDAY_GUESTS.map((name, index) => <button key={`birthday-${name}`} style={personClothesStyle(name)} className={`birthday-guest birthday-guest-${index + 1} birthday-behavior-${index % 5} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：生日快乐！我们刚才在屋里跑来跑去、看窗外，还轮流在床上跳呢！`)} aria-label={`和参加生日派对的${name}聊天`}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><button className={`birthday-cake ${game.birthdayCakeYear === game.year ? "cake-eaten" : ""}`} onClick={eatBirthdayCake} aria-label="分享生日蛋糕恢复体力"><i /><b /><em /><span>{game.birthdayCakeYear === game.year ? "蛋糕已经分享完" : "点击吃生日蛋糕 · 恢复40体力"}</span></button></>}
                     <button className="house-bed" onClick={sleepAtHome} aria-label="点击床睡到第二天"><i /><b /><span>点击睡觉</span></button>
+                    {houseFloor === 1 && game.firstFloorNightstandPlaced && <button className="first-floor-nightstand" onClick={(event) => { event.stopPropagation(); setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) })); setMessage("从床边小柜拿起温水慢慢喝完，恢复 5 点体力。 "); playTone(610); }} aria-label="床边小柜，点击喝温水恢复体力"><i /><b /><span>床边小柜</span></button>}
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && <div className={`sleeping-player-in-bed ${bedtimePhase}`} aria-label={bedtimePhase === "waking" ? "小禾第二天在床上醒来" : "小禾盖着被子睡觉"}><i className="sleep-head" /><b className="sleep-blanket" /><span>{bedtimePhase === "waking" ? "早上七点 · 点击房间起床" : "盖好被子睡觉中…"}</span></div>}
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && followingPets.length > 0 && <div className="sleeping-pet-cages" aria-label="睡觉时宠物们回到农舍里的小窝"><strong>宠物们的睡觉小窝</strong>{followingPets.slice(0, 6).map((pet) => <span key={`sleep-${pet.id}`} className={`sleep-pet-cage pet-${pet.type} ${game.sickPetIds.includes(pet.id) ? "sick-pet" : ""}`}><i /><b /><em /></span>)}</div>}
                     <div className="house-table"><i /><i /></div>
