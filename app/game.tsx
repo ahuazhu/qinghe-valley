@@ -4354,8 +4354,8 @@ export default function FarmGame() {
   };
 
   const buyPetFood = () => {
-    const price = 25;
-    if (game.coins < price) { setMessage("宠物粮小袋需要 25 金币，现在的钱不够。 "); playTone(210); return; }
+    const price = 10;
+    if (game.coins < price) { setMessage("宠物粮小袋只需要 10 金币，现在的钱还不够。 "); playTone(210); return; }
     setGame((current) => ({ ...current, coins: current.coins - price, petFood: current.petFood + 10 }));
     setMessage("买到一袋平价宠物粮，共 10 份，已经放进资源记录。每天睡觉前会自动喂给跟随的小宠物。 ");
     playTone(720);
@@ -4561,7 +4561,7 @@ export default function FarmGame() {
 
   return (
     <main className={`game-shell ${embeddedMode ? "embedded-game" : ""} ${dreamScene !== null ? `dream-reality-active dream-reality-${dreamOddity} dream-variant-${dreamScene % 16}` : ""}`}>
-      {mallOpen && mallFloor === 1 && <button className="mall-pet-food-kiosk" onClick={buyPetFood}><i /><span><b>宠物补给柜</b><small>平价宠物粮 · 25 金币 / 10份</small></span></button>}
+      {mallOpen && mallFloor === 1 && <button className="mall-pet-food-kiosk" onClick={buyPetFood}><i /><span><b>宠物补给柜</b><small>便宜宠物粮 · 10 金币 / 10份</small></span></button>}
       {petHospitalOpen && <div className="pet-hospital-overlay" role="dialog" aria-modal="true" aria-label="远方新区宠物医院"><section className="pet-hospital-panel"><header><div><span>远方新区动物健康中心</span><h2>青禾宠物医院</h2></div><div className="pet-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setPetHospitalOpen(false)}>×</button></header><div className="pet-hospital-room"><aside><button className="pet-vet"><i /><b /></button><strong>宠物医生苏苏</strong><small>检查 · 配药 · 恢复健康</small><span className="vet-counter" /></aside><div className="pet-patient-list">{game.pets.length === 0 ? <p>小禾还没有领养宠物，可以先去旁边的宠物之家看看。</p> : game.pets.map((pet) => { const sick = game.sickPetIds.includes(pet.id); const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name; return <article key={`patient-${pet.id}`} className={sick ? "sick-patient" : ""}><div className={`pet-patient-art pet-${pet.type} ${sick ? "sick-pet" : ""}`}><i /><b /></div><span><strong>{petName} · {pet.sex}</strong><small>{sick ? "颜色发灰 · 眼睛下垂 · 很不舒服" : "精神很好 · 不需要治疗"}</small></span><button disabled={!sick} onClick={() => treatPetAtHospital(pet.id)}>{sick ? "检查配药 · 35金币" : "健康"}</button></article>; })}</div></div><footer><span>{message}</span><button onClick={() => setPetHospitalOpen(false)}>离开宠物医院</button></footer></section></div>}
       <header className="topbar">
         <div className="brand-lockup">
