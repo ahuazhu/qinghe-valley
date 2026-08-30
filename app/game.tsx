@@ -761,7 +761,6 @@ export default function FarmGame() {
   const [activeBuilding, setActiveBuilding] = useState<BuildingId | null>(null);
   const [isFishing, setIsFishing] = useState(false);
   const [fishingPhase, setFishingPhase] = useState<"idle" | "waiting" | "bite" | "reeling">("idle");
-  const [fishingMarker, setFishingMarker] = useState(4);
   const [fishingScore, setFishingScore] = useState(0);
   const [craftingOpen, setCraftingOpen] = useState(false);
   const [selectedCraftItem, setSelectedCraftItem] = useState<CraftType | null>(null);
@@ -869,7 +868,11 @@ export default function FarmGame() {
   const fishingBiteTimerRef = useRef<number | null>(null);
   const fishingMarkerTimerRef = useRef<number | null>(null);
   const fishingMarkerDirectionRef = useRef(1);
+  const fishingMarkerValueRef = useRef(4);
+  const fishingMarkerElementRef = useRef<HTMLElement | null>(null);
   const fishingBaitUsedRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
+  const latestSaveRef = useRef<{ key: string; game: GameState } | null>(null);
   const beachRespawnTimersRef = useRef<number[]>([]);
   const bedtimeTimersRef = useRef<number[]>([]);
   const multiplayerStatusRef = useRef({ player, game });
@@ -974,8 +977,31 @@ export default function FarmGame() {
   }, []);
 
   useEffect(() => {
-    if (ready) localStorage.setItem(saveStorageKey, JSON.stringify(game));
+    if (!ready) return;
+    latestSaveRef.current = { key: saveStorageKey, game };
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      const latest = latestSaveRef.current;
+      if (latest) localStorage.setItem(latest.key, JSON.stringify(latest.game));
+      saveTimerRef.current = null;
+    }, 600);
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    };
   }, [game, ready, saveStorageKey]);
+
+  useEffect(() => {
+    const flushSave = () => {
+      const latest = latestSaveRef.current;
+      if (latest) localStorage.setItem(latest.key, JSON.stringify(latest.game));
+    };
+    window.addEventListener("pagehide", flushSave);
+    return () => {
+      window.removeEventListener("pagehide", flushSave);
+      flushSave();
+    };
+  }, []);
 
   useEffect(() => {
     if (!ready || localStorage.getItem("qinghe-dream-preview-v90")) return;
@@ -1111,7 +1137,7 @@ export default function FarmGame() {
     const indoors = Boolean(activeBuilding || neighborInterior || residentHome || friendHomeOpen || farmInterior || mallOpen || petShopOpen || petHospitalOpen || ananBeachOpen);
     if (!ready) return;
     if (!rainy || indoors || game.umbrellaOpen) {
-      if (game.rainExposure > 0) setGame((current) => ({ ...current, rainExposure: 0 }));
+      setGame((current) => current.rainExposure > 0 ? { ...current, rainExposure: 0 } : current);
       return;
     }
     if (game.sick) return;
@@ -1125,7 +1151,7 @@ export default function FarmGame() {
       });
     }, 5_000);
     return () => window.clearInterval(rainTimer);
-  }, [activeBuilding, ananBeachOpen, farmInterior, friendHomeOpen, game.rainExposure, game.sick, game.umbrellaOpen, game.weather, mallOpen, neighborInterior, petHospitalOpen, petShopOpen, ready, residentHome]);
+  }, [activeBuilding, ananBeachOpen, farmInterior, friendHomeOpen, game.sick, game.umbrellaOpen, game.weather, mallOpen, neighborInterior, petHospitalOpen, petShopOpen, ready, residentHome]);
 
   useEffect(() => {
     if (!carTraveling || carStopped || ![0, 3, 5].includes(carRouteStep)) return;
@@ -1173,15 +1199,15 @@ export default function FarmGame() {
   useEffect(() => {
     if (fishingPhase !== "reeling") return;
     fishingMarkerDirectionRef.current = 1;
-    setFishingMarker(4);
+    fishingMarkerValueRef.current = 4;
+    if (fishingMarkerElementRef.current) fishingMarkerElementRef.current.style.left = "4%";
     fishingMarkerTimerRef.current = window.setInterval(() => {
-      setFishingMarker((current) => {
-        const speed = game.toolUpgrades.rod ? 4 : 6;
-        let next = current + fishingMarkerDirectionRef.current * speed;
-        if (next >= 96) { next = 96; fishingMarkerDirectionRef.current = -1; }
-        if (next <= 4) { next = 4; fishingMarkerDirectionRef.current = 1; }
-        return next;
-      });
+      const speed = game.toolUpgrades.rod ? 4 : 6;
+      let next = fishingMarkerValueRef.current + fishingMarkerDirectionRef.current * speed;
+      if (next >= 96) { next = 96; fishingMarkerDirectionRef.current = -1; }
+      if (next <= 4) { next = 4; fishingMarkerDirectionRef.current = 1; }
+      fishingMarkerValueRef.current = next;
+      if (fishingMarkerElementRef.current) fishingMarkerElementRef.current.style.left = `${next}%`;
     }, 70);
     return () => {
       if (fishingMarkerTimerRef.current) window.clearInterval(fishingMarkerTimerRef.current);
@@ -1727,6 +1753,7 @@ export default function FarmGame() {
   const attemptReel = () => {
     const zoneStart = game.toolUpgrades.rod ? 38 : 47;
     const zoneEnd = game.toolUpgrades.rod ? 79 : 70;
+    const fishingMarker = fishingMarkerValueRef.current;
     if (fishingMarker >= zoneStart && fishingMarker <= zoneEnd) {
       const nextScore = fishingScore + 1;
       if (nextScore >= 3) finishFishingCatch();
@@ -4937,7 +4964,7 @@ export default function FarmGame() {
                 <button className={`pond ${isFishing ? "fishing" : ""} ${currentFestival?.id === "fishing" ? "fishing-festival-pond" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
                   <i /><i /><i /><b className="fishing-float" />{currentFestival?.id === "fishing" && <span className="festival-hooks-in-water" aria-label="六位参赛者的鱼钩都落在池塘水里">{FESTIVAL_GUESTS.map((name, index) => <em key={`hook-${name}`} className={`pond-hook pond-hook-${index + 1}`} />)}</span>}{fishingPhase === "bite" && <strong className="bite-question">?</strong>}<span className="pond-label">{fishingPhase === "waiting" ? "等待鱼儿咬钩…" : fishingPhase === "bite" ? "快点！点击问号" : currentFestival?.id === "fishing" ? "钓鱼节会场 · 所有鱼钩都在水中" : "钓鱼池"}</span>
                 </button>
-                {fishingPhase === "reeling" && <div className="fishing-challenge" onClick={(event) => event.stopPropagation()}><header><span>提竿小游戏</span><b>{fishingScore}/3</b></header><p>等红色游标进入绿色区域时，点击提竿！</p><div className="fishing-timing-bar"><i className={game.toolUpgrades.rod ? "lucky-zone" : ""} /><b style={{ left: `${fishingMarker}%` }} /></div><button onClick={attemptReel}>提竿！</button><small>{game.toolUpgrades.rod ? "幸运鱼竿：咬钩更快，成功区域更宽" : "连续命中 3 次才能把鱼钓上来"}</small></div>}
+                {fishingPhase === "reeling" && <div className="fishing-challenge" onClick={(event) => event.stopPropagation()}><header><span>提竿小游戏</span><b>{fishingScore}/3</b></header><p>等红色游标进入绿色区域时，点击提竿！</p><div className="fishing-timing-bar"><i className={game.toolUpgrades.rod ? "lucky-zone" : ""} /><b ref={fishingMarkerElementRef} style={{ left: "4%" }} /></div><button onClick={attemptReel}>提竿！</button><small>{game.toolUpgrades.rod ? "幸运鱼竿：咬钩更快，成功区域更宽" : "连续命中 3 次才能把鱼钓上来"}</small></div>}
                 {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节并不断挥竿钓鱼的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} fishing-villager fishing-villager-${index + 1} ${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：提竿时要咬紧牙用力拉！有时也会钓到石头、袜子或饮料。`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><em className="festival-fishing-rod" /><u className="fishing-effort-mouth" /><u className="festival-caught-fish" /><u className="festival-surprise-catch" /><span>{name}<small>等待鱼儿咬钩</small></span></button>)}</div>}
                 {isBirthday && <div className="birthday-farm-friends" aria-label="在生日当天跑到菜地和农场玩耍的朋友">{BIRTHDAY_GUESTS.slice(0, 6).map((name, index) => <button key={`farm-party-${name}`} style={personClothesStyle(name)} className={`birthday-field-friend field-friend-${index + 1} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：我们从农舍跑到菜地边玩啦，一会儿再回去吃生日蛋糕！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div>}
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${game.upgrades.secondFloor ? "has-second-floor" : ""} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setHouseFloor(1); setUpstairsRoom(null); setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" />{game.upgrades.secondFloor > 0 && <><span className="upper-window upper-window-left" /><span className="upper-window upper-window-right" /></>}<span className="sign">{displayName}的农舍{game.upgrades.secondFloor ? " · 两层" : game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
