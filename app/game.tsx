@@ -16,7 +16,7 @@ type Weather = "sunny" | "cloudy" | "rain" | "thunder";
 type MallItem = "redCoat" | "blueOutfit" | "umbrella" | "seedBox";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft" | "springFestival" | "lantern" | "dragonBoat" | "midAutumn";
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
-type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "table" | "floorLamp" | "sofa" | "bookshelf" | "dresser" | "nightstand" | "matches" | "blanket";
+type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "table" | "floorLamp" | "television" | "sofa" | "bookshelf" | "dresser" | "nightstand" | "matches" | "blanket";
 type CraftRotation = 0 | 45 | 90;
 type PlacedCraft = { id: string; type: CraftType; x: number; y: number; rotation: CraftRotation };
 type PlantedTree = { id: string; x: number; y: number; stage: number; watered: boolean };
@@ -114,8 +114,8 @@ type GameState = {
   artifactBag: number[];
   museumArtifacts: number[];
   groundSupplies: boolean[];
-  toolUpgrades: { water: boolean; axe: boolean; rod: boolean };
-  toolUpgradeDays: { axe: number; rod: number };
+  toolUpgrades: { water: boolean; axe: boolean; rod: boolean; pickaxe: boolean };
+  toolUpgradeDays: { axe: number; rod: number; pickaxe: number };
   npcHealedDays: Record<string, number>;
   lastSchoolAttendance: string;
   seasonExcursionCompleted: boolean;
@@ -320,9 +320,10 @@ const GROUND_SUPPLIES = [
   { name: "西瓜种子小包", short: "瓜", kind: "seed", field: "watermelonSeeds", amount: 3, description: "里面有 3 颗西瓜种子，捡起后会直接放进种子袋。" },
   { name: "溪边艾草", short: "艾", kind: "herb", amount: 2, description: "带着清香的新鲜艾草，捡起后会收进药材袋。" },
   { name: "金银花", short: "药", kind: "herb", amount: 2, description: "山坡上掉落的金银花，可以收进药材袋，之后拿给白医生查看。" },
+  { name: "金铁镐子", short: "镐", kind: "tool", tool: "pickaxe", description: "坚硬又闪亮的高级镐子，可使用 7 天；每处钻石矿能挖到 3 颗钻石。" },
 ] as const;
 
-const GROUND_SUPPLY_PRICES = [45, 55, 160, 220, 220, 50, 60, 60] as const;
+const GROUND_SUPPLY_PRICES = [45, 55, 160, 220, 220, 50, 60, 60, 650] as const;
 const PET_CATALOG: Array<{ id: PetType; name: string; personality: string; food: string; water: string; price: number }> = [
   { id: "cat", name: "三花猫", personality: "亲人、爱晒太阳，也喜欢追会动的小东西", food: "1 小碗猫粮", water: "1 小碗清水", price: 260 },
   { id: "dog", name: "柴犬", personality: "热情、勇敢，会跟着主人在农场巡逻", food: "2 小碗狗粮", water: "2 小碗清水", price: 320 },
@@ -341,6 +342,7 @@ const CRAFT_RECIPES: Record<CraftType, { name: string; short: string; descriptio
   sign: { name: "方向木牌", short: "牌", description: "可以横放、竖放或斜放的农场路牌", wood: 5, stone: 1 },
   table: { name: "实木餐桌", short: "桌", description: "摆在二楼，坐下来吃东西会恢复更多体力", wood: 14, stone: 2 },
   floorLamp: { name: "室内落地灯", short: "光", description: "只摆在屋里，点击可照亮二楼", wood: 8, stone: 3, resin: 1 },
+  television: { name: "像素电视机", short: "视", description: "摆在二楼，点击查看今日新闻和明天天气", wood: 12, stone: 6, resin: 1 },
   sofa: { name: "软垫沙发", short: "沙", description: "只摆在屋里，坐下可恢复 12 点体力", wood: 16, stone: 0, wool: 2 },
   bookshelf: { name: "矮木书柜", short: "书", description: "只摆在屋里，可以阅读农场与山谷故事", wood: 12, stone: 0 },
   dresser: { name: "衣物斗柜", short: "柜", description: "只摆在屋里，点击可以整理和更换衣服", wood: 15, stone: 0 },
@@ -505,7 +507,7 @@ const ATTIC_PLACEMENT_SLOTS = [
   { x: 23, y: 72 }, { x: 41, y: 72 }, { x: 59, y: 72 }, { x: 77, y: 72 },
 ] as const;
 const OUTDOOR_CRAFTS: CraftType[] = ["chest", "fence", "gate", "scarecrow", "lamp", "bench", "sign"];
-const INDOOR_FURNITURE: CraftType[] = ["chest", "table", "floorLamp", "sofa", "bookshelf", "dresser", "nightstand"];
+const INDOOR_FURNITURE: CraftType[] = ["chest", "table", "floorLamp", "television", "sofa", "bookshelf", "dresser", "nightstand"];
 const HANDCRAFTS: CraftType[] = ["matches", "blanket"];
 const ATTIC_FURNITURE: CraftType[] = INDOOR_FURNITURE.filter((item) => item !== "nightstand");
 const CRAFT_GROUPS: Array<{ title: string; note: string; items: CraftType[] }> = [
@@ -609,7 +611,7 @@ const makeNewGame = (): GameState => ({
   rockStates: [true, true, true, true, true, true],
   caveDiamondStates: [true, true, true],
   caveDiamondSpots: [0, 3, 6],
-  crafted: { chest: 0, fence: 0, gate: 0, scarecrow: 0, lamp: 0, bench: 0, sign: 0, table: 0, floorLamp: 0, sofa: 0, bookshelf: 0, dresser: 0, nightstand: 0, matches: 0, blanket: 0 },
+  crafted: { chest: 0, fence: 0, gate: 0, scarecrow: 0, lamp: 0, bench: 0, sign: 0, table: 0, floorLamp: 0, television: 0, sofa: 0, bookshelf: 0, dresser: 0, nightstand: 0, matches: 0, blanket: 0 },
   placedCrafts: [],
   farmVisitor: null,
   upgrades: { house: 0, land: 0, field: 0, storage: 0, greenhouse: 0, pond: 0, stoneWall: 0, secondFloor: 0, upstairsKitchen: 0, upstairsBathroom: 0 },
@@ -625,9 +627,9 @@ const makeNewGame = (): GameState => ({
   groundArtifacts: [true, false, false],
   artifactBag: [],
   museumArtifacts: [],
-  groundSupplies: [true, false, false, false, false, false, true, false],
-  toolUpgrades: { water: false, axe: false, rod: false },
-  toolUpgradeDays: { axe: 0, rod: 0 },
+  groundSupplies: [true, false, false, false, false, false, true, false, false],
+  toolUpgrades: { water: false, axe: false, rod: false, pickaxe: false },
+  toolUpgradeDays: { axe: 0, rod: 0, pickaxe: 0 },
   npcHealedDays: {},
   lastSchoolAttendance: "",
   seasonExcursionCompleted: false,
@@ -713,6 +715,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       toolUpgradeDays: {
         axe: parsed.toolUpgradeDays?.axe ?? (parsed.toolUpgrades?.axe ? 7 : 0),
         rod: parsed.toolUpgradeDays?.rod ?? (parsed.toolUpgrades?.rod ? 7 : 0),
+        pickaxe: parsed.toolUpgradeDays?.pickaxe ?? (parsed.toolUpgrades?.pickaxe ? 7 : 0),
       },
       npcHealedDays: parsed.npcHealedDays ?? {},
       lastSchoolAttendance: parsed.lastSchoolAttendance ?? "",
@@ -935,6 +938,7 @@ export default function FarmGame() {
             toolUpgradeDays: {
               axe: parsed.toolUpgradeDays?.axe ?? (parsed.toolUpgrades?.axe ? 7 : 0),
               rod: parsed.toolUpgradeDays?.rod ?? (parsed.toolUpgrades?.rod ? 7 : 0),
+              pickaxe: parsed.toolUpgradeDays?.pickaxe ?? (parsed.toolUpgrades?.pickaxe ? 7 : 0),
             },
             daily: parsed.daily?.day === parsed.day ? { ...defaults.daily, ...parsed.daily } : { ...defaults.daily, day: parsed.day ?? 1 },
             sick: parsed.sick ?? false,
@@ -1097,6 +1101,7 @@ export default function FarmGame() {
           toolUpgradeDays: {
             axe: data.save.toolUpgradeDays?.axe ?? (data.save.toolUpgrades?.axe ? 7 : 0),
             rod: data.save.toolUpgradeDays?.rod ?? (data.save.toolUpgrades?.rod ? 7 : 0),
+            pickaxe: data.save.toolUpgradeDays?.pickaxe ?? (data.save.toolUpgrades?.pickaxe ? 7 : 0),
           },
           diagnosed: data.save.diagnosed ?? false,
           daily: { ...defaults.daily, ...(data.save.daily ?? {}) },
@@ -2250,13 +2255,14 @@ export default function FarmGame() {
       showWalking(diamond.x - indoorPlayer.x, diamond.y - indoorPlayer.y);
       return;
     }
+    const diamondAmount = game.toolUpgrades.pickaxe ? 3 : 1;
     setGame((current) => ({
       ...current,
-      diamonds: current.diamonds + 1,
+      diamonds: current.diamonds + diamondAmount,
       energy: Math.max(0, current.energy - staminaCost(current, 4)),
       caveDiamondStates: current.caveDiamondStates.map((standing, index) => index === diamondIndex ? false : standing),
     }));
-    setMessage("镐子敲开岩层，挖到 1 颗闪亮的钻石！钻石已经放进资源记录。 ");
+    setMessage(game.toolUpgrades.pickaxe ? "金铁镐子敲开整片矿脉，一次挖到 3 颗闪亮的钻石！钻石已经放进资源记录。 " : "镐子敲开岩层，挖到 1 颗闪亮的钻石！钻石已经放进资源记录。 ");
     playTone(980);
   };
 
@@ -2707,7 +2713,7 @@ export default function FarmGame() {
       builderSupplies: { wood: current.builderSupplies.wood - recipe.wood, stone: current.builderSupplies.stone - recipe.stone },
       crafted: { ...current.crafted, [furniture]: current.crafted[furniture] + 1 },
     }));
-    const use = furniture === "chest" ? "存放二楼物品" : furniture === "floorLamp" ? "照亮夜晚的二楼" : furniture === "sofa" ? "坐下恢复 12 点体力" : furniture === "bookshelf" ? "阅读农场故事" : furniture === "dresser" ? "整理和更换衣服" : furniture === "nightstand" ? "喝热水恢复体力" : "坐下来吃东西并恢复更多体力";
+    const use = furniture === "chest" ? "存放二楼物品" : furniture === "floorLamp" ? "点击开灯并照亮夜晚的二楼" : furniture === "television" ? "查看今日新闻和明天天气预报" : furniture === "sofa" ? "坐下恢复 12 点体力" : furniture === "bookshelf" ? "阅读农场故事" : furniture === "dresser" ? "整理和更换衣服" : furniture === "nightstand" ? "喝热水恢复体力" : "坐下来吃东西并恢复更多体力";
     setMessage(`鲁师傅做好了${recipe.name}，已经放进背包。摆到二楼后可以${use}。`);
     playTone(820);
   };
@@ -2759,6 +2765,23 @@ export default function FarmGame() {
     if (craft.type === "floorLamp" || craft.type === "lamp") {
       setGame((current) => ({ ...current, equipment: { ...current.equipment, lampOn: !current.equipment.lampOn } }));
       setMessage(game.equipment.lampOn ? "关掉室内落地灯，家具仍留在原地。 " : "点亮室内落地灯，夜晚的整个二楼明亮起来。 ");
+      playTone(game.equipment.lampOn ? 300 : 760);
+      return;
+    }
+    if (craft.type === "television") {
+      const tomorrowDay = game.day === 28 ? 1 : game.day + 1;
+      const tomorrowSeason = game.day === 28 ? (game.season + 1) % SEASONS.length : game.season;
+      const tomorrowYear = game.day === 28 && game.season === SEASONS.length - 1 ? game.year + 1 : game.year;
+      const tomorrowWeather = weatherForDate(tomorrowYear, tomorrowSeason, tomorrowDay);
+      const news = [
+        "镇公所正在整理本周活动公告，居民们可以去公告栏查看。",
+        "青禾学校今天分享了新的农场知识，记得给幼苗浇水。",
+        "林婶的果园长势很好，超市补货也已经送到。",
+        "山洞勘探员发现钻石矿脉每天会换位置，要留意岩石后露出的晶尖。",
+        "安安从林边小屋寄来消息，天气好时想找小禾一起玩。",
+      ][(game.day + game.season * 3) % 5];
+      setMessage(`电视机亮起来——今日青禾新闻：${news}　天气预报：明天是${SEASONS[tomorrowSeason]}第 ${tomorrowDay} 天，${WEATHER_INFO[tomorrowWeather].name}，气温约 ${WEATHER_INFO[tomorrowWeather].temperature}。`);
+      playTone(680);
       return;
     }
     if (craft.type === "sofa" || craft.type === "bench") {
@@ -3634,6 +3657,7 @@ export default function FarmGame() {
     const expiringTools = [
       game.toolUpgrades.axe && game.toolUpgradeDays.axe <= 1 ? "精铁斧头" : "",
       game.toolUpgrades.rod && game.toolUpgradeDays.rod <= 1 ? "幸运鱼竿" : "",
+      game.toolUpgrades.pickaxe && game.toolUpgradeDays.pickaxe <= 1 ? "金铁镐子" : "",
     ].filter(Boolean);
     const daysSinceIllness = game.lastIllnessDay === 0
       ? nextDayNumber
@@ -3725,11 +3749,13 @@ export default function FarmGame() {
       const toolUpgradeDays = {
         axe: current.toolUpgrades.axe ? Math.max(0, current.toolUpgradeDays.axe - 1) : 0,
         rod: current.toolUpgrades.rod ? Math.max(0, current.toolUpgradeDays.rod - 1) : 0,
+        pickaxe: current.toolUpgrades.pickaxe ? Math.max(0, current.toolUpgradeDays.pickaxe - 1) : 0,
       };
       const toolUpgrades = {
         ...current.toolUpgrades,
         axe: toolUpgradeDays.axe > 0,
         rod: toolUpgradeDays.rod > 0,
+        pickaxe: toolUpgradeDays.pickaxe > 0,
       };
       const greenhouseAutoDay = Boolean(current.upgrades.greenhouse) && current.day % 2 === 0;
       const lastPetBirthYears = { ...current.lastPetBirthYears };
@@ -5258,7 +5284,7 @@ export default function FarmGame() {
                     <div className={`player indoor-player farm-special-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}><span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     {!interiorFireLit && <div className="special-darkness"><span>{farmInterior === "cave" ? "山洞里很暗" : "帐篷里还没点灯"}</span></div>}
                   </div>
-                  <div className="farm-special-actions"><button onClick={igniteWithMatches} disabled={interiorFireLit}>{interiorFireLit ? "火光已经点亮" : `使用火柴照明 · 剩 ${game.crafted.matches}`}</button>{farmInterior === "cave" && <button className={selected === "pickaxe" ? "active-special-tool" : ""} onClick={() => { setSelected("pickaxe"); setMessage("拿出了镐子。点击地面走到钻石矿旁，再点击钻石矿挖掘。 "); }}>拿出镐子 · 已有 {game.diamonds} 钻石</button>}<button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); setMessage(farmInterior === "cave" ? "从山洞回到大农场。" : "从帐篷回到露营地。 "); }}>从入口出去</button></div>
+                  <div className="farm-special-actions"><button onClick={igniteWithMatches} disabled={interiorFireLit}>{interiorFireLit ? "火光已经点亮" : `使用火柴照明 · 剩 ${game.crafted.matches}`}</button>{farmInterior === "cave" && <button className={selected === "pickaxe" ? "active-special-tool" : ""} onClick={() => { setSelected("pickaxe"); setMessage(game.toolUpgrades.pickaxe ? "拿出了金铁镐子。每处矿脉能挖到 3 颗钻石。 " : "拿出了镐子。点击地面走到钻石矿旁，再点击钻石矿挖掘。 "); }}>{game.toolUpgrades.pickaxe ? `拿出金铁镐子 · 剩 ${game.toolUpgradeDays.pickaxe} 天` : "拿出镐子"} · 已有 {game.diamonds} 钻石</button>}<button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); setMessage(farmInterior === "cave" ? "从山洞回到大农场。" : "从帐篷回到露营地。 "); }}>从入口出去</button></div>
                 </section>
               </div>
             )}
@@ -5343,7 +5369,7 @@ export default function FarmGame() {
                         {game.upgrades.upstairsBathroom > 0 && <button className="upstairs-room-door bathroom-room-door" onClick={() => { setUpstairsRoom("bathroom"); setSelectedAtticCraft(null); setMessage("推门进入二楼卫生间，浴缸、花洒、洗手台和镜子都可以使用。 "); }}><i /><b /><strong>卫生间</strong><small>点击进入</small></button>}
                       </div>
                       {selectedAtticCraft && <div className="upstairs-placement-grid" aria-label="绿色家具摆放位置">{ATTIC_PLACEMENT_SLOTS.map((slot, index) => game.atticPlacedCrafts.some((craft) => craft.x === index) ? null : <button key={`attic-slot-${index}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => placeFurnitureUpstairs(index)} aria-label={`在第 ${index + 1} 个绿色方格摆放${CRAFT_RECIPES[selectedAtticCraft].name}`}><i /></button>)}</div>}
-                      <div className="upstairs-placed-furniture">{game.atticPlacedCrafts.map((craft) => { const slot = ATTIC_PLACEMENT_SLOTS[craft.x]; if (!slot) return null; return <button key={craft.id} className={`upstairs-furniture upstairs-furniture-${craft.type}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => useUpstairsFurniture(craft)}><i /><b /><span>{CRAFT_RECIPES[craft.type].name}</span></button>; })}</div>
+                      <div className="upstairs-placed-furniture">{game.atticPlacedCrafts.map((craft) => { const slot = ATTIC_PLACEMENT_SLOTS[craft.x]; if (!slot) return null; return <button key={craft.id} className={`upstairs-furniture upstairs-furniture-${craft.type} ${craft.type === "floorLamp" && game.equipment.lampOn ? "floor-lamp-on" : ""}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => useUpstairsFurniture(craft)} aria-label={craft.type === "floorLamp" ? `室内落地灯，现在${game.equipment.lampOn ? "亮着" : "关闭"}，点击${game.equipment.lampOn ? "关灯" : "开灯"}` : CRAFT_RECIPES[craft.type].name}><i /><b /><span>{craft.type === "floorLamp" ? game.equipment.lampOn ? "落地灯 · 亮着" : "落地灯 · 点击开灯" : CRAFT_RECIPES[craft.type].name}</span></button>; })}</div>
                       {upstairsRoom && <div className={`upstairs-private-room private-${upstairsRoom}`}>
                         <button className="private-room-back" onClick={() => { setUpstairsRoom(null); setMessage("从小房间回到宽敞的二楼。 "); }}>← 回到二楼</button>
                         {upstairsRoom === "kitchen" ? <><div className="private-room-title"><strong>二楼厨房</strong><small>鲁师傅安装的每件家具都有功能</small></div><button className="functional-kitchen-stove" onClick={() => setMessage("灶台已经烧热了。选择下面的螃蟹或小虾进行烹饪，熟食会进入资源记录。 ")}><i /><b /><span>灶台 · 点火</span></button><button className="functional-kitchen-sink" onClick={() => { setMessage("用水槽把海鲜和蔬菜洗干净了，准备放到灶台上烹饪。 "); playTone(610); }}><i /><b /><span>水槽 · 清洗食材</span></button><button className="functional-kitchen-cabinet" onClick={() => setMessage(`料理柜里记录着：生螃蟹 ${game.crabs}、生小虾 ${game.shrimp}、熟螃蟹 ${game.cookedCrabs}、熟小虾 ${game.cookedShrimp}。`)}><i /><b /><span>料理柜 · 查看食材</span></button><div className="private-kitchen-actions"><button disabled={game.crabs <= 0} onClick={() => cookUpstairsSeafood("crabs")}>烹饪螃蟹 ×{game.crabs}</button><button disabled={game.shrimp <= 0} onClick={() => cookUpstairsSeafood("shrimp")}>烹饪小虾 ×{game.shrimp}</button></div></> : <><div className="private-room-title"><strong>二楼卫生间</strong><small>洗澡会恢复健康，并让明天更有精神</small></div><button className="functional-bathtub" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 15), sick: false, diagnosed: false, rainExposure: 0, showeredBeforeBed: true })); setMessage("洗了一个暖和的澡：恢复 15 点体力，身体恢复健康。睡觉后，明天农活体力消耗减少约三成。 "); playTone(720); }}><i /><b /><span>浴缸与花洒 · 洗澡</span></button><button className="functional-bath-sink" onClick={() => { setGame((current) => ({ ...current, rainExposure: 0, energy: Math.min(100, current.energy + 3) })); setMessage("在洗手台洗净泥土和雨水，恢复 3 点体力。 "); }}><i /><b /><span>洗手台 · 清洁</span></button><button className="functional-bath-mirror" onClick={() => { const nextOutfit = game.mallItems.redCoat > 0 && game.equippedOutfit !== "redCoat" ? "redCoat" : game.mallItems.blueOutfit > 0 && game.equippedOutfit !== "blueOutfit" ? "blueOutfit" : "default"; setGame((current) => ({ ...current, equippedOutfit: nextOutfit })); setMessage(nextOutfit === "default" ? "照了照镜子，换回平常的农场衣服。" : `在镜子前整理衣服，换上了${nextOutfit === "redCoat" ? "红色外套" : "蓝色套装"}。`); }}><i /><b /><span>镜子 · 整理换装</span></button></>}
@@ -5487,7 +5513,7 @@ export default function FarmGame() {
               <div className="toolbar-primary-row">
                 {(Object.keys(TOOL_INFO) as Tool[]).map((tool) => (
                   <button key={tool} className={selected === tool && !selectedResource ? "tool-button selected" : "tool-button"} onClick={() => chooseTool(tool)} aria-pressed={selected === tool && !selectedResource}>
-                    <kbd>{TOOL_INFO[tool].key}</kbd><PixelIcon type={tool} /><span>{tool === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : tool === "water" && game.toolUpgrades.water ? "大号洒水壶" : tool === "axe" && game.toolUpgrades.axe ? `精铁斧头 · ${game.toolUpgradeDays.axe}天` : tool === "rod" && game.toolUpgrades.rod ? `幸运鱼竿 · ${game.toolUpgradeDays.rod}天` : TOOL_INFO[tool].name}</span>
+                    <kbd>{TOOL_INFO[tool].key}</kbd><PixelIcon type={tool} /><span>{tool === "seed" ? `${CROP_INFO[selectedCrop].name}种子` : tool === "water" && game.toolUpgrades.water ? "大号洒水壶" : tool === "axe" && game.toolUpgrades.axe ? `精铁斧头 · ${game.toolUpgradeDays.axe}天` : tool === "rod" && game.toolUpgrades.rod ? `幸运鱼竿 · ${game.toolUpgradeDays.rod}天` : tool === "pickaxe" && game.toolUpgrades.pickaxe ? `金铁镐子 · ${game.toolUpgradeDays.pickaxe}天` : TOOL_INFO[tool].name}</span>
                     {tool === "seed" && <b>{game[CROP_INFO[selectedCrop].seedField]}</b>}
                     {tool === "water" && <b>{game.water}</b>}
                     {tool === "rod" && <b>{game.inventory.fish}</b>}
