@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @import "./festival.css";
+@import "./festival-detail.css";
+@import "./coffee-festival.css";
+@import "./fishing-festival.css";
 
 :root {
   --ink: #263d31;

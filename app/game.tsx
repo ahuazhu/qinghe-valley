@@ -444,9 +444,11 @@ const FESTIVAL_PROCESS_STEPS: Partial<Record<FestivalId, { title: string; intro:
     { label: "听完山谷音乐", detail: "和村民坐下来，把一段完整的曲子听完。", icon: "♪" },
   ] },
   coffee: { title: "咖啡日体验", intro: "从咖啡豆开始，亲手完成一杯山谷咖啡。", steps: [
-    { label: "转动磨豆机", detail: "慢慢把烘焙好的咖啡豆磨成粉。", icon: "磨" },
-    { label: "注入热水", detail: "绕圈冲泡，等香气从杯口飘起来。", icon: "泡" },
-    { label: "品尝咖啡点心", detail: "和阿麦、安安一起坐下品尝。", icon: "杯" },
+    { label: "放入咖啡豆", detail: "点击豆子，让它们一颗颗落进磨豆机。", icon: "豆" },
+    { label: "转动磨豆把手", detail: "连续转动侧面的把手，把豆子慢慢磨成粉。", icon: "磨" },
+    { label: "接取热水", detail: "按下饮水机，看着水流进细嘴壶。", icon: "水" },
+    { label: "绕圈冲泡", detail: "把装满热水的壶缓缓拖到滤杯上。", icon: "泡" },
+    { label: "品尝咖啡点心", detail: "闻香、品尝，再和阿麦、安安一起吃点心。", icon: "杯" },
   ] },
   craft: { title: "山谷手作课堂", intro: "跟着鲁师傅把一件木工作品真正做完。", steps: [
     { label: "挑选木料", detail: "查看木纹，选一块没有裂口的木料。", icon: "木" },
@@ -774,6 +776,11 @@ export default function FarmGame() {
   const [dragonBoatOpponent, setDragonBoatOpponent] = useState(0);
   const [dragonBoatWinner, setDragonBoatWinner] = useState<"player" | "opponent" | null>(null);
   const [festivalProcess, setFestivalProcess] = useState<{ id: FestivalId; step: number } | null>(null);
+  const [riverLanternFold, setRiverLanternFold] = useState(0);
+  const [riverLanternWickPicked, setRiverLanternWickPicked] = useState(false);
+  const [riverLanternPosition, setRiverLanternPosition] = useState<{ x: number; y: number } | null>(null);
+  const [festivalActionCount, setFestivalActionCount] = useState(0);
+  const [festivalDragging, setFestivalDragging] = useState(false);
   const [amusementOpen, setAmusementOpen] = useState(false);
   const [busTraveling, setBusTraveling] = useState(false);
   const [festivalMusicPlaying, setFestivalMusicPlaying] = useState(false);
@@ -4028,9 +4035,111 @@ export default function FarmGame() {
 
   const startFestivalProcess = (festivalId: FestivalId) => {
     if (!FESTIVAL_PROCESS_STEPS[festivalId]) return;
+    if (festivalId === "midAutumn") {
+      setRiverLanternFold(0);
+      setRiverLanternWickPicked(false);
+      setRiverLanternPosition(null);
+    }
+    setFestivalActionCount(0);
+    setFestivalDragging(false);
     setFestivalProcess({ id: festivalId, step: 0 });
     setMessage(`${FESTIVAL_PROCESS_STEPS[festivalId]?.title}开始了，要亲手完成每一个步骤。`);
     playTone(680);
+  };
+
+  const foldRiverLanternPaper = () => {
+    if (festivalProcess?.id !== "midAutumn" || festivalProcess.step !== 0) return;
+    const nextFold = Math.min(3, riverLanternFold + 1);
+    setRiverLanternFold(nextFold);
+    playTone(470 + nextFold * 80);
+    if (nextFold >= 3) {
+      setFestivalProcess({ id: "midAutumn", step: 1 });
+      setMessage("纸张已经一折一折变成灯罩。现在把灯芯缓缓拖进灯罩中间。 ");
+    } else {
+      setMessage(`纸张完成第 ${nextFold} 折，还要继续点纸再折 ${3 - nextFold} 次。`);
+    }
+  };
+
+  const installRiverLanternWick = () => {
+    if (festivalProcess?.id !== "midAutumn" || festivalProcess.step !== 1) return;
+    setRiverLanternWickPicked(false);
+    setFestivalProcess({ id: "midAutumn", step: 2 });
+    setMessage("灯芯已经缓缓放进灯罩并点亮。场景来到河边，请点击河面上想放灯的位置。 ");
+    playTone(760);
+  };
+
+  const placeRiverLantern = (event: MouseEvent<HTMLButtonElement>) => {
+    if (festivalProcess?.id !== "midAutumn" || festivalProcess.step !== 2 || riverLanternPosition) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position = { x: ((event.clientX - bounds.left) / bounds.width) * 100, y: ((event.clientY - bounds.top) / bounds.height) * 100 };
+    setRiverLanternPosition(position);
+    setMessage("河灯落在你选的位置，灯光映在水面上，正在顺着河水缓缓漂动。 ");
+    playTone(920);
+    const finishTimer = window.setTimeout(advanceFestivalProcess, 1_100);
+    bedtimeTimersRef.current.push(finishTimer);
+  };
+
+  const festivalActionRequirements: Partial<Record<FestivalId, number[]>> = {
+    seeds: [4, 4, 1], spring: [3, 3, 6], coffee: [1, 6, 1, 1, 3], craft: [3, 6, 1], springFestival: [1, 8, 6],
+  };
+  const festivalActionIcons: Partial<Record<FestivalId, string[][]>> = {
+    seeds: [["莓", "瓜", "玉", "南"], ["春", "夏", "秋", "冬"], ["绳"]],
+    spring: [["勺", "莓", "酱"], ["左", "中", "右"], ["♪", "♫", "♩", "♪", "♫", "♩"]],
+    coffee: [["豆"], ["转", "转", "转", "转", "转", "转"], ["水"], ["壶"], ["闻", "尝", "点"]],
+    craft: [["松", "橡", "枫"], ["磨", "磨", "磨", "磨", "磨", "磨"], ["刷"]],
+    springFestival: [["绸"], ["咚", "咚", "锵", "咚", "锵", "咚", "咚", "锵"], ["↑", "→", "↓", "←", "↑", "→"]],
+  };
+  const festivalDragSteps = new Set(["seeds-2", "coffee-3", "craft-2", "springFestival-0"]);
+
+  const performFestivalDetailAction = () => {
+    if (!festivalProcess || festivalProcess.id === "midAutumn") return;
+    const required = festivalActionRequirements[festivalProcess.id]?.[festivalProcess.step] ?? 1;
+    const next = festivalActionCount + 1;
+    if (next >= required) {
+      setFestivalActionCount(0);
+      setFestivalDragging(false);
+      advanceFestivalProcess();
+      return;
+    }
+    setFestivalActionCount(next);
+    setMessage(`“${FESTIVAL_PROCESS_STEPS[festivalProcess.id]?.steps[festivalProcess.step].label}”正在进行：${next}/${required}。`);
+    playTone(440 + next * 45);
+  };
+
+  const dropFestivalObject = () => {
+    if (!festivalDragging) {
+      setMessage("先拿起左边的物品，再缓缓拖到右边发光的位置。 ");
+      return;
+    }
+    performFestivalDetailAction();
+  };
+
+  const playCoffeeMachineAnimation = (kind: "beans" | "water") => {
+    if (festivalProcess?.id !== "coffee" || festivalActionCount > 0) return;
+    setFestivalActionCount(1);
+    setMessage(kind === "beans" ? "咖啡豆正一颗颗滚进磨豆机的漏斗里……" : "按下饮水机，热水正沿着水流注入细嘴壶……");
+    playTone(kind === "beans" ? 520 : 680);
+    const timer = window.setTimeout(() => {
+      setFestivalActionCount(0);
+      advanceFestivalProcess();
+    }, 1_150);
+    bedtimeTimersRef.current.push(timer);
+  };
+
+  const renderFestivalHandsOn = (process: { title: string; intro: string; steps: { label: string; detail: string; icon: string }[] }, step: { label: string; detail: string; icon: string }) => {
+    if (!festivalProcess) return null;
+    if (festivalProcess.id === "midAutumn") {
+      if (festivalProcess.step === 0) return <div className={`river-lantern-craft fold-${riverLanternFold}`}><strong>点击纸张，一折一折做成灯罩</strong><button className="lantern-paper" onClick={foldRiverLanternPaper}><i /><b /><span>点击折纸 · {riverLanternFold}/3</span></button><small>纸张会随着每一次点击改变形状。</small></div>;
+      if (festivalProcess.step === 1) return <div className="river-lantern-craft wick-stage"><strong>把灯芯缓缓拖进做好的灯罩</strong><button draggable className={`lantern-wick ${riverLanternWickPicked ? "picked" : ""}`} onDragStart={() => { setRiverLanternWickPicked(true); setMessage("已经拿起灯芯，慢慢拖到右边灯罩里面。 "); }} onClick={() => { setRiverLanternWickPicked(true); setMessage("灯芯已经拿起，再点击右边的灯罩也可以放进去。 "); }}><i /><span>灯芯</span></button><button className="folded-lantern-drop" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); installRiverLanternWick(); }} onClick={() => riverLanternWickPicked ? installRiverLanternWick() : setMessage("先从左边拿起灯芯。 ")}><i /><b /><span>拖到这里</span></button></div>;
+      return <div className="river-lantern-water-stage"><strong>来到河边 · 点击河面上想放灯的位置</strong><button className="festival-river-surface" onClick={placeRiverLantern}>{riverLanternPosition && <i className="placed-river-lantern" style={{ left: `${riverLanternPosition.x}%`, top: `${riverLanternPosition.y}%` }}><b /></i>}<span>{riverLanternPosition ? "河灯正在缓缓漂动…" : "点击任意一处水面"}</span></button></div>;
+    }
+    if (festivalProcess.id === "coffee" && festivalProcess.step === 0) return <div className={`coffee-machine-task ${festivalActionCount ? "beans-loading" : ""}`}><strong>点击咖啡豆，放进磨豆机</strong><button className="coffee-bean-bowl" onClick={() => playCoffeeMachineAnimation("beans")}><i /><i /><i /><i /><span>{festivalActionCount ? "豆子正在滚进去…" : "点击咖啡豆"}</span></button><div className="festival-coffee-grinder"><i className="grinder-hopper" /><b /><em /></div></div>;
+    if (festivalProcess.id === "coffee" && festivalProcess.step === 1) return <div className="coffee-machine-task handle-stage"><strong>连续转动磨豆机把手 · {festivalActionCount}/6</strong><div className="festival-coffee-grinder"><i className="grinder-hopper" /><b /><em style={{ rotate: `${festivalActionCount * 60}deg` }} /></div><button className="grinder-handle-button" onClick={performFestivalDetailAction}>转动把手</button><small>每点一次，把手转动一格，咖啡粉会慢慢落下来。</small></div>;
+    if (festivalProcess.id === "coffee" && festivalProcess.step === 2) return <div className={`coffee-water-task ${festivalActionCount ? "water-running" : ""}`}><strong>点击饮水机，给细嘴壶接热水</strong><button className="coffee-water-dispenser" onClick={() => playCoffeeMachineAnimation("water")}><i /><b /><em /><span>{festivalActionCount ? "热水正在流下…" : "按下出水键"}</span></button><div className="coffee-pour-kettle"><i /><b /></div></div>;
+    const required = festivalActionRequirements[festivalProcess.id]?.[festivalProcess.step] ?? 1;
+    const icons = festivalActionIcons[festivalProcess.id]?.[festivalProcess.step] ?? [step.icon];
+    const dragStep = festivalDragSteps.has(`${festivalProcess.id}-${festivalProcess.step}`);
+    return <div className={`festival-hands-on action-${festivalProcess.id}-${festivalProcess.step}`}><div className="festival-action-backdrop"><i /><i /><i /></div><strong>{step.label}</strong><p>{step.detail}</p>{dragStep ? <div className="festival-drag-task"><button draggable className={festivalDragging ? "dragging" : ""} onDragStart={() => setFestivalDragging(true)} onClick={() => { setFestivalDragging(true); setMessage("已经拿起物品，再把它拖到右边发光的位置。 "); }}><i>{icons[0]}</i><span>拿起并拖动</span></button><button className="festival-drop-zone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(); }} onClick={dropFestivalObject}><i>✦</i><span>缓缓放到这里</span></button></div> : <div className="festival-action-objects">{icons.map((icon, index) => <button key={`${festivalProcess.id}-${festivalProcess.step}-${index}`} className={index < festivalActionCount ? "completed" : ""} onClick={performFestivalDetailAction}><i>{icon}</i><span>{index < festivalActionCount ? "完成" : "点击操作"}</span></button>)}</div>}<small>进度 {festivalActionCount}/{required} · 必须完成过程才能进入下一步</small></div>;
   };
 
   const advanceFestivalProcess = () => {
@@ -4040,6 +4149,8 @@ export default function FarmGame() {
     if (festivalProcess.step < process.steps.length - 1) {
       const nextStep = festivalProcess.step + 1;
       setFestivalProcess({ ...festivalProcess, step: nextStep });
+      setFestivalActionCount(0);
+      setFestivalDragging(false);
       setMessage(`完成“${process.steps[festivalProcess.step].label}”，接下来：${process.steps[nextStep].label}。`);
       playTone(620 + nextStep * 80);
       return;
@@ -4064,6 +4175,8 @@ export default function FarmGame() {
     });
     setMessage(alreadyCompleted ? `${process.title}的全部过程今天已经体验过了。` : `${process.title}全部完成！获得 100 金币和 15 点体力。`);
     setFestivalProcess(null);
+    setFestivalActionCount(0);
+    setFestivalDragging(false);
     playTone(980);
   };
 
@@ -4354,8 +4467,8 @@ export default function FarmGame() {
   };
 
   const buyPetFood = () => {
-    const price = 10;
-    if (game.coins < price) { setMessage("宠物粮小袋只需要 10 金币，现在的钱还不够。 "); playTone(210); return; }
+    const price = 5;
+    if (game.coins < price) { setMessage("宠物粮小袋只需要 5 金币，现在的钱还不够。 "); playTone(210); return; }
     setGame((current) => ({ ...current, coins: current.coins - price, petFood: current.petFood + 10 }));
     setMessage("买到一袋平价宠物粮，共 10 份，已经放进资源记录。每天睡觉前会自动喂给跟随的小宠物。 ");
     playTone(720);
@@ -4561,7 +4674,7 @@ export default function FarmGame() {
 
   return (
     <main className={`game-shell ${embeddedMode ? "embedded-game" : ""} ${dreamScene !== null ? `dream-reality-active dream-reality-${dreamOddity} dream-variant-${dreamScene % 16}` : ""}`}>
-      {mallOpen && mallFloor === 1 && <button className="mall-pet-food-kiosk" onClick={buyPetFood}><i /><span><b>宠物补给柜</b><small>便宜宠物粮 · 10 金币 / 10份</small></span></button>}
+      {mallOpen && mallFloor === 1 && <button className="mall-pet-food-kiosk" onClick={buyPetFood}><i /><span><b>宠物补给柜</b><small>便宜宠物粮 · 5 金币 / 10份</small></span></button>}
       {petHospitalOpen && <div className="pet-hospital-overlay" role="dialog" aria-modal="true" aria-label="远方新区宠物医院"><section className="pet-hospital-panel"><header><div><span>远方新区动物健康中心</span><h2>青禾宠物医院</h2></div><div className="pet-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setPetHospitalOpen(false)}>×</button></header><div className="pet-hospital-room"><aside><button className="pet-vet"><i /><b /></button><strong>宠物医生苏苏</strong><small>检查 · 配药 · 恢复健康</small><span className="vet-counter" /></aside><div className="pet-patient-list">{game.pets.length === 0 ? <p>小禾还没有领养宠物，可以先去旁边的宠物之家看看。</p> : game.pets.map((pet) => { const sick = game.sickPetIds.includes(pet.id); const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name; return <article key={`patient-${pet.id}`} className={sick ? "sick-patient" : ""}><div className={`pet-patient-art pet-${pet.type} ${sick ? "sick-pet" : ""}`}><i /><b /></div><span><strong>{petName} · {pet.sex}</strong><small>{sick ? "颜色发灰 · 眼睛下垂 · 很不舒服" : "精神很好 · 不需要治疗"}</small></span><button disabled={!sick} onClick={() => treatPetAtHospital(pet.id)}>{sick ? "检查配药 · 35金币" : "健康"}</button></article>; })}</div></div><footer><span>{message}</span><button onClick={() => setPetHospitalOpen(false)}>离开宠物医院</button></footer></section></div>}
       <header className="topbar">
         <div className="brand-lockup">
@@ -4706,7 +4819,7 @@ export default function FarmGame() {
                 <div className="outdoor-lamps outdoor-lamps-farm farm-fixed-lamps" aria-hidden="true"><i /><i /><i /><i /></div>
                 <div className="path path-one" /><div className="path path-two" />
                 <button className={`pond ${isFishing ? "fishing" : ""} ${currentFestival?.id === "fishing" ? "fishing-festival-pond" : ""}`} onClick={castLine} aria-label="在钓鱼池钓鱼">
-                  <i /><i /><i /><b className="fishing-float" />{fishingPhase === "bite" && <strong className="bite-question">?</strong>}<span className="pond-label">{fishingPhase === "waiting" ? "等待鱼儿咬钩…" : fishingPhase === "bite" ? "快点！点击问号" : currentFestival?.id === "fishing" ? "钓鱼节会场 · 鱼获 +2" : "钓鱼池"}</span>
+                  <i /><i /><i /><b className="fishing-float" />{currentFestival?.id === "fishing" && <span className="festival-hooks-in-water" aria-label="六位参赛者的鱼钩都落在池塘水里">{FESTIVAL_GUESTS.map((name, index) => <em key={`hook-${name}`} className={`pond-hook pond-hook-${index + 1}`} />)}</span>}{fishingPhase === "bite" && <strong className="bite-question">?</strong>}<span className="pond-label">{fishingPhase === "waiting" ? "等待鱼儿咬钩…" : fishingPhase === "bite" ? "快点！点击问号" : currentFestival?.id === "fishing" ? "钓鱼节会场 · 所有鱼钩都在水中" : "钓鱼池"}</span>
                 </button>
                 {fishingPhase === "reeling" && <div className="fishing-challenge" onClick={(event) => event.stopPropagation()}><header><span>提竿小游戏</span><b>{fishingScore}/3</b></header><p>等红色游标进入绿色区域时，点击提竿！</p><div className="fishing-timing-bar"><i className={game.toolUpgrades.rod ? "lucky-zone" : ""} /><b style={{ left: `${fishingMarker}%` }} /></div><button onClick={attemptReel}>提竿！</button><small>{game.toolUpgrades.rod ? "幸运鱼竿：咬钩更快，成功区域更宽" : "连续命中 3 次才能把鱼钓上来"}</small></div>}
                 {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节并不断挥竿钓鱼的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} fishing-villager fishing-villager-${index + 1} ${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：我刚把一条鱼提起来收进口袋，现在重新抛竿比赛！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><em className="festival-fishing-rod" /><u className="festival-caught-fish" /><span>{name}<small>等待鱼儿咬钩</small></span></button>)}</div>}
@@ -4882,7 +4995,7 @@ export default function FarmGame() {
             {festivalProcess && FESTIVAL_PROCESS_STEPS[festivalProcess.id] && (() => {
               const process = FESTIVAL_PROCESS_STEPS[festivalProcess.id]!;
               const step = process.steps[festivalProcess.step];
-              return <div className={`festival-process-overlay process-${festivalProcess.id}`} role="presentation"><section className="festival-process-panel" role="dialog" aria-modal="true" aria-label={process.title}><header><div><span>节日专属活动 · 第 {festivalProcess.step + 1}/{process.steps.length} 步</span><h2>{process.title}</h2></div><button onClick={() => setFestivalProcess(null)} aria-label="暂时离开活动">×</button></header><p>{process.intro}</p><div className="festival-process-scene"><div className="festival-process-crowd">{FESTIVAL_GUESTS.slice(0, 5).map((name, index) => <i key={`${festivalProcess.id}-${name}`} style={{ ...personClothesStyle(name), left: `${12 + index * 18}%` }} />)}</div><div className="festival-step-art"><i>{step.icon}</i><strong>{step.label}</strong><span>{step.detail}</span></div></div><div className="festival-progress-track">{process.steps.map((item, index) => <span key={item.label} className={index < festivalProcess.step ? "done" : index === festivalProcess.step ? "active" : ""}><i>{index < festivalProcess.step ? "✓" : index + 1}</i><b>{item.label}</b></span>)}</div><button className="festival-step-action" onClick={advanceFestivalProcess}>{festivalProcess.step === process.steps.length - 1 ? `完成${process.title}` : `亲手完成：${step.label}`}</button><footer><span>{message}</span><button onClick={() => setFestivalProcess(null)}>暂时离开</button></footer></section></div>;
+              return <div className={`festival-process-overlay process-${festivalProcess.id}`} role="presentation"><section className="festival-process-panel" role="dialog" aria-modal="true" aria-label={process.title}><header><div><span>节日专属活动 · 第 {festivalProcess.step + 1}/{process.steps.length} 步</span><h2>{process.title}</h2></div><button onClick={() => setFestivalProcess(null)} aria-label="暂时离开活动">×</button></header><p>{process.intro}</p>{renderFestivalHandsOn(process, step)}<div className="festival-progress-track">{process.steps.map((item, index) => <span key={item.label} className={index < festivalProcess.step ? "done" : index === festivalProcess.step ? "active" : ""}><i>{index < festivalProcess.step ? "✓" : index + 1}</i><b>{item.label}</b></span>)}</div><footer><span>{message}</span><button onClick={() => setFestivalProcess(null)}>暂时离开</button></footer></section></div>;
             })()}
 
             {dragonBoatTraveling && <div className="dragon-boat-travel-overlay" role="status"><div className="festival-trip-bus"><i /><b /><span>青禾节日专线</span></div><div className="passing-scenery"><i /><i /><i /><i /></div><strong>老师、同学和村民正一起乘大巴去比赛河道…</strong></div>}
