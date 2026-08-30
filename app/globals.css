@@ -6,6 +6,9 @@
 @import "./fishing-festival.css";
 @import "./fishing-extras.css";
 @import "./furniture-overhaul.css";
+@import "./workshop-festivals.css";
+@import "./house-staircase.css";
+@import "./festival-process-extended.css";
 
 :root {
   --ink: #263d31;

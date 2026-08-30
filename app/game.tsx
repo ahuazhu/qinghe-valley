@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 type Tool = "hoe" | "seed" | "water" | "hand" | "rod" | "axe" | "pickaxe";
 type TileState = "grass" | "soil" | "crop";
@@ -15,6 +15,8 @@ type Facing = "down" | "up" | "left" | "right";
 type Weather = "sunny" | "cloudy" | "rain" | "thunder";
 type MallItem = "redCoat" | "blueOutfit" | "umbrella" | "seedBox";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft" | "springFestival" | "lantern" | "dragonBoat" | "midAutumn";
+type WorkshopSeedId = "strawberry" | "watermelon" | "corn" | "pumpkin";
+type WorkshopSeason = "春" | "夏" | "秋" | "冬";
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
 type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "table" | "floorLamp" | "television" | "sofa" | "bookshelf" | "dresser" | "nightstand" | "matches" | "blanket";
 type CraftRotation = 0 | 45 | 90;
@@ -443,10 +445,10 @@ const FESTIVAL_SCHEDULE: { season: number; day: number; id: FestivalId; name: st
 ];
 
 const FESTIVAL_PROCESS_STEPS: Partial<Record<FestivalId, { title: string; intro: string; steps: { label: string; detail: string; icon: string }[] }>> = {
-  seeds: { title: "种子分享工坊", intro: "先挑选、再分类，最后亲手把种子装进礼包。", steps: [
-    { label: "挑选种子", detail: "从长桌上挑选水果和蔬菜种子。", icon: "种" },
-    { label: "按季节分类", detail: "把春夏秋冬适合的种子放进不同小篮子。", icon: "篮" },
-    { label: "装好礼包", detail: "封好种子袋，再把整份礼包放进背包。", icon: "包" },
+  seeds: { title: "种子分享工坊", intro: "先清掉虫子和杂物，再辨认种子、按季节分类，最后用丝绸扎好礼包。", steps: [
+    { label: "清理种子", detail: "用杀虫剂处理小虫，把混进种子里的杂物拖到废料盒。", icon: "净" },
+    { label: "按季节分类", detail: "拿起种子会显示名字，再拖进春夏秋冬对应的篮子。", icon: "篮" },
+    { label: "丝绸扎礼包", detail: "点击礼包，用丝绸在袋口扎出一个蝴蝶结。", icon: "结" },
   ] },
   spring: { title: "春日集市游园", intro: "沿着摊位慢慢逛完，不能一点就跳过。", steps: [
     { label: "品尝草莓酱", detail: "先闻香气，再用小木勺尝一口。", icon: "莓" },
@@ -460,10 +462,10 @@ const FESTIVAL_PROCESS_STEPS: Partial<Record<FestivalId, { title: string; intro:
     { label: "绕圈冲泡", detail: "把装满热水的壶缓缓拖到滤杯上。", icon: "泡" },
     { label: "品尝咖啡点心", detail: "闻香、品尝，再和阿麦、安安一起吃点心。", icon: "杯" },
   ] },
-  craft: { title: "山谷手作课堂", intro: "跟着鲁师傅把一件木工作品真正做完。", steps: [
-    { label: "挑选木料", detail: "查看木纹，选一块没有裂口的木料。", icon: "木" },
-    { label: "打磨边角", detail: "来回打磨，让作品摸起来不扎手。", icon: "磨" },
-    { label: "上色并展出", detail: "刷上颜色，把完成的作品摆到展台。", icon: "展" },
+  craft: { title: "山谷木雕工坊", intro: "先检查每块真实木板，再沿着木纹拖动刻刀。选错木板或逆着纹理刮，成品都会变难看。", steps: [
+    { label: "检查木板", detail: "四块木板中有两块带裂痕，而且裂痕的位置不一样。", icon: "木" },
+    { label: "顺纹雕刻", detail: "按住刻刀，沿木板横向纹理来回刮出作品。", icon: "刀" },
+    { label: "查看成品", detail: "看清亲手雕出的木鸟，再把它摆到展示台。", icon: "雕" },
   ] },
   midAutumn: { title: "中秋河灯会", intro: "亲手做好河灯，再走到水边把它放下。", steps: [
     { label: "折好灯罩", detail: "把纸角对齐，折出一盏结实的小灯。", icon: "折" },
@@ -476,6 +478,13 @@ const FESTIVAL_PROCESS_STEPS: Partial<Record<FestivalId, { title: string; intro:
     { label: "跟随舞狮巡游", detail: "和村民一起走完热闹的广场路线。", icon: "狮" },
   ] },
 };
+
+const WORKSHOP_SEEDS: Array<{ id: WorkshopSeedId; name: string; season: WorkshopSeason; hint: string }> = [
+  { id: "strawberry", name: "草莓种子", season: "春", hint: "粉红小籽，适合春天" },
+  { id: "watermelon", name: "西瓜种子", season: "夏", hint: "黑亮扁籽，喜欢夏日阳光" },
+  { id: "corn", name: "玉米种子", season: "秋", hint: "金黄圆粒，秋天收获" },
+  { id: "pumpkin", name: "南瓜种子", season: "冬", hint: "耐寒白籽，冬季温棚播种" },
+];
 
 const TRADITIONAL_FESTIVALS: Partial<Record<FestivalId, { treat: string; symbol: string; greeting: string }>> = {
   springFestival: { treat: "年糕", symbol: "春", greeting: "新年快乐！广场挂满红灯笼，大家正在一起迎接新春。" },
@@ -803,6 +812,18 @@ export default function FarmGame() {
   const [riverLanternPosition, setRiverLanternPosition] = useState<{ x: number; y: number } | null>(null);
   const [festivalActionCount, setFestivalActionCount] = useState(0);
   const [festivalDragging, setFestivalDragging] = useState(false);
+  const [craftWoodChoice, setCraftWoodChoice] = useState<number | null>(null);
+  const [craftCarveProgress, setCraftCarveProgress] = useState(0);
+  const [craftWrongCarves, setCraftWrongCarves] = useState(0);
+  const [craftKnifeDragging, setCraftKnifeDragging] = useState(false);
+  const [craftResultQuality, setCraftResultQuality] = useState<"good" | "poor" | null>(null);
+  const [seedWorkshopBugs, setSeedWorkshopBugs] = useState([true, true]);
+  const [seedWorkshopDebris, setSeedWorkshopDebris] = useState([true, true]);
+  const [seedSprayerPicked, setSeedSprayerPicked] = useState(false);
+  const [seedDebrisPicked, setSeedDebrisPicked] = useState<number | null>(null);
+  const [seedWorkshopHeld, setSeedWorkshopHeld] = useState<WorkshopSeedId | null>(null);
+  const [seedWorkshopSorted, setSeedWorkshopSorted] = useState<WorkshopSeedId[]>([]);
+  const [seedGiftTied, setSeedGiftTied] = useState(false);
   const [amusementOpen, setAmusementOpen] = useState(false);
   const [busTraveling, setBusTraveling] = useState(false);
   const [festivalMusicPlaying, setFestivalMusicPlaying] = useState(false);
@@ -828,6 +849,7 @@ export default function FarmGame() {
   const [selectedPetSex, setSelectedPetSex] = useState<"男生" | "女生">("女生");
   const [bedtimePhase, setBedtimePhase] = useState<"walkingHome" | "tuckedIn" | "waking" | null>(null);
   const [houseFloor, setHouseFloor] = useState<1 | 2>(1);
+  const [stairTravel, setStairTravel] = useState<"up" | "down" | null>(null);
   const [upstairsRoom, setUpstairsRoom] = useState<"kitchen" | "bathroom" | null>(null);
   const [atticStorageOpen, setAtticStorageOpen] = useState(false);
   const [selectedAtticCraft, setSelectedAtticCraft] = useState<CraftType | null>(null);
@@ -874,6 +896,9 @@ export default function FarmGame() {
   const fishingMarkerValueRef = useRef(4);
   const fishingMarkerElementRef = useRef<HTMLElement | null>(null);
   const fishingBaitUsedRef = useRef(false);
+  const craftKnifeLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const craftCarveProgressRef = useRef(0);
+  const craftWrongCarvesRef = useRef(0);
   const saveTimerRef = useRef<number | null>(null);
   const latestSaveRef = useRef<{ key: string; game: GameState } | null>(null);
   const beachRespawnTimersRef = useRef<number[]>([]);
@@ -3476,6 +3501,7 @@ export default function FarmGame() {
     if (activeBuilding === "farmhouse") {
       setBedtimePhase(null);
       setHouseFloor(1);
+      setStairTravel(null);
       setUpstairsRoom(null);
       setAtticStorageOpen(false);
       setSelectedAtticCraft(null);
@@ -3489,6 +3515,53 @@ export default function FarmGame() {
     } else {
       setMessage(`离开${building.name}，回到${activeBuilding === "townhall" || activeBuilding === "museum" ? "清河文化街" : activeBuilding === "farmhouse" ? "农场" : "中心街"}。`);
     }
+  };
+
+  const travelHouseStairs = (direction: "up" | "down") => {
+    if (stairTravel || !game.upgrades.secondFloor) return;
+    setUpstairsRoom(null);
+    setAtticStorageOpen(false);
+    setSelectedAtticCraft(null);
+    setStairTravel(direction);
+    setIsWalking(true);
+    setFacing("up");
+    const later = (delay: number, action: () => void) => {
+      const timer = window.setTimeout(action, delay);
+      bedtimeTimersRef.current.push(timer);
+    };
+    if (direction === "up") {
+      setIndoorPlayer({ x: 15, y: 69 });
+      setMessage("小禾先走到真正的木楼梯脚下。 ");
+      later(360, () => { setIndoorPlayer({ x: 13, y: 50 }); setMessage("小禾正一阶一阶踩着木台阶往上走。 "); playTone(470); });
+      later(760, () => { setIndoorPlayer({ x: 11, y: 31 }); playTone(560); });
+      later(1_120, () => {
+        setHouseFloor(2);
+        setIndoorPlayer({ x: 14, y: 66 });
+        setFacing("right");
+        setIsWalking(false);
+        setStairTravel(null);
+        setMessage("小禾从二楼的楼梯口走出来，来到宽敞的二楼。 ");
+        playTone(760);
+      });
+      return;
+    }
+    setIndoorPlayer({ x: 14, y: 66 });
+    setMessage("小禾走到二楼楼梯口，开始沿着台阶下楼。 ");
+    later(360, () => { setIndoorPlayer({ x: 12, y: 48 }); playTone(520); });
+    later(760, () => {
+      setHouseFloor(1);
+      setIndoorPlayer({ x: 12, y: 32 });
+      setMessage("小禾已经走到楼梯下半段，一楼的房间出现在眼前。 ");
+      playTone(460);
+    });
+    later(1_120, () => {
+      setIndoorPlayer({ x: 16, y: 69 });
+      setFacing("right");
+      setIsWalking(false);
+      setStairTravel(null);
+      setMessage("小禾从最后一级台阶走下来，回到农舍一楼。 ");
+      playTone(700);
+    });
   };
 
   const returnToFarm = () => {
@@ -4207,11 +4280,159 @@ export default function FarmGame() {
       setRiverLanternWickPicked(false);
       setRiverLanternPosition(null);
     }
+    if (festivalId === "craft") {
+      setCraftWoodChoice(null);
+      setCraftCarveProgress(0);
+      setCraftWrongCarves(0);
+      setCraftKnifeDragging(false);
+      setCraftResultQuality(null);
+      craftCarveProgressRef.current = 0;
+      craftWrongCarvesRef.current = 0;
+      craftKnifeLastPointRef.current = null;
+    }
+    if (festivalId === "seeds") {
+      setSeedWorkshopBugs([true, true]);
+      setSeedWorkshopDebris([true, true]);
+      setSeedSprayerPicked(false);
+      setSeedDebrisPicked(null);
+      setSeedWorkshopHeld(null);
+      setSeedWorkshopSorted([]);
+      setSeedGiftTied(false);
+    }
     setFestivalActionCount(0);
     setFestivalDragging(false);
     setFestivalProcess({ id: festivalId, step: 0 });
     setMessage(`${FESTIVAL_PROCESS_STEPS[festivalId]?.title}开始了，要亲手完成每一个步骤。`);
     playTone(680);
+  };
+
+  const damagedCraftBoards = [game.day % 4, (game.day + 2) % 4];
+
+  const chooseCraftWood = (index: number) => {
+    const damaged = damagedCraftBoards.includes(index);
+    setCraftWoodChoice(index);
+    setCraftCarveProgress(0);
+    setCraftWrongCarves(0);
+    craftCarveProgressRef.current = 0;
+    craftWrongCarvesRef.current = 0;
+    setFestivalProcess({ id: "craft", step: 1 });
+    setMessage(damaged ? "选中了带裂痕的木板。仍然可以雕刻，但裂口会留在成品上。请沿横向木纹拖动刻刀。" : "这块木板纹理完整，没有裂口。请按住刻刀，沿横向木纹来回刮。 ");
+    playTone(damaged ? 330 : 720);
+  };
+
+  const beginCraftCarving = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    craftKnifeLastPointRef.current = { x: event.clientX, y: event.clientY };
+    setCraftKnifeDragging(true);
+    setMessage("刻刀已经贴住木板。沿着横向木纹左右拖动，不要上下乱刮。 ");
+  };
+
+  const moveCraftKnife = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!craftKnifeDragging || festivalProcess?.id !== "craft" || festivalProcess.step !== 1) return;
+    const previous = craftKnifeLastPointRef.current;
+    craftKnifeLastPointRef.current = { x: event.clientX, y: event.clientY };
+    if (!previous) return;
+    const dx = event.clientX - previous.x;
+    const dy = event.clientY - previous.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 4) return;
+    const followsGrain = Math.abs(dx) >= Math.abs(dy) * 1.35;
+    if (!followsGrain) {
+      craftWrongCarvesRef.current += 1;
+      setCraftWrongCarves(craftWrongCarvesRef.current);
+      setMessage("这一刀偏离了横向木纹，成品上留下了一道歪痕。把刻刀左右拖动。 ");
+      playTone(230);
+      return;
+    }
+    const nextProgress = Math.min(100, craftCarveProgressRef.current + Math.max(3, Math.min(11, Math.abs(dx) / 2.6)));
+    craftCarveProgressRef.current = nextProgress;
+    setCraftCarveProgress(nextProgress);
+    playTone(430 + Math.floor(nextProgress * 2));
+    if (nextProgress < 100) return;
+    setCraftKnifeDragging(false);
+    craftKnifeLastPointRef.current = null;
+    const poor = craftWoodChoice === null || damagedCraftBoards.includes(craftWoodChoice) || craftWrongCarvesRef.current >= 3;
+    setCraftResultQuality(poor ? "poor" : "good");
+    setFestivalProcess({ id: "craft", step: 2 });
+    setMessage(poor ? "木鸟雕出来了，不过裂口或歪刀让翅膀有点歪，成品看起来笨笨的。" : "刻刀顺着木纹刮出一只清楚、圆润的小木鸟，羽翼和尾巴都很漂亮！");
+    playTone(poor ? 430 : 960);
+  };
+
+  const endCraftCarving = () => {
+    setCraftKnifeDragging(false);
+    craftKnifeLastPointRef.current = null;
+  };
+
+  const spraySeedBug = (bugIndex: number) => {
+    if (!seedSprayerPicked) {
+      setMessage("桌上有一瓶绿色杀虫剂。先拿起杀虫剂，再点击种子旁的小虫。 ");
+      return;
+    }
+    setSeedWorkshopBugs((current) => current.map((visible, index) => index === bugIndex ? false : visible));
+    setMessage("轻轻喷了一下，小虫离开种子了。别忘了把杂物也拖进废料盒。 ");
+    playTone(680);
+  };
+
+  const discardSeedDebris = () => {
+    if (seedDebrisPicked === null) {
+      setMessage("先拖动一块混进种子里的杂物，再放到废料盒里。也可以先点杂物、再点废料盒。 ");
+      return;
+    }
+    const removed = seedDebrisPicked;
+    setSeedWorkshopDebris((current) => current.map((visible, index) => index === removed ? false : visible));
+    setSeedDebrisPicked(null);
+    setMessage("杂物已经从种子堆里挑出来，放进了废料盒。 ");
+    playTone(610);
+  };
+
+  const finishSeedCleaning = () => {
+    if (seedWorkshopBugs.some(Boolean) || seedWorkshopDebris.some(Boolean)) {
+      setMessage("种子还没清干净：检查有没有小虫或灰色杂物。 ");
+      return;
+    }
+    setFestivalProcess({ id: "seeds", step: 1 });
+    setSeedWorkshopHeld(null);
+    setMessage("四种种子已经清理干净。现在从左边拿起种子，名字会显示出来，再拖进正确季节的篮子。 ");
+    playTone(820);
+  };
+
+  const pickWorkshopSeed = (seedId: WorkshopSeedId) => {
+    const seed = WORKSHOP_SEEDS.find((item) => item.id === seedId)!;
+    setSeedWorkshopHeld(seedId);
+    setMessage(`拿起的是${seed.name}：${seed.hint}。把它拖进“${seed.season}”篮子。`);
+  };
+
+  const sortWorkshopSeed = (season: WorkshopSeason) => {
+    if (!seedWorkshopHeld) {
+      setMessage("先从左边种子堆拿起一颗种子，拿起时会显示它的名字。 ");
+      return;
+    }
+    const seed = WORKSHOP_SEEDS.find((item) => item.id === seedWorkshopHeld)!;
+    if (seed.season !== season) {
+      setMessage(`${seed.name}不适合放进“${season}”篮子。看看提示，再换一个季节。`);
+      playTone(230);
+      return;
+    }
+    const nextSorted = [...seedWorkshopSorted, seed.id];
+    setSeedWorkshopSorted(nextSorted);
+    setSeedWorkshopHeld(null);
+    playTone(750 + nextSorted.length * 40);
+    if (nextSorted.length >= WORKSHOP_SEEDS.length) {
+      setFestivalProcess({ id: "seeds", step: 2 });
+      setMessage("草莓、西瓜、玉米和南瓜种子都分进了正确篮子。点击礼包，用丝绸扎出蝴蝶结。 ");
+    } else {
+      setMessage(`${seed.name}已经放进“${season}”篮子。还剩 ${WORKSHOP_SEEDS.length - nextSorted.length} 种。`);
+    }
+  };
+
+  const tieSeedGift = () => {
+    if (!seedGiftTied) {
+      setSeedGiftTied(true);
+      setMessage("丝绸绕过袋口，扎成了一个红色蝴蝶结。礼包已经做好，可以收进背包了。 ");
+      playTone(920);
+      return;
+    }
+    advanceFestivalProcess();
   };
 
   const foldRiverLanternPaper = () => {
@@ -4295,6 +4516,16 @@ export default function FarmGame() {
 
   const renderFestivalHandsOn = (process: { title: string; intro: string; steps: { label: string; detail: string; icon: string }[] }, step: { label: string; detail: string; icon: string }) => {
     if (!festivalProcess) return null;
+    if (festivalProcess.id === "craft") {
+      if (festivalProcess.step === 0) return <div className="wood-selection-workshop"><strong>检查四块木板 · 其中两块有不同位置的损坏</strong><div className="wood-board-row">{[0, 1, 2, 3].map((index) => { const damaged = damagedCraftBoards.includes(index); return <button key={`workshop-board-${index}`} className={`real-wood-board board-${index + 1} ${damaged ? `damaged damage-${index + 1}` : "sound"}`} onClick={() => chooseCraftWood(index)} aria-label={`第 ${index + 1} 块木板${damaged ? "，能看到裂痕" : "，木纹完整"}`}><i /><b /><em /><span>木板 {index + 1}</span></button>; })}</div><small>仔细看木板表面的深色裂纹。选中的木板会直接拿到雕刻台。</small></div>;
+      if (festivalProcess.step === 1) return <div className="wood-carving-workshop"><strong>按住刻刀，顺着横向木纹左右刮 · {Math.round(craftCarveProgress)}%</strong><div className={`carving-board ${craftWoodChoice !== null && damagedCraftBoards.includes(craftWoodChoice) ? `damaged damage-${(craftWoodChoice ?? 0) + 1}` : "sound"}`}><i className="grain-line grain-one" /><i className="grain-line grain-two" /><i className="grain-line grain-three" /><span className="carved-bird-outline" style={{ opacity: Math.max(.08, craftCarveProgress / 100) }} /><button className={`carving-knife ${craftKnifeDragging ? "dragging" : ""}`} style={{ left: `${8 + craftCarveProgress * .68}%` }} onPointerDown={beginCraftCarving} onPointerMove={moveCraftKnife} onPointerUp={endCraftCarving} onPointerCancel={endCraftCarving} aria-label="按住并沿木纹左右拖动刻刀"><i /><b /></button></div><div className="wood-carve-meter"><i style={{ width: `${craftCarveProgress}%` }} /><span>顺纹进度 {Math.round(craftCarveProgress)}%　·　歪刀 {craftWrongCarves} 次</span></div><small>木纹是横向的。左右来回拖动会雕出轮廓，上下拖动会留下歪痕。</small></div>;
+      return <div className={`wood-result-workshop quality-${craftResultQuality ?? "poor"}`}><strong>{craftResultQuality === "good" ? "顺着木纹雕出的精致木鸟" : "有裂口和歪痕的木鸟"}</strong><div className="finished-wood-bird"><i className="bird-body" /><i className="bird-wing" /><i className="bird-tail" /><i className="bird-eye" /><b className="display-plinth" /></div><p>{craftResultQuality === "good" ? "圆润的鸟身、展开的翅膀和尖尖的尾羽都能看清。" : "木板裂口或逆纹刀痕让翅膀一高一低，尾巴也歪了。下次换块好木板并顺着纹理刮，会更漂亮。"}</p><button onClick={advanceFestivalProcess}>把这件成品摆上展示台</button></div>;
+    }
+    if (festivalProcess.id === "seeds") {
+      if (festivalProcess.step === 0) { const cleaned = !seedWorkshopBugs.some(Boolean) && !seedWorkshopDebris.some(Boolean); return <div className="seed-cleaning-workshop"><strong>清理四种种子里的小虫和杂物</strong><div className="seed-cleaning-table"><button className={`seed-sprayer ${seedSprayerPicked ? "picked" : ""}`} onClick={() => { setSeedSprayerPicked(true); setMessage("拿起了桌上的杀虫剂。现在点击种子旁边的小虫。 "); }}><i /><b /><span>{seedSprayerPicked ? "杀虫剂已拿起" : "桌上的杀虫剂"}</span></button><div className="mixed-seed-tray">{WORKSHOP_SEEDS.map((seed) => <i key={seed.id} className={`loose-seed seed-${seed.id}`} title={seed.name} />)}{seedWorkshopBugs.map((visible, index) => visible && <button key={`seed-bug-${index}`} className={`seed-bug bug-${index + 1}`} onClick={() => spraySeedBug(index)} aria-label={`种子旁边的第 ${index + 1} 只小虫`}><i /></button>)}{seedWorkshopDebris.map((visible, index) => visible && <button key={`seed-debris-${index}`} draggable className={`seed-debris debris-${index + 1} ${seedDebrisPicked === index ? "picked" : ""}`} onDragStart={() => { setSeedDebrisPicked(index); setMessage("拿起了一块混进种子里的杂物，把它拖到右边废料盒。 "); }} onClick={() => { setSeedDebrisPicked(index); setMessage("选中了杂物，再点击右边的废料盒。 "); }} aria-label={`混进种子里的第 ${index + 1} 块杂物`}><i /></button>)}</div><button className="seed-waste-bin" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); discardSeedDebris(); }} onClick={discardSeedDebris}><i /><span>废料盒</span></button></div><button className="seed-clean-finish" disabled={!cleaned} onClick={finishSeedCleaning}>{cleaned ? "种子已清干净 · 开始分类" : `还要清理：小虫 ${seedWorkshopBugs.filter(Boolean).length} · 杂物 ${seedWorkshopDebris.filter(Boolean).length}`}</button><small>先拿杀虫剂点小虫；杂物可以拖进废料盒，触屏也可以先点杂物再点废料盒。</small></div>; }
+      if (festivalProcess.step === 1) { const heldSeed = WORKSHOP_SEEDS.find((seed) => seed.id === seedWorkshopHeld); return <div className="seed-sorting-workshop"><strong>把四种种子拖进春夏秋冬篮子</strong><div className="seed-sort-scene"><div className="seed-source-pile"><span>待分类种子</span>{WORKSHOP_SEEDS.filter((seed) => !seedWorkshopSorted.includes(seed.id)).map((seed) => <button key={seed.id} draggable className={`sort-seed seed-${seed.id} ${seedWorkshopHeld === seed.id ? "held" : ""}`} onDragStart={() => pickWorkshopSeed(seed.id)} onClick={() => pickWorkshopSeed(seed.id)}><i /><b>{seed.name}</b></button>)}</div><div className="season-baskets">{(["春", "夏", "秋", "冬"] as WorkshopSeason[]).map((season) => { const sortedSeed = WORKSHOP_SEEDS.find((seed) => seed.season === season && seedWorkshopSorted.includes(seed.id)); return <button key={season} className={`season-basket season-${season} ${sortedSeed ? "filled" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); sortWorkshopSeed(season); }} onClick={() => sortWorkshopSeed(season)}><span>{season}</span><i />{sortedSeed && <b>{sortedSeed.name}</b>}</button>; })}</div></div><div className="held-seed-name">{heldSeed ? <>正在拿：<b>{heldSeed.name}</b> · {heldSeed.hint}</> : "拿起左边任意种子，就会显示它的名字和提示"}</div><small>拖错篮子不会消失，可以重新辨认后再放。</small></div>; }
+      return <div className={`seed-gift-workshop ${seedGiftTied ? "gift-tied" : ""}`}><strong>{seedGiftTied ? "种子礼包已经扎好" : "点击礼包，用丝绸扎出蝴蝶结"}</strong><button className="seed-gift-bag" onClick={tieSeedGift}><i className="gift-seed seed-strawberry" /><i className="gift-seed seed-watermelon" /><i className="gift-seed seed-corn" /><i className="gift-seed seed-pumpkin" /><b className="gift-ribbon" /><em /><span>{seedGiftTied ? "蝴蝶结扎好了 · 收进背包" : "点击扎上红色丝绸"}</span></button><small>{seedGiftTied ? "四种种子分袋装好，丝绸蝴蝶结已经出现在袋口。" : "礼包里装着草莓、西瓜、玉米和南瓜种子。"}</small></div>;
+    }
     if (festivalProcess.id === "midAutumn") {
       if (festivalProcess.step === 0) return <div className={`river-lantern-craft fold-${riverLanternFold}`}><strong>点击纸张，一折一折做成灯罩</strong><button className="lantern-paper" onClick={foldRiverLanternPaper}><i /><b /><span>点击折纸 · {riverLanternFold}/3</span></button><small>纸张会随着每一次点击改变形状。</small></div>;
       if (festivalProcess.step === 1) return <div className="river-lantern-craft wick-stage"><strong>把灯芯缓缓拖进做好的灯罩</strong><button draggable className={`lantern-wick ${riverLanternWickPicked ? "picked" : ""}`} onDragStart={() => { setRiverLanternWickPicked(true); setMessage("已经拿起灯芯，慢慢拖到右边灯罩里面。 "); }} onClick={() => { setRiverLanternWickPicked(true); setMessage("灯芯已经拿起，再点击右边的灯罩也可以放进去。 "); }}><i /><span>灯芯</span></button><button className="folded-lantern-drop" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); installRiverLanternWick(); }} onClick={() => riverLanternWickPicked ? installRiverLanternWick() : setMessage("先从左边拿起灯芯。 ")}><i /><b /><span>拖到这里</span></button></div>;
@@ -4303,6 +4534,18 @@ export default function FarmGame() {
     if (festivalProcess.id === "coffee" && festivalProcess.step === 0) return <div className={`coffee-machine-task ${festivalActionCount ? "beans-loading" : ""}`}><strong>点击咖啡豆，放进磨豆机</strong><button className="coffee-bean-bowl" onClick={() => playCoffeeMachineAnimation("beans")}><i /><i /><i /><i /><span>{festivalActionCount ? "豆子正在滚进去…" : "点击咖啡豆"}</span></button><div className="festival-coffee-grinder"><i className="grinder-hopper" /><b /><em /></div></div>;
     if (festivalProcess.id === "coffee" && festivalProcess.step === 1) return <div className="coffee-machine-task handle-stage"><strong>连续转动磨豆机把手 · {festivalActionCount}/6</strong><div className="festival-coffee-grinder"><i className="grinder-hopper" /><b /><em style={{ rotate: `${festivalActionCount * 60}deg` }} /></div><button className="grinder-handle-button" onClick={performFestivalDetailAction}>转动把手</button><small>每点一次，把手转动一格，咖啡粉会慢慢落下来。</small></div>;
     if (festivalProcess.id === "coffee" && festivalProcess.step === 2) return <div className={`coffee-water-task ${festivalActionCount ? "water-running" : ""}`}><strong>点击饮水机，给细嘴壶接热水</strong><button className="coffee-water-dispenser" onClick={() => playCoffeeMachineAnimation("water")}><i /><b /><em /><span>{festivalActionCount ? "热水正在流下…" : "按下出水键"}</span></button><div className="coffee-pour-kettle"><i /><b /></div></div>;
+    if (festivalProcess.id === "coffee" && festivalProcess.step === 3) return <div className="coffee-pour-workshop"><strong>拿起细嘴壶，缓缓拖到滤杯上绕圈冲泡</strong><button draggable className={`real-gooseneck-kettle ${festivalDragging ? "picked" : ""}`} onDragStart={() => { setFestivalDragging(true); setMessage("拿起了装满热水的细嘴壶，拖到右边滤杯上。 "); }} onClick={() => { setFestivalDragging(true); setMessage("细嘴壶已经拿起，再点击右边滤杯也能开始冲泡。 "); }}><i /><b /><span>细嘴壶</span></button><button className="coffee-filter-drop" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(); }} onClick={dropFestivalObject}><i /><b /><em /><span>滤杯 · 放到这里绕圈冲泡</span></button><small>热水会绕着咖啡粉一圈圈流下，不会一点就直接变成咖啡。</small></div>;
+    if (festivalProcess.id === "coffee" && festivalProcess.step === 4) { const coffeeActions = [{ icon: "闻", label: "先闻咖啡香" }, { icon: "啜", label: "小口品尝咖啡" }, { icon: "酥", label: "再吃一块点心" }]; return <div className="coffee-tasting-workshop"><strong>按照顺序闻香、品尝，再吃点心</strong><div className="coffee-tasting-table"><i className="tasting-cup" /><i className="tasting-pastry" />{coffeeActions.map((action, index) => <button key={action.icon} disabled={index !== festivalActionCount} className={index < festivalActionCount ? "done" : index === festivalActionCount ? "ready" : ""} onClick={performFestivalDetailAction}><i>{index < festivalActionCount ? "✓" : action.icon}</i><span>{action.label}</span></button>)}</div><small>每一步都做完，才算亲手完成一杯山谷咖啡。</small></div>; }
+    if (festivalProcess.id === "spring") {
+      if (festivalProcess.step === 0) return <div className={`spring-jam-workshop jam-stage-${festivalActionCount}`}><strong>先闻草莓香，再舀果酱，最后亲口品尝</strong><div className="jam-table-scene"><button className="jam-smell-action" disabled={festivalActionCount !== 0} onClick={performFestivalDetailAction}><i /><span>{festivalActionCount > 0 ? "闻过了 ✓" : "靠近果酱闻香"}</span></button><button draggable className={`jam-spoon ${festivalDragging ? "picked" : ""}`} disabled={festivalActionCount !== 1} onDragStart={() => { setFestivalDragging(true); setMessage("拿起小木勺，拖进中间的草莓果酱罐。 "); }} onClick={() => { setFestivalDragging(true); setMessage("木勺已经拿起，再点击果酱罐把果酱舀起来。 "); }}><i /><span>小木勺</span></button><button className="real-jam-jar" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (festivalActionCount === 1 && festivalDragging) { setFestivalDragging(false); performFestivalDetailAction(); } }} onClick={() => { if (festivalActionCount === 1 && festivalDragging) { setFestivalDragging(false); performFestivalDetailAction(); } else setMessage("先闻香，再拿起左边的小木勺。 "); }}><i /><b /><span>草莓果酱</span></button><button className="jam-taste-action" disabled={festivalActionCount !== 2} onClick={performFestivalDetailAction}><i /><span>尝一口木勺上的果酱</span></button></div><small>果酱会真的被木勺舀起来，不会按一下就结束。</small></div>;
+      if (festivalProcess.step === 1) { const views = ["左侧羽纹", "正面轮廓", "右侧尾羽"]; return <div className={`spring-sculpture-workshop sculpture-view-${festivalActionCount}`}><strong>转动木雕展示台，从三个方向仔细参观</strong><div className="market-wood-sculpture"><i /><b /><em /></div><div className="sculpture-view-controls">{views.map((view, index) => <button key={view} disabled={index !== festivalActionCount} onClick={performFestivalDetailAction}>{index < festivalActionCount ? "✓ " : ""}{view}</button>)}</div><small>展示台会随着观察方向转动，三面都看完才能继续。</small></div>; }
+      const notes = ["♪", "♫", "♩", "♪", "♫", "♩"]; return <div className="spring-music-workshop"><strong>跟着乐手听完整段旋律 · {festivalActionCount}/6</strong><div className="festival-musicians"><i /><i /><i /></div><div className="music-note-path">{notes.map((note, index) => <button key={`market-note-${index}`} disabled={index !== festivalActionCount} className={index < festivalActionCount ? "heard" : index === festivalActionCount ? "playing" : ""} onClick={performFestivalDetailAction}>{index < festivalActionCount ? "✓" : note}</button>)}</div><small>音符会一颗一颗亮起，完整听完六拍才结束。</small></div>;
+    }
+    if (festivalProcess.id === "springFestival") {
+      if (festivalProcess.step === 0) return <div className="lion-ribbon-workshop"><strong>把红绸和铃铛拖到实体狮头上系好</strong><button draggable className={`lion-red-ribbon ${festivalDragging ? "picked" : ""}`} onDragStart={() => { setFestivalDragging(true); setMessage("拿起红绸和铃铛，拖到右边狮头的额头上。 "); }} onClick={() => { setFestivalDragging(true); setMessage("红绸已经拿起，再点击狮头就能系上。 "); }}><i /><b /><span>红绸与铃铛</span></button><button className="festival-lion-head" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(); }} onClick={dropFestivalObject}><i /><b /><em /><span>狮头 · 系在这里</span></button></div>;
+      if (festivalProcess.step === 1) { const beats = ["咚", "咚", "锵", "咚", "锵", "咚", "咚", "锵"]; return <div className="lion-drum-workshop"><strong>看准鼓谱，亲手敲完八拍 · {festivalActionCount}/8</strong><div className="lion-drum-score">{beats.map((beat, index) => <i key={`lion-beat-${index}`} className={index < festivalActionCount ? "done" : index === festivalActionCount ? "current" : ""}>{beat}</i>)}</div><button className="physical-festival-drum" onClick={performFestivalDetailAction}><i /><b /><span>{beats[festivalActionCount] ?? "完成"}！敲鼓</span></button><small>鼓面每敲一次都会震动，舞狮队会按节拍抬头、摆尾。</small></div>; }
+      const route = ["↑", "→", "↓", "←", "↑", "→"]; return <div className="lion-parade-workshop"><strong>跟着舞狮沿广场路线走完六个路口</strong><div className="parade-map"><i className="parade-lion" style={{ left: `${14 + festivalActionCount * 12}%`, top: `${festivalActionCount % 2 ? 53 : 26}%` }} /><span /></div><div className="parade-route-controls">{route.map((direction, index) => <button key={`parade-turn-${index}`} disabled={index !== festivalActionCount} className={index < festivalActionCount ? "done" : index === festivalActionCount ? "current" : ""} onClick={performFestivalDetailAction}>{index < festivalActionCount ? "✓" : direction}</button>)}</div><small>按亮起的下一个方向，狮子会在地图上真实走到对应路口。</small></div>;
+    }
     const required = festivalActionRequirements[festivalProcess.id]?.[festivalProcess.step] ?? 1;
     const icons = festivalActionIcons[festivalProcess.id]?.[festivalProcess.step] ?? [step.icon];
     const dragStep = festivalDragSteps.has(`${festivalProcess.id}-${festivalProcess.step}`);
@@ -5346,7 +5589,7 @@ export default function FarmGame() {
                   <header><div><span>{activeVillageInfo.farm}室内</span><h2 id="farmhouse-title">{displayName}的农舍</h2></div><button onClick={leaveBuilding} aria-label={`离开${displayName}的农舍`}>×</button></header>
                   <div className={`interior-room farmhouse-room ${game.upgrades.house ? "expanded-farmhouse-room" : ""} farmhouse-level-${game.upgrades.house} ${isNight ? "night-room" : ""} ${isNight && stoveLit ? "stove-lit-room" : ""} ${isNight && game.equipment.lampOn ? "lamp-lit-room" : ""} ${bedtimePhase === "tuckedIn" || bedtimePhase === "waking" ? "bedtime-sleeping" : ""}`} onClick={walkInsidePointer}>
                     <div className="room-window"><i /><i /></div>
-                    {game.upgrades.secondFloor > 0 && <button className="house-stairs" onClick={(event) => { event.stopPropagation(); setHouseFloor(2); setUpstairsRoom(null); setAtticStorageOpen(false); setSelectedAtticCraft(null); setMessage("走上楼梯，来到宽敞的二楼。这里的家具要从背包里选择后自己摆放。 "); }}><i /><span>上二楼</span></button>}
+                    {game.upgrades.secondFloor > 0 && <button className={`house-stairs real-house-staircase ${stairTravel === "up" ? "stairs-in-use" : ""}`} onClick={(event) => { event.stopPropagation(); travelHouseStairs("up"); }} aria-label="走上真正的木楼梯到二楼"><span className="stair-flight">{Array.from({ length: 7 }, (_, index) => <i key={`lower-stair-${index}`} style={{ "--stair-index": index } as CSSProperties} />)}</span><b className="stair-railing" /><em className="stair-landing" /></button>}
                     {isBirthday && <><div className="birthday-banner">二月十九日 · {displayName}生日快乐！</div><div className="birthday-loft" aria-label="生日派对时可以跑上去的小阁楼"><i /><b /><span>小阁楼</span></div><div className="birthday-house-guests" aria-label="会在农舍里跑动、看窗户、跳床和玩耍的所有朋友">{BIRTHDAY_GUESTS.map((name, index) => <button key={`birthday-${name}`} style={personClothesStyle(name)} className={`birthday-guest birthday-guest-${index + 1} birthday-behavior-${index % 5} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：生日快乐！我们刚才在屋里跑来跑去、看窗外，还轮流在床上跳呢！`)} aria-label={`和参加生日派对的${name}聊天`}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><button className={`birthday-cake ${game.birthdayCakeYear === game.year ? "cake-eaten" : ""}`} onClick={eatBirthdayCake} aria-label="分享生日蛋糕恢复体力"><i /><b /><em /><span>{game.birthdayCakeYear === game.year ? "蛋糕已经分享完" : "点击吃生日蛋糕 · 恢复40体力"}</span></button></>}
                     <button className="house-bed" onClick={sleepAtHome} aria-label="点击床睡到第二天"><i /><b /><span>点击睡觉</span></button>
                     {houseFloor === 1 && game.firstFloorNightstandPlaced && <button className="first-floor-nightstand" onClick={(event) => { event.stopPropagation(); setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) })); setMessage("从床边小柜拿起温水慢慢喝完，恢复 5 点体力。 "); playTone(610); }} aria-label="床边小柜，点击喝温水恢复体力"><i /><b /><span>床边小柜</span></button>}
@@ -5360,10 +5603,10 @@ export default function FarmGame() {
                     {wildFriendAtPlayerHome && <button style={personClothesStyle("安安")} className="neighbor-indoor-npc anan-farmhouse-visitor anan-character" onClick={() => interactWithPerson("安安", `安安：我直接跑来${displayName}家找你啦！今天一起去农场、帐篷或者山洞玩吧。`)} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和来家里找你的安安聊天"}><i className="npc-hair" /><i className="npc-face" /><em className="anan-pigtails" /><i className="npc-body" /><span>安安<small>来找你玩</small></span></button>}
                     <div className="house-rug" />
                     <button className="house-door" onClick={leaveBuilding} aria-label="点击出口离开农舍"><span>出口</span></button>
-                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                    <div className={`player indoor-player facing-${facing} ${isWalking ? "walking" : ""} ${stairTravel ? `stair-traveler stair-${stairTravel}` : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍里">{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     {houseFloor === 2 && <div className={`upstairs-room ${isNight ? "upstairs-night" : ""} ${game.equipment.lampOn ? "upstairs-lamp-on" : ""}`} onClick={(event) => event.stopPropagation()}>
                       <div className="upstairs-wall"><div className="upstairs-window"><i /><i /></div><strong>农舍二楼</strong><small>空旷空间 · 家具由你摆放</small></div>
-                      <button className="upstairs-stairs" onClick={() => { setHouseFloor(1); setUpstairsRoom(null); setAtticStorageOpen(false); setSelectedAtticCraft(null); setMessage("沿楼梯回到农舍一楼。 "); }}><i /><span>回一楼</span></button>
+                      <button className={`upstairs-stairs real-house-staircase upper-staircase ${stairTravel === "down" ? "stairs-in-use" : ""}`} onClick={(event) => { event.stopPropagation(); travelHouseStairs("down"); }} aria-label="沿真正的木楼梯回到一楼"><span className="stair-flight">{Array.from({ length: 7 }, (_, index) => <i key={`upper-stair-${index}`} style={{ "--stair-index": index } as CSSProperties} />)}</span><b className="stair-railing" /><em className="stair-landing" /></button>
                       <div className="upstairs-room-entrances">
                         {game.upgrades.upstairsKitchen > 0 && <button className="upstairs-room-door kitchen-room-door" onClick={() => { setUpstairsRoom("kitchen"); setSelectedAtticCraft(null); setMessage("推门进入二楼厨房，灶台、水槽和料理柜都是可以使用的家具。 "); }}><i /><b /><strong>厨房</strong><small>点击进入</small></button>}
                         {game.upgrades.upstairsBathroom > 0 && <button className="upstairs-room-door bathroom-room-door" onClick={() => { setUpstairsRoom("bathroom"); setSelectedAtticCraft(null); setMessage("推门进入二楼卫生间，浴缸、花洒、洗手台和镜子都可以使用。 "); }}><i /><b /><strong>卫生间</strong><small>点击进入</small></button>}
@@ -5374,7 +5617,7 @@ export default function FarmGame() {
                         <button className="private-room-back" onClick={() => { setUpstairsRoom(null); setMessage("从小房间回到宽敞的二楼。 "); }}>← 回到二楼</button>
                         {upstairsRoom === "kitchen" ? <><div className="private-room-title"><strong>二楼厨房</strong><small>鲁师傅安装的每件家具都有功能</small></div><button className="functional-kitchen-stove" onClick={() => setMessage("灶台已经烧热了。选择下面的螃蟹或小虾进行烹饪，熟食会进入资源记录。 ")}><i /><b /><span>灶台 · 点火</span></button><button className="functional-kitchen-sink" onClick={() => { setMessage("用水槽把海鲜和蔬菜洗干净了，准备放到灶台上烹饪。 "); playTone(610); }}><i /><b /><span>水槽 · 清洗食材</span></button><button className="functional-kitchen-cabinet" onClick={() => setMessage(`料理柜里记录着：生螃蟹 ${game.crabs}、生小虾 ${game.shrimp}、熟螃蟹 ${game.cookedCrabs}、熟小虾 ${game.cookedShrimp}。`)}><i /><b /><span>料理柜 · 查看食材</span></button><div className="private-kitchen-actions"><button disabled={game.crabs <= 0} onClick={() => cookUpstairsSeafood("crabs")}>烹饪螃蟹 ×{game.crabs}</button><button disabled={game.shrimp <= 0} onClick={() => cookUpstairsSeafood("shrimp")}>烹饪小虾 ×{game.shrimp}</button></div></> : <><div className="private-room-title"><strong>二楼卫生间</strong><small>洗澡会恢复健康，并让明天更有精神</small></div><button className="functional-bathtub" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 15), sick: false, diagnosed: false, rainExposure: 0, showeredBeforeBed: true })); setMessage("洗了一个暖和的澡：恢复 15 点体力，身体恢复健康。睡觉后，明天农活体力消耗减少约三成。 "); playTone(720); }}><i /><b /><span>浴缸与花洒 · 洗澡</span></button><button className="functional-bath-sink" onClick={() => { setGame((current) => ({ ...current, rainExposure: 0, energy: Math.min(100, current.energy + 3) })); setMessage("在洗手台洗净泥土和雨水，恢复 3 点体力。 "); }}><i /><b /><span>洗手台 · 清洁</span></button><button className="functional-bath-mirror" onClick={() => { const nextOutfit = game.mallItems.redCoat > 0 && game.equippedOutfit !== "redCoat" ? "redCoat" : game.mallItems.blueOutfit > 0 && game.equippedOutfit !== "blueOutfit" ? "blueOutfit" : "default"; setGame((current) => ({ ...current, equippedOutfit: nextOutfit })); setMessage(nextOutfit === "default" ? "照了照镜子，换回平常的农场衣服。" : `在镜子前整理衣服，换上了${nextOutfit === "redCoat" ? "红色外套" : "蓝色套装"}。`); }}><i /><b /><span>镜子 · 整理换装</span></button></>}
                       </div>}
-                      <div className={`player indoor-player upstairs-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍二楼">{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
+                      <div className={`player indoor-player upstairs-player facing-${facing} ${isWalking ? "walking" : ""} ${stairTravel ? `stair-traveler stair-${stairTravel}` : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍二楼">{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     </div>}
                   </div>
                   {houseFloor === 2 && atticStorageOpen && <div className="attic-storage-modal"><section><header><div><span>二楼专用收纳</span><h3>二楼木箱</h3></div><button onClick={() => setAtticStorageOpen(false)}>×</button></header><div className="attic-storage-grid">{(Object.keys(ATTIC_RESOURCE_INFO) as AtticResource[]).map((resource) => <article key={`attic-resource-${resource}`}><i>{ATTIC_RESOURCE_INFO[resource].short}</i><div><strong>{ATTIC_RESOURCE_INFO[resource].name}</strong><small>背包 {game[resource]} · 箱内 {game.atticStorage[resource]}</small></div><button disabled={game[resource] <= 0} onClick={() => putInAtticStorage(resource)}>放入 1 个</button><button disabled={game.atticStorage[resource] <= 0} onClick={() => takeFromAtticStorage(resource)}>取出 1 个</button></article>)}</div><footer><span>{message}</span><button onClick={() => setAtticStorageOpen(false)}>关上木箱</button></footer></section></div>}
