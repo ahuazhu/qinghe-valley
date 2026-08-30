@@ -16,7 +16,7 @@ type Weather = "sunny" | "cloudy" | "rain" | "thunder";
 type MallItem = "redCoat" | "blueOutfit" | "umbrella" | "seedBox";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft" | "springFestival" | "lantern" | "dragonBoat" | "midAutumn";
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
-type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "table" | "matches" | "blanket";
+type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "table" | "floorLamp" | "sofa" | "bookshelf" | "dresser" | "nightstand" | "matches" | "blanket";
 type CraftRotation = 0 | 45 | 90;
 type PlacedCraft = { id: string; type: CraftType; x: number; y: number; rotation: CraftRotation };
 type PlantedTree = { id: string; x: number; y: number; stage: number; watered: boolean };
@@ -135,6 +135,8 @@ type GameState = {
   shrimp: number;
   cookedCrabs: number;
   cookedShrimp: number;
+  drinks: number;
+  oldSocks: number;
   ananBeachTrips: string[];
   lastAnanCookieDay: string;
   lastEggDay: number;
@@ -337,6 +339,11 @@ const CRAFT_RECIPES: Record<CraftType, { name: string; short: string; descriptio
   bench: { name: "休息长椅", short: "椅", description: "装饰农场，坐下可恢复少量体力", wood: 10, stone: 2 },
   sign: { name: "方向木牌", short: "牌", description: "可以横放、竖放或斜放的农场路牌", wood: 5, stone: 1 },
   table: { name: "实木餐桌", short: "桌", description: "摆在二楼，坐下来吃东西会恢复更多体力", wood: 14, stone: 2 },
+  floorLamp: { name: "室内落地灯", short: "光", description: "只摆在屋里，点击可照亮二楼", wood: 8, stone: 3, resin: 1 },
+  sofa: { name: "软垫沙发", short: "沙", description: "只摆在屋里，坐下可恢复 12 点体力", wood: 16, stone: 0, wool: 2 },
+  bookshelf: { name: "矮木书柜", short: "书", description: "只摆在屋里，可以阅读农场与山谷故事", wood: 12, stone: 0 },
+  dresser: { name: "衣物斗柜", short: "柜", description: "只摆在屋里，点击可以整理和更换衣服", wood: 15, stone: 0 },
+  nightstand: { name: "床边小柜", short: "几", description: "只摆在屋里，放杯热水可恢复少量体力", wood: 7, stone: 0 },
   matches: { name: "火柴", short: "火", description: "进入山洞或帐篷后，可以点亮火光", wood: 3, stone: 0, resin: 2 },
   blanket: { name: "羊毛毯", short: "毯", description: "用绵羊的羊毛编织，点击背包中的毛毯恢复 30 点体力", wood: 0, stone: 0, wool: 3 },
 };
@@ -496,7 +503,15 @@ const ATTIC_PLACEMENT_SLOTS = [
   { x: 17, y: 47 }, { x: 33, y: 47 }, { x: 49, y: 47 }, { x: 65, y: 47 }, { x: 81, y: 47 },
   { x: 23, y: 72 }, { x: 41, y: 72 }, { x: 59, y: 72 }, { x: 77, y: 72 },
 ] as const;
-const ATTIC_FURNITURE: CraftType[] = ["chest", "lamp", "bench", "sign", "table"];
+const OUTDOOR_CRAFTS: CraftType[] = ["chest", "fence", "gate", "scarecrow", "lamp", "bench", "sign"];
+const INDOOR_FURNITURE: CraftType[] = ["chest", "table", "floorLamp", "sofa", "bookshelf", "dresser", "nightstand"];
+const HANDCRAFTS: CraftType[] = ["matches", "blanket"];
+const ATTIC_FURNITURE: CraftType[] = INDOOR_FURNITURE;
+const CRAFT_GROUPS: Array<{ title: string; note: string; items: CraftType[] }> = [
+  { title: "室内家具", note: "做好后进入背包，只能摆进农舍二楼", items: INDOOR_FURNITURE },
+  { title: "农场户外设施", note: "灯柱、长椅和方向牌都留在户外", items: OUTDOOR_CRAFTS.filter((item) => item !== "chest") },
+  { title: "随身手作", note: "直接使用，不需要摆放", items: HANDCRAFTS },
+];
 
 const DRIVING_QUESTIONS = [
   { question: "看到红灯应该怎么做？", answers: ["停下来等待", "加速冲过去"], correct: 0 },
@@ -593,7 +608,7 @@ const makeNewGame = (): GameState => ({
   rockStates: [true, true, true, true, true, true],
   caveDiamondStates: [true, true, true],
   caveDiamondSpots: [0, 3, 6],
-  crafted: { chest: 0, fence: 0, gate: 0, scarecrow: 0, lamp: 0, bench: 0, sign: 0, table: 0, matches: 0, blanket: 0 },
+  crafted: { chest: 0, fence: 0, gate: 0, scarecrow: 0, lamp: 0, bench: 0, sign: 0, table: 0, floorLamp: 0, sofa: 0, bookshelf: 0, dresser: 0, nightstand: 0, matches: 0, blanket: 0 },
   placedCrafts: [],
   farmVisitor: null,
   upgrades: { house: 0, land: 0, field: 0, storage: 0, greenhouse: 0, pond: 0, stoneWall: 0, secondFloor: 0, upstairsKitchen: 0, upstairsBathroom: 0 },
@@ -631,6 +646,8 @@ const makeNewGame = (): GameState => ({
   shrimp: 0,
   cookedCrabs: 0,
   cookedShrimp: 0,
+  drinks: 0,
+  oldSocks: 0,
   ananBeachTrips: [],
   lastAnanCookieDay: "",
   lastEggDay: 0,
@@ -1663,6 +1680,31 @@ export default function FarmGame() {
   };
 
   const finishFishingCatch = () => {
+    const surpriseRoll = Math.random();
+    if (surpriseRoll < .01) {
+      setGame((current) => ({ ...current, diamonds: current.diamonds + 1 }));
+      setMessage("意外变成了大好事：鱼钩从池底带上来一颗闪亮钻石！已经放进资源记录。 ");
+      setFishingPhase("idle"); setFishingScore(0); setIsFishing(false); playTone(1040);
+      return;
+    }
+    if (surpriseRoll < .11) {
+      setGame((current) => ({ ...current, stone: current.stone + 1 }));
+      setMessage("鱼竿沉甸甸的，费了好大力气却钓上来一块石头！石材 +1，已经放进资源记录。 ");
+      setFishingPhase("idle"); setFishingScore(0); setIsFishing(false); playTone(340);
+      return;
+    }
+    if (surpriseRoll < .17) {
+      setGame((current) => ({ ...current, drinks: current.drinks + 1 }));
+      setMessage("钓上来一瓶被水冲来的山谷饮料！瓶子还没有打开，已经收进资源记录。 ");
+      setFishingPhase("idle"); setFishingScore(0); setIsFishing(false); playTone(720);
+      return;
+    }
+    if (surpriseRoll < .23) {
+      setGame((current) => ({ ...current, oldSocks: current.oldSocks + 1 }));
+      setMessage("这次不是鱼——竟然是一只湿漉漉的旧袜子！先收进奇怪物品记录。 ");
+      setFishingPhase("idle"); setFishingScore(0); setIsFishing(false); playTone(230);
+      return;
+    }
     const catches = ["银鳞鲫", "春溪鳟", "花尾鲤", "小泥鳅"];
     const caught = catches[Math.floor(Math.random() * catches.length)];
     const fishingFestivalBonus = currentFestival?.id === "fishing" ? 2 : 0;
@@ -1867,7 +1909,7 @@ export default function FarmGame() {
       wool: current.wool - woolCost,
       crafted: { ...current.crafted, [item]: current.crafted[item] + 1 },
     }));
-    setMessage(`制作完成：${recipe.name}！已经放进下方背包。${item === "matches" ? "进入山洞或帐篷后可以点燃。" : item === "blanket" ? "点击背包里的羊毛毯就能盖着休息。" : "选中后再点击农场位置摆放。"}`);
+    setMessage(`制作完成：${recipe.name}！已经放进下方背包。${item === "matches" ? "进入山洞或帐篷后可以点燃。" : item === "blanket" ? "点击背包里的羊毛毯就能盖着休息。" : INDOOR_FURNITURE.includes(item) ? "进入农舍二楼后，从屋里的家具栏选择绿色方格摆放。" : "选中后再点击农场位置摆放。"}`);
     playTone(700);
   };
 
@@ -2621,7 +2663,7 @@ export default function FarmGame() {
     playTone(780);
   };
 
-  const commissionFurniture = (furniture: "chest" | "lamp" | "bench" | "sign" | "table") => {
+  const commissionFurniture = (furniture: CraftType) => {
     const recipe = CRAFT_RECIPES[furniture];
     if (game.builderSupplies.wood < recipe.wood || game.builderSupplies.stone < recipe.stone) {
       setMessage(`鲁师傅：制作${recipe.name}需要 ${recipe.wood} 木头和 ${recipe.stone} 石材，交给我的材料还不够。`);
@@ -2633,7 +2675,7 @@ export default function FarmGame() {
       builderSupplies: { wood: current.builderSupplies.wood - recipe.wood, stone: current.builderSupplies.stone - recipe.stone },
       crafted: { ...current.crafted, [furniture]: current.crafted[furniture] + 1 },
     }));
-    const use = furniture === "chest" ? "存放二楼物品" : furniture === "lamp" ? "照亮夜晚的二楼" : furniture === "bench" ? "坐下恢复 8 点体力" : furniture === "table" ? "坐下来吃东西并恢复更多体力" : "查看农舍和楼梯方向";
+    const use = furniture === "chest" ? "存放二楼物品" : furniture === "floorLamp" ? "照亮夜晚的二楼" : furniture === "sofa" ? "坐下恢复 12 点体力" : furniture === "bookshelf" ? "阅读农场故事" : furniture === "dresser" ? "整理和更换衣服" : furniture === "nightstand" ? "喝热水恢复体力" : "坐下来吃东西并恢复更多体力";
     setMessage(`鲁师傅做好了${recipe.name}，已经放进背包。摆到二楼后可以${use}。`);
     playTone(820);
   };
@@ -2674,6 +2716,46 @@ export default function FarmGame() {
       return;
     }
     setMessage("餐桌已经摆好了，不过背包里暂时没有饼干、鸡蛋、牛奶或农作物可以吃。 ");
+  };
+
+  const useUpstairsFurniture = (craft: PlacedCraft) => {
+    if (craft.type === "chest") {
+      setAtticStorageOpen(true);
+      setMessage("打开二楼专用收纳箱，可以单个放入或取出材料。 ");
+      return;
+    }
+    if (craft.type === "floorLamp" || craft.type === "lamp") {
+      setGame((current) => ({ ...current, equipment: { ...current.equipment, lampOn: !current.equipment.lampOn } }));
+      setMessage(game.equipment.lampOn ? "关掉室内落地灯，家具仍留在原地。 " : "点亮室内落地灯，夜晚的整个二楼明亮起来。 ");
+      return;
+    }
+    if (craft.type === "sofa" || craft.type === "bench") {
+      const recovery = craft.type === "sofa" ? 12 : 8;
+      setGame((current) => ({ ...current, energy: Math.min(100, current.energy + recovery) }));
+      setMessage(`在${CRAFT_RECIPES[craft.type].name}上坐下休息，恢复 ${recovery} 点体力。`);
+      return;
+    }
+    if (craft.type === "table") {
+      eatAtUpstairsTable();
+      return;
+    }
+    if (craft.type === "bookshelf") {
+      const stories = ["《四季播种手册》说：不同季节要挑选合适的种子。", "《溪流里的银鳞鱼》记着青禾谷的钓鱼故事。", "《安安的山路笔记》画着帐篷、山洞和通往海边的小路。"];
+      setMessage(`从矮木书柜抽出一本书：${stories[game.day % stories.length]}`);
+      return;
+    }
+    if (craft.type === "dresser") {
+      const nextOutfit = game.mallItems.redCoat > 0 && game.equippedOutfit !== "redCoat" ? "redCoat" : game.mallItems.blueOutfit > 0 && game.equippedOutfit !== "blueOutfit" ? "blueOutfit" : "default";
+      setGame((current) => ({ ...current, equippedOutfit: nextOutfit }));
+      setMessage(nextOutfit === "default" ? "拉开斗柜，把衣服叠好并换回平常的农场服。" : `从斗柜取出${nextOutfit === "redCoat" ? "红色节日外套" : "蓝色旅行套装"}换上。`);
+      return;
+    }
+    if (craft.type === "nightstand") {
+      setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) }));
+      setMessage("从床边小柜拿起温水慢慢喝完，恢复 5 点体力。 ");
+      return;
+    }
+    setMessage(`${CRAFT_RECIPES[craft.type].name}稳稳地摆在屋里。`);
   };
 
   const dismantleItem = (item: "chest" | "fence" | "scarecrow") => {
@@ -2720,6 +2802,18 @@ export default function FarmGame() {
       setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 30), crafted: { ...current.crafted, blanket: Math.max(0, current.crafted.blanket - 1) } }));
       setMessage("盖上自己制作的柔软羊毛毯休息了一会儿，恢复 30 点体力！");
       playTone(780);
+      return;
+    }
+    if (INDOOR_FURNITURE.includes(item)) {
+      setSelectedCraftItem(null);
+      if (activeBuilding !== "farmhouse" || houseFloor !== 2) {
+        setMessage(`${CRAFT_RECIPES[item].name}是真正的室内家具。请先进入农舍二楼，再从屋里的家具栏选择摆放。`);
+        playTone(520);
+        return;
+      }
+      setSelectedAtticCraft(item);
+      setMessage(`已从背包选中${CRAFT_RECIPES[item].name}。点击屋内出现的绿色方格摆放。`);
+      playTone(620);
       return;
     }
     setSelectedCraftItem(item);
@@ -4767,6 +4861,8 @@ export default function FarmGame() {
               <button className={heldItem?.kind === "material" && heldItem.id === "wood" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("wood")} title="双击拿起木头"><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong><small>双击拿起</small></p></button>
               <button className={heldItem?.kind === "material" && heldItem.id === "stone" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("stone")} title="双击拿起石材"><span className="harvest-icon stone-icon">石</span><p>石材<strong>{game.stone}</strong><small>双击拿起</small></p></button>
               <button className="resource-item diamond-record" onClick={() => setMessage(`山洞里挖到的钻石共有 ${game.diamonds} 颗。钻石矿每天会慢慢重新长出一处。`)}><span className="harvest-icon diamond-icon">◆</span><p>钻石<strong>{game.diamonds}</strong><small>山洞镐子挖掘</small></p></button>
+              <button className="resource-item fishing-oddity-item" onClick={() => setMessage(`钓鱼时意外捞到的饮料共有 ${game.drinks} 瓶，瓶子还没有打开。`)}><span className="harvest-icon drink-icon" /><p>漂流饮料<strong>{game.drinks}</strong><small>钓鱼意外收获</small></p></button>
+              <button className="resource-item fishing-oddity-item" onClick={() => setMessage(`鱼钩一共带回 ${game.oldSocks} 只旧袜子，真是奇怪的收获。`)}><span className="harvest-icon sock-icon" /><p>旧袜子<strong>{game.oldSocks}</strong><small>钓鱼奇怪物品</small></p></button>
               <button className={heldItem?.kind === "forest" && heldItem.id === "pineNut" ? "resource-item held-material" : "resource-item"} onClick={clickPineNut} onDoubleClick={doubleClickPineNut} title="单击吃掉恢复体力，双击拿起"><span className="harvest-icon pine-nut-icon">子</span><p>松子<strong>{game.pineNuts}</strong><small>单击吃 · 双击拿</small></p></button>
               <button className={heldItem?.kind === "herb" ? "resource-item herb-record held-material" : "resource-item herb-record"} onClick={clickHerb} onDoubleClick={pickUpHerb} aria-label={`药材 ${game.herbs} 份，生病时单击使用，双击拿起送人`} title="生病时单击使用，双击拿起送人"><span className="harvest-icon herb-icon">药</span><p>药材<strong>{game.herbs}</strong><small>{game.sick ? "单击用 · 双击拿" : "双击拿起"}</small></p></button>
               <button className={heldItem?.kind === "resin" ? "resource-item resin-record held-material" : "resource-item resin-record"} onDoubleClick={pickUpResin} title="双击拿起绿色树脂"><span className="harvest-icon resin-icon" /><p>树脂<strong>{game.resin}</strong><small>双击拿起 · 做火柴</small></p></button>
@@ -4822,7 +4918,7 @@ export default function FarmGame() {
                   <i /><i /><i /><b className="fishing-float" />{currentFestival?.id === "fishing" && <span className="festival-hooks-in-water" aria-label="六位参赛者的鱼钩都落在池塘水里">{FESTIVAL_GUESTS.map((name, index) => <em key={`hook-${name}`} className={`pond-hook pond-hook-${index + 1}`} />)}</span>}{fishingPhase === "bite" && <strong className="bite-question">?</strong>}<span className="pond-label">{fishingPhase === "waiting" ? "等待鱼儿咬钩…" : fishingPhase === "bite" ? "快点！点击问号" : currentFestival?.id === "fishing" ? "钓鱼节会场 · 所有鱼钩都在水中" : "钓鱼池"}</span>
                 </button>
                 {fishingPhase === "reeling" && <div className="fishing-challenge" onClick={(event) => event.stopPropagation()}><header><span>提竿小游戏</span><b>{fishingScore}/3</b></header><p>等红色游标进入绿色区域时，点击提竿！</p><div className="fishing-timing-bar"><i className={game.toolUpgrades.rod ? "lucky-zone" : ""} /><b style={{ left: `${fishingMarker}%` }} /></div><button onClick={attemptReel}>提竿！</button><small>{game.toolUpgrades.rod ? "幸运鱼竿：咬钩更快，成功区域更宽" : "连续命中 3 次才能把鱼钓上来"}</small></div>}
-                {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节并不断挥竿钓鱼的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} fishing-villager fishing-villager-${index + 1} ${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：我刚把一条鱼提起来收进口袋，现在重新抛竿比赛！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><em className="festival-fishing-rod" /><u className="festival-caught-fish" /><span>{name}<small>等待鱼儿咬钩</small></span></button>)}</div>}
+                {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节并不断挥竿钓鱼的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} fishing-villager fishing-villager-${index + 1} ${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：提竿时要咬紧牙用力拉！有时也会钓到石头、袜子或饮料。`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><em className="festival-fishing-rod" /><u className="fishing-effort-mouth" /><u className="festival-caught-fish" /><u className="festival-surprise-catch" /><span>{name}<small>等待鱼儿咬钩</small></span></button>)}</div>}
                 {isBirthday && <div className="birthday-farm-friends" aria-label="在生日当天跑到菜地和农场玩耍的朋友">{BIRTHDAY_GUESTS.slice(0, 6).map((name, index) => <button key={`farm-party-${name}`} style={personClothesStyle(name)} className={`birthday-field-friend field-friend-${index + 1} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：我们从农舍跑到菜地边玩啦，一会儿再回去吃生日蛋糕！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div>}
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${game.upgrades.secondFloor ? "has-second-floor" : ""} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setHouseFloor(1); setUpstairsRoom(null); setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" />{game.upgrades.secondFloor > 0 && <><span className="upper-window upper-window-left" /><span className="upper-window upper-window-right" /></>}<span className="sign">{displayName}的农舍{game.upgrades.secondFloor ? " · 两层" : game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
                 <button className={`crafted-object crafted-chest home-storage-chest ${selectedResource ? "ready-to-store" : ""}`} onClick={() => { if (selected === "axe") { setMessage("这是农舍旁边固定的收纳木箱，不会被斧头拆掉。 "); return; } useChest(); }} aria-label={`农舍旁的木箱，内有 ${Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)} 件物品`}><i /><b>{Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)}</b></button>
@@ -5068,7 +5164,10 @@ export default function FarmGame() {
             )}
 
             {builderOpen && (
-              <div className={`shop-overlay builder-overlay ${neighborInterior ? "nested-house-overlay" : ""}`} role="presentation"><section className="builder-panel" role="dialog" aria-modal="true" aria-labelledby="builder-title"><header><div><span>鲁师傅的扩建与家具委托</span><h2 id="builder-title">选择扩建项目或功能家具</h2></div><button onClick={() => setBuilderOpen(false)}>×</button></header><div className="builder-supplies"><span>已经交给鲁师傅</span><strong>{game.builderSupplies.wood} 木头 · {game.builderSupplies.stone} 石材</strong><small>回到资源栏双击木头或石材，再点击鲁师傅，可以继续交材料。</small></div><div className="builder-grid"><button onClick={() => commissionBuilder("land")} disabled={Boolean(game.upgrades.land)}><b>扩大地盘</b><span>{game.upgrades.land ? "已经完成" : "12 木 · 18 石"}</span></button><button onClick={() => commissionBuilder("house")} disabled={game.upgrades.house >= 3}><b>扩大农舍</b><span>{game.upgrades.house >= 3 ? "三级扩建已经完成" : `${20 + game.upgrades.house * 10} 木 · ${12 + game.upgrades.house * 8} 石 · 安装${["暖光灯", "自动水箱", "料理台"][game.upgrades.house]}`}</span></button><button onClick={() => commissionBuilder("field")} disabled={Boolean(game.upgrades.field)}><b>扩大土地</b><span>{game.upgrades.field ? "已经增加 8 格土地" : "10 木 · 10 石 · 增加 8 格"}</span></button><button onClick={() => commissionBuilder("storage")} disabled={Boolean(game.upgrades.storage)}><b>扩建售卖仓库</b><span>{game.upgrades.storage ? "售卖价已经提高 10%" : "18 木 · 12 石 · 售价 +10%"}</span></button><button onClick={() => commissionBuilder("greenhouse")} disabled={Boolean(game.upgrades.greenhouse)}><b>修建玻璃温室</b><span>{game.upgrades.greenhouse ? "每天会自动照料作物" : "28 木 · 22 石 · 作物自动生长"}</span></button><button onClick={() => commissionBuilder("pond")} disabled={Boolean(game.upgrades.pond)}><b>扩大钓鱼池</b><span>{game.upgrades.pond ? "每次钓鱼额外 +1" : "16 木 · 24 石 · 鱼获 +1"}</span></button><button onClick={() => commissionBuilder("stoneWall")} disabled={Boolean(game.upgrades.stoneWall)}><b>修建农场石墙</b><span>{game.upgrades.stoneWall ? "小动物无法进入" : "8 木 · 32 石 · 永久防动物"}</span></button><button className="builder-major-project" onClick={() => commissionBuilder("secondFloor")} disabled={Boolean(game.upgrades.secondFloor)}><b>修建农舍二楼</b><span>{game.upgrades.secondFloor ? "二楼主体已经完成" : "80 木 · 60 石 · 大块空旷空间"}</span></button><button onClick={() => commissionBuilder("upstairsKitchen")} disabled={Boolean(game.upgrades.upstairsKitchen)}><b>单独扩建二楼厨房</b><span>{game.upgrades.upstairsKitchen ? "厨房已经完成" : game.upgrades.secondFloor ? "45 木 · 30 石 · 烹饪生食" : "需要先建二楼 · 45 木 · 30 石"}</span></button><button onClick={() => commissionBuilder("upstairsBathroom")} disabled={Boolean(game.upgrades.upstairsBathroom)}><b>单独扩建二楼卫生间</b><span>{game.upgrades.upstairsBathroom ? "卫生间已经完成" : game.upgrades.secondFloor ? "35 木 · 45 石 · 洗去淋雨疲劳" : "需要先建二楼 · 35 木 · 45 石"}</span></button><div className="builder-furniture-heading"><strong>鲁师傅的功能家具</strong><small>做好后进入背包，再到二楼选择绿色方格摆放</small></div>{(["chest", "lamp", "bench", "sign", "table"] as const).map((furniture) => <button key={`builder-furniture-${furniture}`} className="builder-furniture-project" onClick={() => commissionFurniture(furniture)}><b>{CRAFT_RECIPES[furniture].name}</b><span>{CRAFT_RECIPES[furniture].wood} 木 · {CRAFT_RECIPES[furniture].stone} 石 · {furniture === "chest" ? "收纳" : furniture === "lamp" ? "照明" : furniture === "bench" ? "恢复体力" : furniture === "table" ? "吃饭加成" : "查看方向"}</span></button>)}</div><footer><span>{message}</span><button onClick={() => setBuilderOpen(false)}>收起委托单</button></footer></section></div>
+              <>
+              <button className="builder-emergency-close" onClick={() => { setBuilderOpen(false); setMessage("收起鲁师傅的委托单，回到原来的游戏画面。 "); }} aria-label="退出鲁师傅的建造委托"><b>×</b><span>退出委托</span></button>
+              <div className={`shop-overlay builder-overlay ${neighborInterior ? "nested-house-overlay" : ""}`} role="presentation"><section className="builder-panel" role="dialog" aria-modal="true" aria-labelledby="builder-title"><header><div><span>鲁师傅的扩建与家具委托</span><h2 id="builder-title">选择扩建项目或室内家具</h2></div><button onClick={() => setBuilderOpen(false)}>×</button></header><div className="builder-supplies"><span>已经交给鲁师傅</span><strong>{game.builderSupplies.wood} 木头 · {game.builderSupplies.stone} 石材</strong><small>回到资源栏双击木头或石材，再点击鲁师傅，可以继续交材料。</small></div><div className="builder-grid"><button onClick={() => commissionBuilder("land")} disabled={Boolean(game.upgrades.land)}><b>扩大地盘</b><span>{game.upgrades.land ? "已经完成" : "12 木 · 18 石"}</span></button><button onClick={() => commissionBuilder("house")} disabled={game.upgrades.house >= 3}><b>扩大农舍</b><span>{game.upgrades.house >= 3 ? "三级扩建已经完成" : `${20 + game.upgrades.house * 10} 木 · ${12 + game.upgrades.house * 8} 石 · 安装${["暖光灯", "自动水箱", "料理台"][game.upgrades.house]}`}</span></button><button onClick={() => commissionBuilder("field")} disabled={Boolean(game.upgrades.field)}><b>扩大土地</b><span>{game.upgrades.field ? "已经增加 8 格土地" : "10 木 · 10 石 · 增加 8 格"}</span></button><button onClick={() => commissionBuilder("storage")} disabled={Boolean(game.upgrades.storage)}><b>扩建售卖仓库</b><span>{game.upgrades.storage ? "售卖价已经提高 10%" : "18 木 · 12 石 · 售价 +10%"}</span></button><button onClick={() => commissionBuilder("greenhouse")} disabled={Boolean(game.upgrades.greenhouse)}><b>修建玻璃温室</b><span>{game.upgrades.greenhouse ? "每天会自动照料作物" : "28 木 · 22 石 · 作物自动生长"}</span></button><button onClick={() => commissionBuilder("pond")} disabled={Boolean(game.upgrades.pond)}><b>扩大钓鱼池</b><span>{game.upgrades.pond ? "每次钓鱼额外 +1" : "16 木 · 24 石 · 鱼获 +1"}</span></button><button onClick={() => commissionBuilder("stoneWall")} disabled={Boolean(game.upgrades.stoneWall)}><b>修建农场石墙</b><span>{game.upgrades.stoneWall ? "小动物无法进入" : "8 木 · 32 石 · 永久防动物"}</span></button><button className="builder-major-project" onClick={() => commissionBuilder("secondFloor")} disabled={Boolean(game.upgrades.secondFloor)}><b>修建农舍二楼</b><span>{game.upgrades.secondFloor ? "二楼主体已经完成" : "80 木 · 60 石 · 大块空旷空间"}</span></button><button onClick={() => commissionBuilder("upstairsKitchen")} disabled={Boolean(game.upgrades.upstairsKitchen)}><b>单独扩建二楼厨房</b><span>{game.upgrades.upstairsKitchen ? "厨房已经完成" : game.upgrades.secondFloor ? "45 木 · 30 石 · 烹饪生食" : "需要先建二楼 · 45 木 · 30 石"}</span></button><button onClick={() => commissionBuilder("upstairsBathroom")} disabled={Boolean(game.upgrades.upstairsBathroom)}><b>单独扩建二楼卫生间</b><span>{game.upgrades.upstairsBathroom ? "卫生间已经完成" : game.upgrades.secondFloor ? "35 木 · 45 石 · 洗去淋雨疲劳" : "需要先建二楼 · 35 木 · 45 石"}</span></button><div className="builder-furniture-heading"><strong>鲁师傅的室内家具</strong><small>这里只做适合放在家里的家具；户外灯柱、长椅和方向牌已经移出本区</small></div>{INDOOR_FURNITURE.map((furniture) => <button key={`builder-furniture-${furniture}`} className="builder-furniture-project" onClick={() => commissionFurniture(furniture)}><b>{CRAFT_RECIPES[furniture].name}</b><span>{CRAFT_RECIPES[furniture].wood} 木 · {CRAFT_RECIPES[furniture].stone} 石 · {CRAFT_RECIPES[furniture].description}</span></button>)}</div><footer><span>{message}</span><button onClick={() => setBuilderOpen(false)}>收起委托单</button></footer></section></div>
+              </>
             )}
 
             {multiplayerOpen && (
@@ -5123,7 +5222,7 @@ export default function FarmGame() {
                   <header className="craft-sticky-header"><div><span>农场手作</span><h2 id="craft-title">制作手册</h2></div><div className="wood-wallet"><small>现有材料</small><strong>{game.wood} 木 · {game.stone} 石 · {game.resin} 树脂 · {game.wool} 羊毛</strong></div><button className="craft-close-button" onClick={() => setCraftingOpen(false)} aria-label="关闭制作菜单">×</button></header>
                   <div className="craft-intro"><span>⚒</span><p><strong>把木头、石材、树脂和羊毛做成实用物品</strong>火柴需要 3 木和 2 树脂；羊毛毯需要 3 团羊毛。</p></div>
                   <div className="recipe-grid">
-                    {(Object.keys(CRAFT_RECIPES) as CraftType[]).map((item) => { const recipe = CRAFT_RECIPES[item]; return <article className="recipe-card" key={item}><span className={`recipe-icon ${item}-recipe`}>{recipe.short}</span><div><strong>{recipe.name}</strong><small>{recipe.description}</small><em>背包里 {game.crafted[item]} 个{item !== "matches" && item !== "blanket" && ` · 已摆 ${game.placedCrafts.filter((placed) => placed.type === item).length} 个`}</em></div><button onClick={() => craftItem(item)}>{recipe.wood > 0 && <><span>木</span>{recipe.wood}</>}{recipe.stone > 0 && <> · <span>石</span>{recipe.stone}</>}{(recipe.resin ?? 0) > 0 && <> · <span>脂</span>{recipe.resin}</>}{(recipe.wool ?? 0) > 0 && <><span>毛</span>{recipe.wool}</>}</button></article>; })}
+                    {CRAFT_GROUPS.map((group) => <section className="recipe-group" key={group.title}><header><strong>{group.title}</strong><small>{group.note}</small></header><div>{group.items.map((item) => { const recipe = CRAFT_RECIPES[item]; return <article className="recipe-card" key={item}><span className={`recipe-icon ${item}-recipe`}>{recipe.short}</span><div><strong>{recipe.name}</strong><small>{recipe.description}</small><em>背包里 {game.crafted[item]} 个{INDOOR_FURNITURE.includes(item) ? ` · 屋内已摆 ${game.atticPlacedCrafts.filter((placed) => placed.type === item).length} 个` : !HANDCRAFTS.includes(item) && ` · 农场已摆 ${game.placedCrafts.filter((placed) => placed.type === item).length} 个`}</em></div><button onClick={() => craftItem(item)}>{recipe.wood > 0 && <><span>木</span>{recipe.wood}</>}{recipe.stone > 0 && <> · <span>石</span>{recipe.stone}</>}{(recipe.resin ?? 0) > 0 && <> · <span>脂</span>{recipe.resin}</>}{(recipe.wool ?? 0) > 0 && <><span>毛</span>{recipe.wool}</>}</button></article>; })}</div></section>)}
                   </div>
                   <footer><span>{message}</span><button onClick={() => setCraftingOpen(false)}>收起手册</button></footer>
                 </section>
@@ -5197,7 +5296,7 @@ export default function FarmGame() {
                       </div>
                       <div className="upstairs-furniture-palette"><strong>选择要摆放的家具</strong><div>{ATTIC_FURNITURE.map((craft) => <button key={`attic-choice-${craft}`} className={selectedAtticCraft === craft ? "selected" : ""} disabled={game.crafted[craft] <= 0 || (craft === "chest" && game.atticChestPlaced)} onClick={() => { setSelectedAtticCraft((current) => current === craft ? null : craft); setMessage(`选择了${CRAFT_RECIPES[craft].name}。${selectedAtticCraft === craft ? "绿色方格会收起来。" : "点击出现的绿色方格摆放。"}`); }}><i>{CRAFT_RECIPES[craft].short}</i><span>{CRAFT_RECIPES[craft].name}<small>背包 {game.crafted[craft]}</small></span></button>)}</div></div>
                       {selectedAtticCraft && <div className="upstairs-placement-grid" aria-label="绿色家具摆放位置">{ATTIC_PLACEMENT_SLOTS.map((slot, index) => game.atticPlacedCrafts.some((craft) => craft.x === index) ? null : <button key={`attic-slot-${index}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => placeFurnitureUpstairs(index)} aria-label={`在第 ${index + 1} 个绿色方格摆放${CRAFT_RECIPES[selectedAtticCraft].name}`}><i /></button>)}</div>}
-                      <div className="upstairs-placed-furniture">{game.atticPlacedCrafts.map((craft) => { const slot = ATTIC_PLACEMENT_SLOTS[craft.x]; if (!slot) return null; return <button key={craft.id} className={`upstairs-furniture upstairs-furniture-${craft.type}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => { if (craft.type === "chest") { setAtticStorageOpen(true); setMessage("打开二楼专用收纳箱，可以单个放入或取出材料。 "); } else if (craft.type === "lamp") { setGame((current) => ({ ...current, equipment: { ...current.equipment, lampOn: !current.equipment.lampOn } })); setMessage(game.equipment.lampOn ? "关掉二楼灯，家具留在原地。" : "点亮二楼灯，夜晚的整个楼层明亮起来。 "); } else if (craft.type === "bench") { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 8) })); setMessage("坐在长椅上休息了一会儿，恢复 8 点体力。 "); } else if (craft.type === "table") eatAtUpstairsTable(); else setMessage("方向牌写着：楼梯在左边，厨房和卫生间在右边。 "); }}><i /><b /><span>{CRAFT_RECIPES[craft.type].name}</span></button>; })}</div>
+                      <div className="upstairs-placed-furniture">{game.atticPlacedCrafts.map((craft) => { const slot = ATTIC_PLACEMENT_SLOTS[craft.x]; if (!slot) return null; return <button key={craft.id} className={`upstairs-furniture upstairs-furniture-${craft.type}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => useUpstairsFurniture(craft)}><i /><b /><span>{CRAFT_RECIPES[craft.type].name}</span></button>; })}</div>
                       {upstairsRoom && <div className={`upstairs-private-room private-${upstairsRoom}`}>
                         <button className="private-room-back" onClick={() => { setUpstairsRoom(null); setMessage("从小房间回到宽敞的二楼。 "); }}>← 回到二楼</button>
                         {upstairsRoom === "kitchen" ? <><div className="private-room-title"><strong>二楼厨房</strong><small>鲁师傅安装的每件家具都有功能</small></div><button className="functional-kitchen-stove" onClick={() => setMessage("灶台已经烧热了。选择下面的螃蟹或小虾进行烹饪，熟食会进入资源记录。 ")}><i /><b /><span>灶台 · 点火</span></button><button className="functional-kitchen-sink" onClick={() => { setMessage("用水槽把海鲜和蔬菜洗干净了，准备放到灶台上烹饪。 "); playTone(610); }}><i /><b /><span>水槽 · 清洗食材</span></button><button className="functional-kitchen-cabinet" onClick={() => setMessage(`料理柜里记录着：生螃蟹 ${game.crabs}、生小虾 ${game.shrimp}、熟螃蟹 ${game.cookedCrabs}、熟小虾 ${game.cookedShrimp}。`)}><i /><b /><span>料理柜 · 查看食材</span></button><div className="private-kitchen-actions"><button disabled={game.crabs <= 0} onClick={() => cookUpstairsSeafood("crabs")}>烹饪螃蟹 ×{game.crabs}</button><button disabled={game.shrimp <= 0} onClick={() => cookUpstairsSeafood("shrimp")}>烹饪小虾 ×{game.shrimp}</button></div></> : <><div className="private-room-title"><strong>二楼卫生间</strong><small>洗澡会恢复健康，并让明天更有精神</small></div><button className="functional-bathtub" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 15), sick: false, diagnosed: false, rainExposure: 0, showeredBeforeBed: true })); setMessage("洗了一个暖和的澡：恢复 15 点体力，身体恢复健康。睡觉后，明天农活体力消耗减少约三成。 "); playTone(720); }}><i /><b /><span>浴缸与花洒 · 洗澡</span></button><button className="functional-bath-sink" onClick={() => { setGame((current) => ({ ...current, rainExposure: 0, energy: Math.min(100, current.energy + 3) })); setMessage("在洗手台洗净泥土和雨水，恢复 3 点体力。 "); }}><i /><b /><span>洗手台 · 清洁</span></button><button className="functional-bath-mirror" onClick={() => { const nextOutfit = game.mallItems.redCoat > 0 && game.equippedOutfit !== "redCoat" ? "redCoat" : game.mallItems.blueOutfit > 0 && game.equippedOutfit !== "blueOutfit" ? "blueOutfit" : "default"; setGame((current) => ({ ...current, equippedOutfit: nextOutfit })); setMessage(nextOutfit === "default" ? "照了照镜子，换回平常的农场衣服。" : `在镜子前整理衣服，换上了${nextOutfit === "redCoat" ? "红色外套" : "蓝色套装"}。`); }}><i /><b /><span>镜子 · 整理换装</span></button></>}
