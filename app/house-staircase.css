@@ -64,7 +64,12 @@
   background: #c99058;
   box-shadow: inset 0 -6px #96613f;
 }
-.real-house-staircase:hover { filter: brightness(1.08); translate: 0 -1px; }
+.real-house-staircase:hover,
+.real-house-staircase:focus-visible {
+  translate: 0 0;
+  filter: brightness(1.08) drop-shadow(0 0 6px rgba(255,224,139,.55));
+  outline: 4px solid rgba(255,235,170,.75);
+}
 .real-house-staircase.stairs-in-use { pointer-events: none; filter: drop-shadow(0 0 10px rgba(255,224,139,.8)); }
 
 /* Upstairs is not a mirrored copy: the dark floor opening and shrinking steps visibly descend. */
@@ -115,7 +120,8 @@
 .upper-staircase .stair-railing::before { left: 25px; top: 0; }
 .upper-staircase .stair-railing::after { right: 8px; top: 0; }
 .upper-staircase .stair-landing { left: 4px; right: auto; top: -7px; width: 82px; }
-.upper-staircase:hover { translate: 0 -1px; }
+.upper-staircase:hover,
+.upper-staircase:focus-visible { translate: 0 0; }
 .stair-traveler { z-index: 21!important; transition: left .36s linear, top .36s linear!important; }
 .stair-traveler .player-shadow { opacity: .45; }
 
