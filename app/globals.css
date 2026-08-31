@@ -9,6 +9,7 @@
 @import "./workshop-festivals.css";
 @import "./house-staircase.css";
 @import "./festival-process-extended.css";
+@import "./townhall-calendar.css";
 
 :root {
   --ink: #263d31;

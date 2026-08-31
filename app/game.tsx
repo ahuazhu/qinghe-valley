@@ -781,6 +781,7 @@ export default function FarmGame() {
   const [farmGateOpen, setFarmGateOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [townhallCalendarOpen, setTownhallCalendarOpen] = useState(false);
   const [chestOpen, setChestOpen] = useState(false);
   const [shippingBinOpen, setShippingBinOpen] = useState(false);
   const [shippingReport, setShippingReport] = useState<{ itemCount: number; earnings: number } | null>(null);
@@ -1518,6 +1519,11 @@ export default function FarmGame() {
         setMessage("暂时不把剩下的物品全部放入收纳箱。 ");
         return;
       }
+      if (key === "escape" && townhallCalendarOpen) {
+        setTownhallCalendarOpen(false);
+        setMessage("收起了镇公所的全年节日公告栏。 ");
+        return;
+      }
       if (key === "escape" && festivalProcess) {
         setFestivalProcess(null);
         setMessage("暂时离开节日活动，今天还可以回来继续参加。 ");
@@ -1634,7 +1640,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, chestOpen, shippingBinOpen, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, move, neighborInterior, petHospitalOpen, petShopOpen, ranchOpen, residentHome, splitScreen]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, chestOpen, shippingBinOpen, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, move, neighborInterior, petHospitalOpen, petShopOpen, ranchOpen, residentHome, splitScreen, townhallCalendarOpen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -3506,6 +3512,7 @@ export default function FarmGame() {
       setAtticStorageOpen(false);
       setSelectedAtticCraft(null);
     }
+    setTownhallCalendarOpen(false);
     setActiveBuilding(null);
     setInspectedItem(null);
     setPlayer(building.exit);
@@ -3640,8 +3647,8 @@ export default function FarmGame() {
       setMessage("享用麦香咖啡套餐，恢复 25 点体力！");
       playTone(720);
     } else if (building === "townhall") {
-      const seasonFestivals = FESTIVAL_SCHEDULE.filter((festival) => festival.season === game.season).map((festival) => `第${festival.day}天${festival.name}`).join("、");
-      setMessage(`${SEASONS[game.season]}节日公告：${seasonFestivals}。春节、元宵、端午和中秋的广场都会挂起装饰，居民们也会来到现场。`);
+      setTownhallCalendarOpen(true);
+      setMessage(`镇公所打开了第 ${game.year} 年全年节日公告：春夏秋冬的 ${FESTIVAL_SCHEDULE.length} 个节日全部写在里面。`);
       playTone(520);
     } else if (building === "workshop") {
       setFestivalDisplay("wood");
@@ -3699,6 +3706,13 @@ export default function FarmGame() {
   };
 
   const inspectBuildingItem = (item: string) => {
+    if (item === "节日公告") {
+      setTownhallCalendarOpen(true);
+      setInspectedItem(null);
+      setMessage(`打开全年节日公告栏：共 ${FESTIVAL_SCHEDULE.length} 个节日，每张公告都写着日期、地点和活动内容。`);
+      playTone(620);
+      return;
+    }
     setInspectedItem(item);
     const lostBook = LOST_BOOKS.find((book) => book.title === item);
     const artifact = RARE_ARTIFACTS.find((rareItem) => rareItem.title === item);
@@ -5130,6 +5144,8 @@ export default function FarmGame() {
       </div>}
 
       {drivingSchoolOpen && <div className="driving-school-overlay" role="dialog" aria-modal="true" aria-label="青禾驾驶学校"><section className="driving-school-panel"><header><div><span>青禾谷安全驾驶中心</span><h2>青禾驾驶学校</h2></div><button onClick={() => setDrivingSchoolOpen(false)} aria-label="离开驾校">×</button></header>{game.driverLicense ? <div className="license-earned"><i>驾</i><strong>青禾谷驾驶证</strong><span>持证人：{displayName}</span><p>理论考试和驾驶练习都已通过。道路修好后会永久通车，现在可以去买车出发。</p><button onClick={() => { setGame((current) => ({ ...current, driverLicense: false })); setDrivingQuizStep(0); setDrivingPracticeStep(0); setMessage("开始重新练习驾照考试。 "); }}>重新练习考试</button></div> : drivingQuizStep < DRIVING_QUESTIONS.length ? <div className="driving-theory"><span>理论考试 · 第 {drivingQuizStep + 1}/{DRIVING_QUESTIONS.length} 题</span><strong>{DRIVING_QUESTIONS[drivingQuizStep].question}</strong><div>{DRIVING_QUESTIONS[drivingQuizStep].answers.map((answer, index) => <button key={answer} onClick={() => answerDrivingQuestion(index)}>{answer}</button>)}</div><small>答错会从第一题重新开始，认真想一想。</small></div> : <div className="driving-practice"><span>驾驶练习 · 小汽车绕桩</span><div className={`practice-road practice-step-${drivingPracticeStep}`}><i className="practice-car" /><b /><b /><b /></div><strong>{drivingPracticeStep === 0 ? "第一步：向左转" : drivingPracticeStep === 1 ? "第二步：向右绕桩" : drivingPracticeStep === 2 ? "第三步：停进停车框" : "练习完成"}</strong><div><button onClick={() => doDrivingPractice(0)}>← 左转</button><button onClick={() => doDrivingPractice(1)}>右转 →</button><button onClick={() => doDrivingPractice(2)}>▣ 停车</button></div></div>}<footer><span>{game.driverLicense ? "已经取得驾照" : "先通过理论，再完成驾驶练习"}</span><button onClick={() => setDrivingSchoolOpen(false)}>离开驾校</button></footer></section></div>}
+
+      {townhallCalendarOpen && <div className="townhall-calendar-overlay" role="presentation"><section className="townhall-calendar-panel" role="dialog" aria-modal="true" aria-labelledby="townhall-calendar-title"><header><div><span>镇公所公告栏 · 第 {game.year} 年</span><h2 id="townhall-calendar-title">青禾谷全年节日表</h2></div><button onClick={() => setTownhallCalendarOpen(false)} aria-label="收起全年节日公告">×</button></header><p>春、夏、秋、冬所有节日都登记在这里。日期到了以后，点击左侧“今日活动”卡片也能直接前往。</p><div className="year-festival-board">{SEASONS.map((seasonName, seasonIndex) => <section key={`festival-season-${seasonName}`} className={`festival-season-column season-column-${seasonIndex}`}><header><i>{["芽", "阳", "叶", "雪"][seasonIndex]}</i><div><strong>{seasonName}</strong><small>第 {game.year} 年</small></div></header><div>{FESTIVAL_SCHEDULE.filter((festival) => festival.season === seasonIndex).map((festival) => { const festivalPosition = festival.season * 28 + festival.day; const isTodayFestival = currentFestival?.id === festival.id; const isPastFestival = festivalPosition < calendarPosition; return <button key={`townhall-festival-${festival.id}`} className={`${isTodayFestival ? "today" : isPastFestival ? "past" : "upcoming"}`} onClick={() => { const distance = festivalPosition >= calendarPosition ? festivalPosition - calendarPosition : 112 - calendarPosition + festivalPosition; setMessage(isTodayFestival ? `${festival.name}今天正在${festival.place}举行：${festival.description}。可以从公告栏下方直接前往。` : `${festival.name}：${seasonName}第 ${festival.day} 天${WEEKDAYS[(festival.day - 1) % 7]}，地点是${festival.place}。${festival.description}，距离下一次还有 ${distance} 天。`); playTone(isTodayFestival ? 820 : 540); }}><span><b>{festival.day}</b><small>第{festival.day}天</small></span><div><strong>{festival.name}</strong><small>{festival.place}</small><p>{festival.description}</p></div><em>{isTodayFestival ? "今天举行" : isPastFestival ? "今年已结束" : "等待开始"}</em></button>; })}</div></section>)}</div><footer><span>{message}</span><div>{currentFestival && <button className="go-current-festival" onClick={() => { setTownhallCalendarOpen(false); goToFestival(); }}>前往今天的{currentFestival.name}</button>}<button onClick={() => setTownhallCalendarOpen(false)}>收起公告栏</button></div></footer></section></div>}
 
       {mallOpen && <div className="mall-overlay" role="dialog" aria-modal="true" aria-label="青禾大商场"><section className="mall-panel three-floor-mall"><header><div><span>远方新区购物中心 · {mallFloor} 楼</span><h2>青禾大商场</h2></div><div className="mall-wallet">● {game.coins.toLocaleString()}</div><button onClick={() => setMallOpen(false)} aria-label="离开商场">×</button></header><div className="mall-building-interior"><aside className="mall-elevator" aria-label="商场电梯"><strong>电梯</strong>{([1, 2, 3] as const).map((floor) => <button key={floor} className={mallFloor === floor ? "active" : ""} onClick={() => { setMallFloor(floor); setMessage(`电梯到达 ${floor} 楼，门打开了。`); playTone(540 + floor * 60); }}>{floor}F</button>)}<i /><small>点击楼层</small></aside><div className={`mall-floor mall-floor-${mallFloor}`}><div className="mall-floor-sign"><b>{mallFloor}F</b><span>{mallFloor === 1 ? "美食与生鲜" : mallFloor === 2 ? "服装与旅行用品" : "家居、园艺与户外"}</span></div><div className="mall-aisles">{mallFloor === 1 ? <><article><h3>麦香烘焙店</h3><button onClick={() => buyMallItem("奶油蛋糕", 80, 30)}><i className="mall-cake" /><span><b>奶油蛋糕</b><small>80 金币 · 体力 +30</small></span></button><button onClick={() => buyMallItem("热牛角包", 38, 12)}><i className="mall-cake bread" /><span><b>热牛角包</b><small>38 金币 · 体力 +12</small></span></button></article><article><h3>田园生鲜店</h3><button onClick={() => buyMallItem("水果便当", 55, 20)}><i className="mall-lunch" /><span><b>水果便当</b><small>55 金币 · 体力 +20</small></span></button><button onClick={() => buyMallItem("暖汤套餐", 68, 25)}><i className="mall-lunch soup" /><span><b>暖汤套餐</b><small>68 金币 · 体力 +25</small></span></button></article><article><h3>山谷咖啡角</h3><button onClick={() => buyMallItem("热拿铁", 35, 10)}><i className="mall-coffee" /><span><b>热拿铁</b><small>35 金币 · 体力 +10</small></span></button></article></> : mallFloor === 2 ? <><article><h3>四季衣橱</h3><button onClick={() => buyMallItem("红色节日外套", 260, 0, "redCoat")}><i className="mall-coat red-coat" /><span><b>红色节日外套</b><small>260 金币 · 可穿着</small></span></button><button onClick={() => buyMallItem("蓝色旅行套装", 320, 0, "blueOutfit")}><i className="mall-coat blue-coat" /><span><b>蓝色旅行套装</b><small>320 金币 · 可穿着</small></span></button></article><article><h3>雨天旅行铺</h3><button onClick={() => buyMallItem("彩色雨伞", 120, 0, "umbrella")}><i className="mall-umbrella" /><span><b>彩色雨伞</b><small>120 金币 · 撑伞不会淋病</small></span></button></article><article><h3>配饰小店</h3><button onClick={() => buyMallItem("柔软围巾", 75, 8)}><i className="mall-scarf" /><span><b>柔软围巾</b><small>75 金币 · 休息体力 +8</small></span></button></article></> : <><article><h3>阳台园艺店</h3><button onClick={() => buyMallItem("家庭种子礼盒", 180, 0, "seedBox")}><i className="mall-seed-box" /><span><b>家庭种子礼盒</b><small>180 金币 · 可打开</small></span></button></article><article><h3>温暖家居店</h3><button onClick={() => buyMallItem("柔软靠垫", 90, 15)}><i className="mall-cushion" /><span><b>柔软靠垫</b><small>90 金币 · 体力 +15</small></span></button></article><article><h3>山野户外店</h3><button onClick={() => buyMallItem("登山补给包", 70, 25)}><i className="mall-hiking" /><span><b>登山补给包</b><small>70 金币 · 体力 +25</small></span></button></article></>}</div></div></div><footer><span>乘电梯可以到三层不同商店，衣服、雨伞和礼盒会进入背包。</span><button onClick={() => setMallOpen(false)}>走出商场</button></footer></section></div>}
 
