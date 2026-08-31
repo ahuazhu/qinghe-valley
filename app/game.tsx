@@ -13,6 +13,12 @@ type StorableResource = CropType | "fish";
 type VillageId = "qinghe" | "maple";
 type Facing = "down" | "up" | "left" | "right";
 type Weather = "sunny" | "cloudy" | "rain" | "thunder";
+type CropQuality = "normal" | "silver" | "gold";
+type CropQualityRecord = Record<CropType, { normal: number; silver: number; gold: number }>;
+type CropQualityStock = Record<CropType, { silver: number; gold: number }>;
+type CookingFood = "crabs" | "shrimp";
+type CookingStep = "chop" | "heat" | "plate";
+type GuideTopicId = "start" | "farming" | "fishing" | "tools" | "town" | "friends" | "home" | "animals" | "weather" | "festival" | "multiplayer" | "save";
 type MallItem = "redCoat" | "blueOutfit" | "umbrella" | "seedBox" | "animalRaincoat";
 type FarmAnimalType = "chicken" | "cow" | "sheep";
 type UrgentEventKind = "fire" | "theft" | "injury";
@@ -61,6 +67,7 @@ type FarmTile = {
   stage: number;
   watered: boolean;
   cropType?: CropType;
+  care?: number;
 };
 
 type GameState = {
@@ -177,6 +184,17 @@ type GameState = {
   atticChestPlaced: boolean;
   atticPlacedCrafts: PlacedCraft[];
   firstFloorNightstandPlaced: boolean;
+  friendship: Record<string, number>;
+  lastTalkedDays: Record<string, string>;
+  forestQuestStage: number;
+  forestQuestProgressDay: number;
+  cropQualityHarvests: CropQualityRecord;
+  cropQualityStock: CropQualityStock;
+  chestCropQualityStock: CropQualityStock;
+  shippingCropQualityStock: CropQualityStock;
+  watchedTvEpisodes: number[];
+  journalEntries: string[];
+  recipesDiscovered: string[];
 };
 
 type FestivalPreview = {
@@ -215,6 +233,7 @@ const CROP_INFO: Record<CropType, { name: string; short: string; seedField: Seed
 };
 
 const CROP_TYPES = Object.keys(CROP_INFO) as CropType[];
+const isCropResource = (resource: StorableResource): resource is CropType => resource !== "fish";
 
 const BEACH_CRABS = [
   { x: 22, y: 67 }, { x: 36, y: 58 }, { x: 49, y: 72 },
@@ -445,12 +464,40 @@ const PERSON_CLOTHES: Record<string, string> = {
   小玲: "#dc7081", 豆豆: "#5f83b5", 小满: "#e29b45", 阿禾: "#6e9d58", 小树: "#8169a0", 安安: "#4d9c9a",
   小桃: "#d9798b", 阿木: "#6f8d58", 小文: "#6d79a9", 小麦: "#d8a144", 小程: "#5e88a5", 小岚: "#499184", 小晴: "#9a6fa6",
 };
+const GUIDE_TOPICS: Array<{ id: GuideTopicId; title: string; icon: string; summary: string; steps: string[]; tip: string }> = [
+  { id: "start", title: "第一次进入游戏", icon: "走", summary: "用方向键、WASD 或点击地面移动小禾。走到场景最边缘，才会前往相邻地点。", steps: ["方向键或 WASD：一步一步走", "鼠标或手指点击地面：自动走过去", "左上角叶子菜单：打开说明、地图、制作和日记", "下方工具栏：选择当前要使用的工具"], tip: "游戏里半分钟约等于一小时；每天早上七点醒来。" },
+  { id: "farming", title: "种地与作物品质", icon: "苗", summary: "锄地、播种、浇水、等待成长，成熟后再用手收获。", steps: ["先选锄头，走近土地后点击一格草地", "选择种子并点击松好的土", "每天走近作物，用洒水壶浇水", "长到第三阶段后选择收获", "连续照料会得到银星或金星品质，卖价更高"], tip: "下雨会自动浇水；保温室和手动浇水一起使用时成长更快。" },
+  { id: "fishing", title: "钓鱼", icon: "鱼", summary: "拿出鱼竿走到鱼塘边，等待问号出现后及时提竿，再完成收线小游戏。", steps: ["在工具栏选择鱼竿", "走到鱼塘附近并点击水面", "等待浮标上方出现问号", "及时点击提竿", "控制游标停在绿色区域，把鱼拉上来"], tip: "幸运鱼竿咬钩更快，也可能钓到钻石、袜子或饮料。" },
+  { id: "tools", title: "砍树、挖矿与制作", icon: "斧", summary: "斧头砍树和敲农场石头，镐子挖山洞钻石；材料会进入资源记录。", steps: ["选择斧头，再靠近树木或农场石头", "选择镐子并带火柴进入山洞", "点击左上角叶子，再打开制作", "材料足够时制作，成品进入背包", "选中家具后点击绿色位置摆放"], tip: "砍树会得到木头、树脂、松子和松果；松果可以重新种树。" },
+  { id: "town", title: "小镇、商店与地图", icon: "镇", summary: "从农场右侧前往中心街，再走向文化街、住宅坡和居民家。", steps: ["走到道路最边缘切换地点", "点击建筑门进入室内", "超市购买种子和补给", "诊所检查身体并购买药物", "地图可以快速查看道路与建筑位置"], tip: "远方新区需要驾照、汽车和修好的道路才能前往。" },
+  { id: "friends", title: "居民、送礼与好感", icon: "心", summary: "居民每天有自己的行程。聊天和送喜欢的礼物会增加好感，解锁新的相处事件。", steps: ["点击居民进行当天第一次聊天", "双击物品把它举到头顶", "点击居民把礼物送出去", "打开山谷日记查看好感星级", "好感提高后，居民会来家里、回礼或邀请一起活动"], tip: "同一个人每天第一次聊天会增加好感；生日送礼效果最好。" },
+  { id: "home", title: "农舍、睡觉与做饭", icon: "家", summary: "农舍可以睡觉、开灯、点火、摆家具；扩建厨房后能亲手做饭。", steps: ["点击农舍门进入家中", "点击床盖好被子并进入第二天", "二楼厨房先切食材，再控制火候并装盘", "熟食会进入资源记录，不会立刻吃掉", "睡前洗澡，第二天体力消耗更慢"], tip: "在餐桌前吃熟食会恢复更多体力。" },
+  { id: "animals", title: "动物与宠物", icon: "宠", summary: "牧场动物每天产蛋、奶和羊毛；小宠物会跟随小禾，需要食物，也可能带回礼物。", steps: ["先建动物围栏，再去牧场购买鸡、牛、羊", "每天点击动物收取产品", "去远方新区宠物店领养宠物", "每天准备足够宠物粮", "雨天给跟随宠物穿黄色小雨衣"], tip: "鸡、牛、羊不使用宠物生病规则；生病的是跟在脚边的小宠物。" },
+  { id: "weather", title: "时间、天气与健康", icon: "雨", summary: "天气每天变化，傍晚会慢慢天黑；淋雨太久或耗尽体力可能生病。", steps: ["查看顶端时间和天气", "下雨时打开背包里的雨伞", "夜晚路灯和屋内灯光会亮", "身体不舒服时去诊所免费检查", "药材可以治疗自己和生病居民"], tip: "雷雨偶尔会劈坏作物；及时休息和洗澡能保护健康。" },
+  { id: "festival", title: "学校、节日与旅行", icon: "节", summary: "公告栏记录全年节日和生日。每个节日都有需要亲手完成的活动过程。", steps: ["到镇公所查看完整日历", "点击日期可以体验节日", "前往节日场地找到活动入口", "按照步骤完成磨咖啡、做河灯、划龙舟等活动", "右上角叉号退出体验并回到原来的日期"], tip: "春游和秋游从学校坐大巴出发；上课日听课可以获得金币。" },
+  { id: "multiplayer", title: "双人模式", icon: "双", summary: "顶端的双人模式可以让两个人分别游玩青禾村和枫叶村。", steps: ["点击顶端双人模式", "建立或加入同一个房间", "玩家一使用 WASD，玩家二使用方向键", "青禾村一直向右可到枫叶村", "枫叶村一直向左可到青禾村并相遇"], tip: "两个村庄有各自独立的农田、围栏、背包和进度。" },
+  { id: "save", title: "存档与网页版", icon: "存", summary: "游戏会自动保存当前村庄。不要使用浏览器的无痕模式，否则设备可能不会保留存档。", steps: ["正常游玩时会自动保存", "睡觉和切换村庄也会保存", "需要换设备时使用“转移到网页版”", "打开分享网址进入同一版本游戏", "重新开始按钮会清空当前进度，使用前要确认"], tip: "青禾村与枫叶村分开保存，切换村庄不会互相覆盖。" },
+];
 const BIRTHDAY_GUESTS = Object.keys(PERSON_DIALOGUES);
 const NPC_HAIR_COLORS = ["#4a3328", "#6b432d", "#342f35", "#765230", "#3e4b46", "#6d3d46"];
 const NPC_SKIN_COLORS = ["#efbd95", "#e7ad82", "#d99b72", "#f2c7a1"];
 const personClothesStyle = (name: string) => {
   const nameCode = [...name].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), 0);
   return { "--npc-clothes": PERSON_CLOTHES[name] ?? "#6b8b68", "--npc-hair": NPC_HAIR_COLORS[nameCode % NPC_HAIR_COLORS.length], "--npc-skin": NPC_SKIN_COLORS[nameCode % NPC_SKIN_COLORS.length] } as CSSProperties;
+};
+
+const residentActivity = (name: string, hour: number, day: number, weather: Weather) => {
+  const workday = (day - 1) % 7 < 5;
+  if (hour < 8) return { key: "breakfast", label: "在家吃早饭" };
+  if (weather === "rain" || weather === "thunder") {
+    if (hour >= 18) return { key: "home", label: "回家擦干雨水" };
+    return { key: "rain", label: workday ? "撑伞去上班" : "在屋檐下听雨" };
+  }
+  if (workday && hour < 12) return { key: "work", label: name === "许老师" ? "在学校上课" : "正在工作" };
+  if (hour < 14) return { key: "lunch", label: "去中心街吃午饭" };
+  if (workday && hour < 18) return { key: "work", label: "下午继续工作" };
+  if (hour < 20) return { key: "walk", label: day % 2 ? "沿河散步" : "去超市买东西" };
+  return { key: "home", label: "已经回家休息" };
 };
 
 const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description: string }> = {
@@ -671,8 +718,47 @@ const DAILY_WOODCRAFTS = [
   { name: "山谷守护鹿", description: "一只温柔的鹿站在松树旁，底座刻着青禾谷的叶片纹样。" },
 ];
 
+const makeCropQualityRecord = (): CropQualityRecord => Object.fromEntries(
+  CROP_TYPES.map((crop) => [crop, { normal: 0, silver: 0, gold: 0 }]),
+) as CropQualityRecord;
+
+const makeCropQualityStock = (): CropQualityStock => Object.fromEntries(
+  CROP_TYPES.map((crop) => [crop, { silver: 0, gold: 0 }]),
+) as CropQualityStock;
+
+const mergeCropQualityRecord = (saved?: Partial<CropQualityRecord>): CropQualityRecord => {
+  const result = makeCropQualityRecord();
+  CROP_TYPES.forEach((crop) => { result[crop] = { ...result[crop], ...(saved?.[crop] ?? {}) }; });
+  return result;
+};
+
+const mergeCropQualityStock = (saved?: Partial<CropQualityStock>): CropQualityStock => {
+  const result = makeCropQualityStock();
+  CROP_TYPES.forEach((crop) => { result[crop] = { ...result[crop], ...(saved?.[crop] ?? {}) }; });
+  return result;
+};
+
+const moveBestCropQuality = (stock: CropQualityStock, crop: CropType, amount: number) => {
+  const next = mergeCropQualityStock(stock);
+  const gold = Math.min(amount, next[crop].gold);
+  const silver = Math.min(Math.max(0, amount - gold), next[crop].silver);
+  next[crop] = { gold: next[crop].gold - gold, silver: next[crop].silver - silver };
+  return { next, moved: { gold, silver } };
+};
+
+const addCropQuality = (stock: CropQualityStock, crop: CropType, quality: { silver: number; gold: number }) => {
+  const next = mergeCropQualityStock(stock);
+  next[crop] = { silver: next[crop].silver + quality.silver, gold: next[crop].gold + quality.gold };
+  return next;
+};
+
+const cropQualityBonus = (stock: CropQualityStock) => CROP_TYPES.reduce((total, crop) => {
+  const price = RESOURCE_INFO[crop].price;
+  return total + stock[crop].silver * Math.round(price * .35) + stock[crop].gold * Math.round(price * .8);
+}, 0);
+
 const makeTiles = (count = 32): FarmTile[] =>
-  Array.from({ length: count }, () => ({ state: "grass", stage: 0, watered: false }));
+  Array.from({ length: count }, () => ({ state: "grass", stage: 0, watered: false, care: 0 }));
 
 const makeNewGame = (): GameState => ({
   year: 1,
@@ -788,6 +874,17 @@ const makeNewGame = (): GameState => ({
   atticChestPlaced: false,
   atticPlacedCrafts: [],
   firstFloorNightstandPlaced: false,
+  friendship: {},
+  lastTalkedDays: {},
+  forestQuestStage: 0,
+  forestQuestProgressDay: 0,
+  cropQualityHarvests: makeCropQualityRecord(),
+  cropQualityStock: makeCropQualityStock(),
+  chestCropQualityStock: makeCropQualityStock(),
+  shippingCropQualityStock: makeCropQualityStock(),
+  watchedTvEpisodes: [],
+  journalEntries: ["第一年春天，小禾搬进青禾农场，新的山谷生活开始了。"],
+  recipesDiscovered: [],
 });
 
 const staminaCost = (state: GameState, base: number) => state.showerBuff ? Math.max(1, Math.ceil(base * .7)) : base;
@@ -840,6 +937,15 @@ const restoreVillageGame = (saved: string | null): GameState => {
       atticChestPlaced: parsed.atticChestPlaced ?? false,
       atticPlacedCrafts: parsed.atticPlacedCrafts ?? [],
       firstFloorNightstandPlaced: parsed.firstFloorNightstandPlaced ?? false,
+      friendship: parsed.friendship ?? {},
+      lastTalkedDays: parsed.lastTalkedDays ?? {},
+      cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
+      cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
+      chestCropQualityStock: mergeCropQualityStock(parsed.chestCropQualityStock),
+      shippingCropQualityStock: mergeCropQualityStock(parsed.shippingCropQualityStock),
+      watchedTvEpisodes: parsed.watchedTvEpisodes ?? [],
+      journalEntries: parsed.journalEntries ?? defaults.journalEntries,
+      recipesDiscovered: parsed.recipesDiscovered ?? [],
     };
   } catch {
     return defaults;
@@ -883,6 +989,11 @@ export default function FarmGame() {
   const [farmGateOpen, setFarmGateOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideTopic, setGuideTopic] = useState<GuideTopicId>("start");
+  const [guideReplay, setGuideReplay] = useState(0);
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [journalTab, setJournalTab] = useState<"today" | "friends" | "collection" | "recipes">("today");
   const [townhallCalendarOpen, setTownhallCalendarOpen] = useState(false);
   const [festivalPreview, setFestivalPreview] = useState<FestivalPreview | null>(null);
   const [raincoatDressing, setRaincoatDressing] = useState(false);
@@ -960,6 +1071,8 @@ export default function FarmGame() {
   const [houseFloor, setHouseFloor] = useState<1 | 2>(1);
   const [stairTravel, setStairTravel] = useState<"up" | "down" | null>(null);
   const [upstairsRoom, setUpstairsRoom] = useState<"kitchen" | "bathroom" | null>(null);
+  const [cookingGame, setCookingGame] = useState<{ food: CookingFood; step: CookingStep; chops: number; heatScore: number } | null>(null);
+  const [cookingHeat, setCookingHeat] = useState(0);
   const [atticStorageOpen, setAtticStorageOpen] = useState(false);
   const [selectedAtticCraft, setSelectedAtticCraft] = useState<CraftType | null>(null);
   const [dreamScene, setDreamScene] = useState<number | null>(null);
@@ -1089,6 +1202,15 @@ export default function FarmGame() {
             atticChestPlaced: parsed.atticChestPlaced ?? false,
             atticPlacedCrafts: parsed.atticPlacedCrafts ?? [],
             firstFloorNightstandPlaced: parsed.firstFloorNightstandPlaced ?? false,
+            friendship: parsed.friendship ?? {},
+            lastTalkedDays: parsed.lastTalkedDays ?? {},
+            cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
+            cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
+            chestCropQualityStock: mergeCropQualityStock(parsed.chestCropQualityStock),
+            shippingCropQualityStock: mergeCropQualityStock(parsed.shippingCropQualityStock),
+            watchedTvEpisodes: parsed.watchedTvEpisodes ?? [],
+            journalEntries: parsed.journalEntries ?? defaults.journalEntries,
+            recipesDiscovered: parsed.recipesDiscovered ?? [],
           });
         }
       } catch {
@@ -1252,6 +1374,15 @@ export default function FarmGame() {
           animalRaincoatAssignments: data.save.animalRaincoatAssignments ?? [],
           sickFarmAnimalIds: data.save.sickFarmAnimalIds ?? [],
           mallItems: { ...defaults.mallItems, ...(data.save.mallItems ?? {}) },
+          friendship: data.save.friendship ?? {},
+          lastTalkedDays: data.save.lastTalkedDays ?? {},
+          cropQualityHarvests: mergeCropQualityRecord(data.save.cropQualityHarvests),
+          cropQualityStock: mergeCropQualityStock(data.save.cropQualityStock),
+          chestCropQualityStock: mergeCropQualityStock(data.save.chestCropQualityStock),
+          shippingCropQualityStock: mergeCropQualityStock(data.save.shippingCropQualityStock),
+          watchedTvEpisodes: data.save.watchedTvEpisodes ?? [],
+          journalEntries: data.save.journalEntries ?? defaults.journalEntries,
+          recipesDiscovered: data.save.recipesDiscovered ?? [],
         });
         setMessage("旧游戏的农田、金币、种子和物品已经全部转入网页版！");
         window.history.replaceState({}, "", window.location.pathname);
@@ -1283,6 +1414,24 @@ export default function FarmGame() {
       if (storyTimer) window.clearInterval(storyTimer);
     };
   }, [newsBroadcast?.automatic, newsBroadcast?.channel, newsBroadcast?.news.kind]);
+
+  useEffect(() => {
+    if (cookingGame?.step !== "heat") return;
+    const heatTimer = window.setInterval(() => {
+      setCookingHeat((value) => value >= 100 ? 0 : value + 2);
+    }, 70);
+    return () => window.clearInterval(heatTimer);
+  }, [cookingGame?.step]);
+
+  useEffect(() => {
+    if (!newsBroadcast || newsBroadcast.channel !== "kids") return;
+    const episode = (game.year - 1) * 112 + game.season * 28 + game.day;
+    setGame((current) => current.watchedTvEpisodes.includes(episode) ? current : {
+      ...current,
+      watchedTvEpisodes: [...current.watchedTvEpisodes, episode].slice(-180),
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：看了青苗少儿频道第 ${episode} 集动画。`, ...current.journalEntries].slice(0, 40),
+    });
+  }, [game.day, game.season, game.year, newsBroadcast?.channel]);
 
   useEffect(() => {
     if (!ready) return;
@@ -1610,7 +1759,7 @@ export default function FarmGame() {
       setBedtimePhase(null);
       setMessage("小禾掀开被子下床，可以继续走路了。 ");
     } else if (bedtimePhase) return;
-    if (ananBeachTraveling || bulkChestPrompt || bulkShippingPrompt || newsBroadcast || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || lanternRiddle !== null || festivalProcess || dragonBoatOpen || dragonBoatTraveling) return;
+    if (ananBeachTraveling || bulkChestPrompt || bulkShippingPrompt || newsBroadcast || guideOpen || journalOpen || cookingGame || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || lanternRiddle !== null || festivalProcess || dragonBoatOpen || dragonBoatTraveling) return;
     if (ananBeachOpen) {
       showWalking(dx, dy);
       setBeachPlayer((current) => ({
@@ -1697,7 +1846,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, bulkShippingPrompt, carTraveling, chestOpen, shippingBinOpen, craftingOpen, crossSceneBoundary, divingAtSea, dragonBoatOpen, dragonBoatTraveling, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmGateOpen, farmInterior, festivalProcess, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, lanternRiddle, mallOpen, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, bulkShippingPrompt, carTraveling, chestOpen, shippingBinOpen, cookingGame, craftingOpen, crossSceneBoundary, divingAtSea, dragonBoatOpen, dragonBoatTraveling, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmGateOpen, farmInterior, festivalProcess, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, guideOpen, journalOpen, lanternRiddle, mallOpen, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1708,6 +1857,9 @@ export default function FarmGame() {
         if (["arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) splitRightRef.current?.contentWindow?.postMessage({ type: "split-move", key }, window.location.origin);
         return;
       }
+      if (key === "escape" && guideOpen) { setGuideOpen(false); return; }
+      if (key === "escape" && journalOpen) { setJournalOpen(false); return; }
+      if (key === "escape" && cookingGame) { setCookingGame(null); setMessage("暂时收起了烹饪台，食材还留在背包。 "); return; }
       if (key === "escape" && bulkChestPrompt) {
         setBulkChestPrompt(null);
         setChestDepositStreak(null);
@@ -1846,7 +1998,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, bulkShippingPrompt, chestOpen, shippingBinOpen, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, move, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, ranchOpen, residentHome, splitScreen, townhallCalendarOpen]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, bulkShippingPrompt, chestOpen, shippingBinOpen, cookingGame, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, guideOpen, journalOpen, move, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, ranchOpen, residentHome, splitScreen, townhallCalendarOpen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -1880,6 +2032,16 @@ export default function FarmGame() {
       // Sound is an optional enhancement.
     }
   };
+
+  useEffect(() => {
+    if (!ready || !soundOn) return;
+    const sceneNotes: Record<Scene, number[]> = {
+      farm: [392, 523, 659], westFriendFarm: [440, 587, 698], mysteryRoad: [330, 440, 554], town: [523, 659, 784], cultureDistrict: [494, 622, 740], residentialDistrict: [349, 440, 523], eastNeighbor: [415, 523, 622], southNeighbor: [294, 392, 494], northNeighbor: [370, 494, 587],
+    };
+    const notes = game.weather === "thunder" ? [196, 147, 220] : game.weather === "rain" ? [330, 392, 330] : sceneNotes[scene];
+    const timers = notes.map((note, index) => window.setTimeout(() => playTone(note), 90 + index * 150));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [game.weather, ready, scene, soundOn]);
 
   const tasteFestivalJam = () => {
     setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 25) }));
@@ -2531,6 +2693,12 @@ export default function FarmGame() {
   const renderIndoorRoofRain = () => (game.weather === "rain" || game.weather === "thunder") ? <div className="indoor-roof-rain" aria-hidden="true">{Array.from({ length: 14 }, (_, index) => <i key={`roof-rain-${index}`} />)}</div> : null;
   const renderWearables = () => <>{game.equippedOutfit !== "default" && <span className={`worn-outfit worn-${game.equippedOutfit}`} aria-label={game.equippedOutfit === "redCoat" ? "穿着红色节日外套" : "穿着蓝色旅行套装"} />}{game.umbrellaOpen && <span className="player-umbrella" aria-label="撑着彩色雨伞"><i /></span>}</>;
 
+  const withFriendship = (state: GameState, person: string, points: number, journal?: string): GameState => ({
+    ...state,
+    friendship: { ...state.friendship, [person]: Math.min(100, (state.friendship[person] ?? 0) + points) },
+    journalEntries: journal ? [journal, ...state.journalEntries.filter((entry) => entry !== journal)].slice(0, 40) : state.journalEntries,
+  });
+
   const giveHeldItem = (person: string) => {
     if (!heldItem) return false;
     if (heldItem.kind === "herb" && NPC_SICK_DAYS[person]?.includes(game.day) && game.npcHealedDays[person] !== game.day) {
@@ -2541,9 +2709,10 @@ export default function FarmGame() {
           herbs: Math.max(0, current.herbs - 1),
           npcHealedDays: { ...current.npcHealedDays, [person]: current.day },
         };
-        if (healingGift.kind === "seed" || healingGift.kind === "material") return { ...healed, [healingGift.field]: healed[healingGift.field] + healingGift.amount };
-        if (healingGift.kind === "energy") return { ...healed, energy: Math.min(100, healed.energy + healingGift.amount) };
-        return { ...healed, coins: healed.coins + healingGift.amount };
+        const friendly = withFriendship(healed, person, 15, `${SEASONS[current.season]}第${current.day}天：小禾用药材帮助${person}恢复健康，好感大幅提升。`);
+        if (healingGift.kind === "seed" || healingGift.kind === "material") return { ...friendly, [healingGift.field]: friendly[healingGift.field] + healingGift.amount };
+        if (healingGift.kind === "energy") return { ...friendly, energy: Math.min(100, friendly.energy + healingGift.amount) };
+        return { ...friendly, coins: friendly.coins + healingGift.amount };
       });
       setHeldItem(null);
       setMessage(`${person}用了小禾送来的药材，很快恢复了健康，伤心的表情也变回了笑脸，还回送了${healingGift.name}！`);
@@ -2552,11 +2721,11 @@ export default function FarmGame() {
     }
     if (heldItem.kind === "material" && person === "鲁师傅") {
       const amount = game[heldItem.id];
-      setGame((current) => ({
+      setGame((current) => withFriendship({
         ...current,
         [heldItem.id]: 0,
         builderSupplies: { ...current.builderSupplies, [heldItem.id]: current.builderSupplies[heldItem.id] + amount },
-      }));
+      }, person, 8, `${SEASONS[current.season]}第${current.day}天：小禾把扩建材料交给了鲁师傅。`));
       setMessage(`鲁师傅收下了 ${amount} 块${carriedItemName}，放进了扩建材料堆。`);
       setHeldItem(null);
       setBuilderOpen(true);
@@ -2565,11 +2734,11 @@ export default function FarmGame() {
     }
     if (heldItem.kind === "book" && person === "叶老师") {
       const book = LOST_BOOKS[heldItem.id];
-      setGame((current) => ({
+      setGame((current) => withFriendship({
         ...current,
         bookBag: current.bookBag.filter((bookId) => bookId !== heldItem.id),
         libraryBooks: current.libraryBooks.includes(heldItem.id) ? current.libraryBooks : [...current.libraryBooks, heldItem.id],
-      }));
+      }, person, 12, `${SEASONS[current.season]}第${current.day}天：找回的《${book.title.replace(/[《》]/g, "")}》进入了山谷图书馆。`));
       setMessage(`叶老师收下了${book.title}：“谢谢你找回来！我已经把它编入山谷图书馆，现在随时都能打开阅读。”`);
       setHeldItem(null);
       playTone(820);
@@ -2577,11 +2746,11 @@ export default function FarmGame() {
     }
     if (heldItem.kind === "artifact" && person === "沈馆长") {
       const artifact = RARE_ARTIFACTS[heldItem.id];
-      setGame((current) => ({
+      setGame((current) => withFriendship({
         ...current,
         artifactBag: current.artifactBag.filter((artifactId) => artifactId !== heldItem.id),
         museumArtifacts: current.museumArtifacts.includes(heldItem.id) ? current.museumArtifacts : [...current.museumArtifacts, heldItem.id],
-      }));
+      }, person, 12, `${SEASONS[current.season]}第${current.day}天：${artifact.title}正式进入青禾博物馆收藏。`));
       setMessage(`沈馆长收下了“${artifact.title}”：“太珍贵了！我已经把它放进博物馆展柜，并写上了小禾的名字。”`);
       setHeldItem(null);
       playTone(940);
@@ -2595,7 +2764,10 @@ export default function FarmGame() {
     const returnGift = Math.random() < .45 ? PERSON_RETURN_GIFTS[person] : null;
     setGame((current) => {
       let next: GameState;
-      if (heldItem.kind === "resource") next = { ...current, inventory: { ...current.inventory, [heldItem.id]: Math.max(0, current.inventory[heldItem.id] - 1) } };
+      if (heldItem.kind === "resource") {
+        const qualityMove = isCropResource(heldItem.id) ? moveBestCropQuality(current.cropQualityStock, heldItem.id, 1) : null;
+        next = { ...current, inventory: { ...current.inventory, [heldItem.id]: Math.max(0, current.inventory[heldItem.id] - 1) }, cropQualityStock: qualityMove?.next ?? current.cropQualityStock };
+      }
       else if (heldItem.kind === "material") next = { ...current, [heldItem.id]: Math.max(0, current[heldItem.id] - 1) };
       else if (heldItem.kind === "forest") {
         const field = heldItem.id === "pinecone" ? "pinecones" : "pineNuts";
@@ -2615,10 +2787,11 @@ export default function FarmGame() {
         next = { ...current, [field]: Math.max(0, current[field] - 1) };
       }
       else next = { ...current, bookBag: current.bookBag.filter((bookId) => bookId !== heldItem.id) };
-      if (!returnGift) return next;
-      if (returnGift.kind === "seed" || returnGift.kind === "material") return { ...next, [returnGift.field]: next[returnGift.field] + returnGift.amount };
-      if (returnGift.kind === "energy") return { ...next, energy: Math.min(100, next.energy + returnGift.amount) };
-      return { ...next, coins: next.coins + returnGift.amount };
+      let gifted = next;
+      if (returnGift?.kind === "seed" || returnGift?.kind === "material") gifted = { ...next, [returnGift.field]: next[returnGift.field] + returnGift.amount };
+      else if (returnGift?.kind === "energy") gifted = { ...next, energy: Math.min(100, next.energy + returnGift.amount) };
+      else if (returnGift?.kind === "coins") gifted = { ...next, coins: next.coins + returnGift.amount };
+      return withFriendship(gifted, person, returnGift ? 10 : 8, `${SEASONS[current.season]}第${current.day}天：小禾送给${person}一份${carriedItemName}。`);
     });
     setMessage(returnGift ? `${person}收下了${carriedItemName}，又回送了${returnGift.name}！` : `${person}收下了小禾送的${carriedItemName}，开心地说：“谢谢你，我会好好珍惜！”`);
     setHeldItem(null);
@@ -2752,6 +2925,10 @@ export default function FarmGame() {
 
   const interactWithPerson = (person: string, fallback: string) => {
     if (giveHeldItem(person)) return;
+    const talkKey = `${game.year}-${game.season}-${game.day}`;
+    if (game.lastTalkedDays[person] !== talkKey) {
+      setGame((current) => withFriendship({ ...current, lastTalkedDays: { ...current.lastTalkedDays, [person]: talkKey } }, person, 2, `${SEASONS[current.season]}第${current.day}天：小禾和${person}聊了一会儿。`));
+    }
     if (NPC_SICK_DAYS[person]?.includes(game.day) && game.npcHealedDays[person] !== game.day) {
       setMessage(`${person}今天有些不舒服，露出了伤心的表情：“我休息一天，明天应该就会好起来。”`);
       playTone(300);
@@ -2783,6 +2960,104 @@ export default function FarmGame() {
     }
     setMessage(PERSON_DIALOGUES[person] ?? fallback);
     playTone(520);
+  };
+
+  const currentAbsoluteDay = () => (game.year - 1) * 112 + game.season * 28 + game.day;
+
+  const progressForestStoryWithAnan = () => {
+    const absoluteDay = currentAbsoluteDay();
+    if (game.forestQuestStage === 0) {
+      setGame((current) => withFriendship({
+        ...current,
+        forestQuestStage: 1,
+        forestQuestProgressDay: absoluteDay,
+        journalEntries: ["安安发现彩虹森林的老松树正在失去颜色，请小禾先带回两份新鲜药材。", ...current.journalEntries].slice(0, 40),
+      }, "安安", 4));
+      setMessage("安安：彩虹森林的老松树正在褪色。我们先找 2 份药材做树木药水吧！这是一个会持续好几天的故事任务。 ");
+      playTone(760);
+      return;
+    }
+    if (game.forestQuestStage === 1) {
+      if (game.herbs < 2) {
+        setMessage(`安安：药水需要 2 份药材，现在只有 ${game.herbs} 份。农场和小镇地面偶尔会长出艾草和金银花。`);
+        playTone(260);
+        return;
+      }
+      setGame((current) => ({
+        ...current,
+        herbs: current.herbs - 2,
+        forestQuestStage: 2,
+        forestQuestProgressDay: absoluteDay,
+        journalEntries: ["药材已经交给安安。等到明天，再去青禾山洞寻找让树木重新发光的蓝晶水。", ...current.journalEntries].slice(0, 40),
+      }));
+      setMessage("安安把药材煮成绿色药水：明天我们去青禾山洞，找一滴蓝晶水。今晚先让药水慢慢沉淀。 ");
+      playTone(820);
+      return;
+    }
+    if (game.forestQuestStage === 2) {
+      setMessage(absoluteDay <= game.forestQuestProgressDay ? "药水还在沉淀，睡到明天再带着火柴和镐子进山洞。" : "药水准备好了！去青禾农场的山洞深处，寻找发蓝光的晶石水滴。 ");
+      return;
+    }
+    if (game.forestQuestStage === 3) {
+      if (game.resin < 1 || game.pinecones < 1) {
+        setMessage(`安安：修补树皮还需要 1 滴树脂和 1 颗松果。现在有树脂 ${game.resin}、松果 ${game.pinecones}。砍树会掉落它们。`);
+        playTone(260);
+        return;
+      }
+      setGame((current) => ({
+        ...current,
+        resin: current.resin - 1,
+        pinecones: current.pinecones - 1,
+        forestQuestStage: 4,
+        forestQuestProgressDay: absoluteDay,
+        journalEntries: ["药材、蓝晶水、树脂和松果已经调成森林药膏。等到明天，和安安一起把它涂到老松树上。", ...current.journalEntries].slice(0, 40),
+      }));
+      setMessage("安安把蓝晶水、树脂和松果搅成森林药膏。等到明天药膏凝固，就能治疗老松树了。 ");
+      playTone(860);
+      return;
+    }
+    if (game.forestQuestStage === 4) {
+      if (absoluteDay <= game.forestQuestProgressDay) {
+        setMessage("森林药膏还软软的，睡到明天再来治疗老松树。 ");
+        return;
+      }
+      setGame((current) => withFriendship({
+        ...current,
+        forestQuestStage: 5,
+        forestQuestProgressDay: absoluteDay,
+        coins: current.coins + 300,
+        strawberrySeeds: current.strawberrySeeds + 5,
+        journalEntries: ["彩虹森林的老松树恢复了颜色，还长出一圈金色新芽。安安和小禾完成了第一次森林故事。", ...current.journalEntries].slice(0, 40),
+      }, "安安", 20));
+      setMessage("小禾和安安把药膏涂到树干上，老松树一层层恢复绿色，还长出金色新芽！获得 300 金币、5 颗草莓种子，安安好感大幅提升。 ");
+      playTone(980);
+      return;
+    }
+    setMessage("老松树已经恢复健康。安安：以后森林里出现新的故事，我们还要一起出发！ ");
+    playTone(720);
+  };
+
+  const inspectForestCaveClue = () => {
+    const absoluteDay = currentAbsoluteDay();
+    if (game.forestQuestStage !== 2) return;
+    if (absoluteDay <= game.forestQuestProgressDay) {
+      setMessage("安安做的药水还没有沉淀好，要睡到明天，蓝晶水才会显出光。 ");
+      playTone(260);
+      return;
+    }
+    if (!interiorFireLit) {
+      setMessage("山洞太暗了。先用火柴点亮火把，才能看见蓝晶水。 ");
+      playTone(220);
+      return;
+    }
+    setGame((current) => ({
+      ...current,
+      forestQuestStage: 3,
+      forestQuestProgressDay: absoluteDay,
+      journalEntries: ["在山洞石缝里找到了蓝晶水。下一步回安安的小农场，再准备一滴树脂和一颗松果。", ...current.journalEntries].slice(0, 40),
+    }));
+    setMessage("石缝里的蓝色水滴落进药瓶，蓝晶水找到了！回去找安安，还要准备 1 滴树脂和 1 颗松果。 ");
+    playTone(960);
   };
 
   const eatAnanCookie = () => {
@@ -2914,21 +3189,70 @@ export default function FarmGame() {
     setMessage(`从二楼收纳箱取出 1 个${ATTIC_RESOURCE_INFO[resource].name}。`);
   };
 
-  const cookUpstairsSeafood = (food: "crabs" | "shrimp") => {
-    const details = food === "crabs"
-      ? { name: "螃蟹", dish: "熟螃蟹", cookedField: "cookedCrabs" as const }
-      : { name: "小虾", dish: "熟小虾", cookedField: "cookedShrimp" as const };
+  const startCookingSeafood = (food: CookingFood) => {
+    const name = food === "crabs" ? "螃蟹" : "小虾";
     if (!game.upgrades.upstairsKitchen) {
       setMessage("二楼厨房还没有单独扩建完成。");
       return;
     }
     if (game[food] <= 0) {
-      setMessage(`背包里没有可以烹饪的${details.name}。`);
+      setMessage(`背包里没有可以烹饪的${name}。`);
       return;
     }
-    setGame((current) => ({ ...current, [food]: current[food] - 1, [details.cookedField]: current[details.cookedField] + 1 }));
-    setMessage(`把生${details.name}做好了，获得 1 份${details.dish}。没有立刻吃掉，已经放进下面的资源记录。`);
-    playTone(780);
+    setCookingGame({ food, step: "chop", chops: 0, heatScore: 0 });
+    setCookingHeat(0);
+    setMessage(`开始制作${food === "crabs" ? "香烤螃蟹" : "田园炒小虾"}：先在砧板上处理食材。`);
+    playTone(650);
+  };
+
+  const chopCookingIngredient = () => {
+    if (!cookingGame || cookingGame.step !== "chop") return;
+    const chops = cookingGame.chops + 1;
+    if (chops >= 4) {
+      setCookingGame({ ...cookingGame, chops, step: "heat" });
+      setCookingHeat(0);
+      setMessage("食材已经处理好。现在观察火候游标，走进绿色区域时点击翻面！ ");
+      playTone(720);
+      return;
+    }
+    setCookingGame({ ...cookingGame, chops });
+    setMessage(`沿着纹理切好了第 ${chops} 处，还需要 ${4 - chops} 刀。`);
+    playTone(480 + chops * 50);
+  };
+
+  const stopCookingHeat = () => {
+    if (!cookingGame || cookingGame.step !== "heat") return;
+    const heatScore = cookingHeat >= 42 && cookingHeat <= 68 ? 2 : cookingHeat >= 28 && cookingHeat <= 82 ? 1 : 0;
+    setCookingGame({ ...cookingGame, step: "plate", heatScore });
+    setMessage(heatScore === 2 ? "翻面时机刚刚好，香味一下飘出来了！最后把料理装到合适的盘子里。 " : heatScore === 1 ? "火候还可以，料理已经熟了。最后选择盘子装盘。 " : "翻面太早或太晚，边缘有一点焦，不过还能通过认真装盘补救。 ");
+    playTone(heatScore === 2 ? 880 : heatScore === 1 ? 680 : 320);
+  };
+
+  const finishCooking = (plate: "wood" | "white" | "deep") => {
+    if (!cookingGame || cookingGame.step !== "plate") return;
+    const { food, heatScore } = cookingGame;
+    if (game[food] <= 0) {
+      setCookingGame(null);
+      setMessage("食材已经不在背包里了，这次烹饪只能先停下。 ");
+      return;
+    }
+    const idealPlate = food === "crabs" ? "deep" : "white";
+    const platingPoint = plate === idealPlate ? 1 : 0;
+    const total = heatScore + platingPoint;
+    const dish = food === "crabs" ? "熟螃蟹" : "熟小虾";
+    const recipe = food === "crabs" ? "香草烤螃蟹" : "清香炒小虾";
+    const cookedField = food === "crabs" ? "cookedCrabs" : "cookedShrimp";
+    const quality = total >= 3 ? "完美料理" : total >= 2 ? "美味料理" : "家常料理";
+    setGame((current) => ({
+      ...current,
+      [food]: current[food] - 1,
+      [cookedField]: current[cookedField] + 1,
+      recipesDiscovered: current.recipesDiscovered.includes(recipe) ? current.recipesDiscovered : [...current.recipesDiscovered, recipe],
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：在二楼厨房做出了${quality}“${recipe}”。`, ...current.journalEntries].slice(0, 40),
+    }));
+    setCookingGame(null);
+    setMessage(`${quality}完成！获得 1 份${dish}，没有立刻吃掉，已经放进资源记录。`);
+    playTone(total >= 3 ? 980 : total >= 2 ? 820 : 620);
   };
 
   const eatCookedSeafood = (food: "cookedCrabs" | "cookedShrimp", atTable = false) => {
@@ -2991,7 +3315,7 @@ export default function FarmGame() {
     const crop = CROP_TYPES.find((item) => game.inventory[item] > 0);
     if (crop) {
       const recovery = RESOURCE_INFO[crop].energy + 10;
-      setGame((current) => ({ ...current, inventory: { ...current.inventory, [crop]: current.inventory[crop] - 1 }, energy: Math.min(100, current.energy + recovery) }));
+      setGame((current) => ({ ...current, inventory: { ...current.inventory, [crop]: current.inventory[crop] - 1 }, cropQualityStock: moveBestCropQuality(current.cropQualityStock, crop, 1).next, energy: Math.min(100, current.energy + recovery) }));
       setMessage(`坐在餐桌前好好吃了一个${CROP_INFO[crop].name}，恢复 ${recovery} 点体力。`);
       playTone(710);
       return;
@@ -3248,6 +3572,7 @@ export default function FarmGame() {
       ...current,
       energy: Math.min(100, current.energy + details.energy),
       inventory: { ...current.inventory, [resource]: current.inventory[resource] - 1 },
+      cropQualityStock: isCropResource(resource) ? moveBestCropQuality(current.cropQualityStock, resource, 1).next : current.cropQualityStock,
     }));
     setSelectedResource(null);
     setMessage(`吃掉 1 个${details.name}，恢复 ${details.energy} 点体力！`);
@@ -3334,11 +3659,16 @@ export default function FarmGame() {
         setMessage(`背包里没有更多${name}了。`);
         return;
       }
-      setGame((current) => ({
-        ...current,
-        inventory: { ...current.inventory, [selectedResource]: current.inventory[selectedResource] - 1 },
-        chestStorage: { ...current.chestStorage, [selectedResource]: current.chestStorage[selectedResource] + 1 },
-      }));
+      setGame((current) => {
+        const qualityMove = isCropResource(selectedResource) ? moveBestCropQuality(current.cropQualityStock, selectedResource, 1) : null;
+        return {
+          ...current,
+          inventory: { ...current.inventory, [selectedResource]: current.inventory[selectedResource] - 1 },
+          chestStorage: { ...current.chestStorage, [selectedResource]: current.chestStorage[selectedResource] + 1 },
+          cropQualityStock: qualityMove?.next ?? current.cropQualityStock,
+          chestCropQualityStock: qualityMove ? addCropQuality(current.chestCropQualityStock, selectedResource, qualityMove.moved) : current.chestCropQualityStock,
+        };
+      });
       const nextStreakCount = chestDepositStreak?.resource === selectedResource ? chestDepositStreak.count + 1 : 1;
       setChestDepositStreak({ resource: selectedResource, count: nextStreakCount });
       if (nextStreakCount >= 5 && count > 1) setBulkChestPrompt(selectedResource);
@@ -3367,11 +3697,16 @@ export default function FarmGame() {
       setMessage(`背包里的${name}已经全部放好了。`);
       return;
     }
-    setGame((current) => ({
-      ...current,
-      inventory: { ...current.inventory, [resource]: 0 },
-      chestStorage: { ...current.chestStorage, [resource]: current.chestStorage[resource] + current.inventory[resource] },
-    }));
+    setGame((current) => {
+      const qualityMove = isCropResource(resource) ? moveBestCropQuality(current.cropQualityStock, resource, current.inventory[resource]) : null;
+      return {
+        ...current,
+        inventory: { ...current.inventory, [resource]: 0 },
+        chestStorage: { ...current.chestStorage, [resource]: current.chestStorage[resource] + current.inventory[resource] },
+        cropQualityStock: qualityMove?.next ?? current.cropQualityStock,
+        chestCropQualityStock: qualityMove ? addCropQuality(current.chestCropQualityStock, resource, qualityMove.moved) : current.chestCropQualityStock,
+      };
+    });
     setBulkChestPrompt(null);
     setChestDepositStreak(null);
     setSelectedResource(null);
@@ -3386,11 +3721,16 @@ export default function FarmGame() {
       playTone(220);
       return;
     }
-    setGame((current) => ({
-      ...current,
-      inventory: { ...current.inventory, [resource]: current.inventory[resource] + 1 },
-      chestStorage: { ...current.chestStorage, [resource]: current.chestStorage[resource] - 1 },
-    }));
+    setGame((current) => {
+      const qualityMove = isCropResource(resource) ? moveBestCropQuality(current.chestCropQualityStock, resource, 1) : null;
+      return {
+        ...current,
+        inventory: { ...current.inventory, [resource]: current.inventory[resource] + 1 },
+        chestStorage: { ...current.chestStorage, [resource]: current.chestStorage[resource] - 1 },
+        chestCropQualityStock: qualityMove?.next ?? current.chestCropQualityStock,
+        cropQualityStock: qualityMove ? addCropQuality(current.cropQualityStock, resource, qualityMove.moved) : current.cropQualityStock,
+      };
+    });
     setMessage(`从木箱取出 1 个${name}。`);
     playTone(620);
   };
@@ -3407,7 +3747,8 @@ export default function FarmGame() {
       let next = current;
       if (item.group === "resource") {
         const resource = item.key as StorableResource;
-        next = { ...current, inventory: { ...current.inventory, [resource]: current.inventory[resource] - 1 } };
+        const qualityMove = isCropResource(resource) ? moveBestCropQuality(current.cropQualityStock, resource, 1) : null;
+        next = { ...current, inventory: { ...current.inventory, [resource]: current.inventory[resource] - 1 }, cropQualityStock: qualityMove?.next ?? current.cropQualityStock, shippingCropQualityStock: qualityMove ? addCropQuality(current.shippingCropQualityStock, resource, qualityMove.moved) : current.shippingCropQualityStock };
       } else if (item.group === "seed") {
         const field = CROP_INFO[item.key as CropType].seedField;
         next = { ...current, [field]: Math.max(0, current[field] - 1) };
@@ -3449,7 +3790,8 @@ export default function FarmGame() {
       let next = current;
       if (item.group === "resource") {
         const resource = item.key as StorableResource;
-        next = { ...current, inventory: { ...current.inventory, [resource]: 0 } };
+        const qualityMove = isCropResource(resource) ? moveBestCropQuality(current.cropQualityStock, resource, currentAmount) : null;
+        next = { ...current, inventory: { ...current.inventory, [resource]: 0 }, cropQualityStock: qualityMove?.next ?? current.cropQualityStock, shippingCropQualityStock: qualityMove ? addCropQuality(current.shippingCropQualityStock, resource, qualityMove.moved) : current.shippingCropQualityStock };
       } else if (item.group === "seed") {
         const field = CROP_INFO[item.key as CropType].seedField;
         next = { ...current, [field]: 0 };
@@ -3476,7 +3818,8 @@ export default function FarmGame() {
       let next = current;
       if (item.group === "resource") {
         const resource = item.key as StorableResource;
-        next = { ...current, inventory: { ...current.inventory, [resource]: current.inventory[resource] + 1 } };
+        const qualityMove = isCropResource(resource) ? moveBestCropQuality(current.shippingCropQualityStock, resource, 1) : null;
+        next = { ...current, inventory: { ...current.inventory, [resource]: current.inventory[resource] + 1 }, shippingCropQualityStock: qualityMove?.next ?? current.shippingCropQualityStock, cropQualityStock: qualityMove ? addCropQuality(current.cropQualityStock, resource, qualityMove.moved) : current.cropQualityStock };
       } else if (item.group === "seed") {
         const field = CROP_INFO[item.key as CropType].seedField;
         next = { ...current, [field]: current[field] + 1 };
@@ -3497,7 +3840,8 @@ export default function FarmGame() {
     const resources = Object.keys(RESOURCE_INFO) as StorableResource[];
     const itemCount = resources.reduce((sum, resource) => sum + game.inventory[resource], 0);
     const baseEarnings = resources.reduce((sum, resource) => sum + game.inventory[resource] * RESOURCE_INFO[resource].price, 0);
-    const earnings = Math.round(baseEarnings * (game.upgrades.storage ? 1.1 : 1));
+    const qualityBonus = cropQualityBonus(game.cropQualityStock);
+    const earnings = Math.round((baseEarnings + qualityBonus) * (game.upgrades.storage ? 1.1 : 1));
     if (itemCount <= 0) {
       setMessage("背包里没有可以售卖的鱼或作物，木头会一直保留。 ");
       playTone(220);
@@ -3507,11 +3851,12 @@ export default function FarmGame() {
       ...current,
       coins: current.coins + earnings,
       inventory: Object.fromEntries((Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => [resource, 0])) as Record<StorableResource, number>,
+      cropQualityStock: makeCropQualityStock(),
       daily: { ...current.daily, sold: current.daily.sold + itemCount },
     }));
     setSelectedResource(null);
     if (heldItem?.kind === "resource") setHeldItem(null);
-    setMessage(`自动售卖 ${itemCount} 件鱼和作物，赚到 ${earnings} 金币！${game.upgrades.storage ? "扩建仓库额外加价 10%。" : ""}木头没有清空。`);
+    setMessage(`自动售卖 ${itemCount} 件鱼和作物，赚到 ${earnings} 金币！${qualityBonus ? `其中星级品质额外增加 ${qualityBonus} 金币。` : ""}${game.upgrades.storage ? "扩建仓库额外加价 10%。" : ""}木头没有清空。`);
     playTone(820);
   };
 
@@ -3536,6 +3881,7 @@ export default function FarmGame() {
           target.state = "soil";
           target.stage = 0;
           target.watered = false;
+          target.care = 0;
           target.cropType = undefined;
           next[cropDetails.seedField] += 1;
           next.energy = Math.max(0, current.energy - staminaCost(current, 2));
@@ -3563,6 +3909,7 @@ export default function FarmGame() {
         target.state = "crop";
         target.stage = 0;
         target.watered = false;
+        target.care = 0;
         target.cropType = selectedCrop;
         next[cropDetails.seedField] -= 1;
         next.energy = Math.max(0, current.energy - staminaCost(current, 2));
@@ -3584,6 +3931,7 @@ export default function FarmGame() {
           return current;
         }
         target.watered = true;
+        target.care = (tile.care ?? 0) + 1;
         next.water -= 1;
         next.energy = Math.max(0, current.energy - staminaCost(current, 1));
         next.wateredCount += 1;
@@ -3600,13 +3948,18 @@ export default function FarmGame() {
         target.watered = false;
         const cropType = tile.cropType ?? "radish";
         const cropDetails = CROP_INFO[cropType];
+        const quality: CropQuality = (tile.care ?? 0) >= 3 ? "gold" : (tile.care ?? 0) >= 2 ? "silver" : "normal";
         target.cropType = undefined;
+        target.care = 0;
         next[cropDetails.seedField] += 2;
         next.energy = Math.max(0, current.energy - staminaCost(current, 1));
         next.harvested += 1;
         next.daily = { ...current.daily, harvested: current.daily.harvested + 1 };
         next.inventory = { ...current.inventory, [cropType]: current.inventory[cropType] + 1 };
-        feedback = `收获 1 个${cropDetails.name}！已经放进背包，并获得 2 颗同类种子。`;
+        next.cropQualityHarvests = mergeCropQualityRecord(current.cropQualityHarvests);
+        next.cropQualityHarvests[cropType] = { ...next.cropQualityHarvests[cropType], [quality]: next.cropQualityHarvests[cropType][quality] + 1 };
+        if (quality !== "normal") next.cropQualityStock = addCropQuality(current.cropQualityStock, cropType, { silver: quality === "silver" ? 1 : 0, gold: quality === "gold" ? 1 : 0 });
+        feedback = `收获 1 个${quality === "gold" ? "金星" : quality === "silver" ? "银星" : "普通"}${cropDetails.name}！${quality === "gold" ? "连续精心浇水，售价提高 80%。" : quality === "silver" ? "照料得很好，售价提高 35%。" : "继续每天浇水，就更容易得到星级品质。"}并获得 2 颗同类种子。`;
         tone = 760;
       } else {
         feedback = selected === "rod" ? "鱼竿要在左侧的钓鱼池使用。" : "斧头要对着农场里的树木使用。";
@@ -4008,7 +4361,8 @@ export default function FarmGame() {
     cancelFishing();
     const shippedItemCount = SHIPPING_CATALOG.reduce((sum, item) => sum + (game.shippingBin[item.id] ?? 0), 0);
     const shippedBaseEarnings = SHIPPING_CATALOG.reduce((sum, item) => sum + (game.shippingBin[item.id] ?? 0) * item.price, 0);
-    const shippedEarnings = Math.round(shippedBaseEarnings * (game.upgrades.storage ? 1.1 : 1));
+    const shippedQualityBonus = cropQualityBonus(game.shippingCropQualityStock);
+    const shippedEarnings = Math.round((shippedBaseEarnings + shippedQualityBonus) * (game.upgrades.storage ? 1.1 : 1));
     const nextDayNumber = game.day === 28 ? 1 : game.day + 1;
     const nextSeason = game.day === 28 ? (game.season + 1) % SEASONS.length : game.season;
     const nextYear = game.day === 28 && game.season === SEASONS.length - 1 ? game.year + 1 : game.year;
@@ -4097,7 +4451,7 @@ export default function FarmGame() {
         ? "早上七点了，小禾的表情仍然有些伤心。"
         : `早上七点了！${game.day === 28 ? `新的${SEASONS[nextSeason]}开始了。` : ""}浇过水的作物和松果树苗都长大了一点。`;
     const birthdayMessage = nextSeason === 0 && nextDayNumber === 19 ? ` 今天是第 ${nextYear} 年春天第十九天，也是小禾的二月十九日生日！大家已经带着蛋糕来到农舍，回家就能开生日派对。` : "";
-    const shippingMessage = shippedItemCount > 0 ? ` 昨晚大号售卖箱卖出了 ${shippedItemCount} 件东西，赚到 ${shippedEarnings} 金币！` : "";
+    const shippingMessage = shippedItemCount > 0 ? ` 昨晚大号售卖箱卖出了 ${shippedItemCount} 件东西，赚到 ${shippedEarnings} 金币！${shippedQualityBonus ? `星级作物多赚了 ${shippedQualityBonus} 金币。` : ""}` : "";
     const weatherMessage = nextWeather === "sunny" ? " 今天阳光很好。" : nextWeather === "cloudy" ? " 今天是阴天，云层把太阳遮住了。" : nextWeather === "rain" ? " 今天下雨，农田和树苗会自动浇水。" : " 今天有雷雨，天空偶尔会打雷闪电，出门记得撑伞。";
     const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${weatherMessage}${newsMessage}${missedUrgentMessage}${shippingMessage}${visitorMessage}${lightningMessage}${petBirthMessage}${petCareMessage}${petHealthMessage}${rarePetMessage}${birthdayMessage}`;
     setShippingReport(shippedItemCount > 0 ? { itemCount: shippedItemCount, earnings: shippedEarnings } : null);
@@ -4156,9 +4510,11 @@ export default function FarmGame() {
         urgentEvent: nextUrgentEvent,
         urgentEventDay: nextUrgentEvent ? nextAbsoluteDay : 0,
         urgentEventResolved: false,
+        journalEntries: [`第${nextYear}年${SEASONS[nextSeason]}第${nextDayNumber}天：${nextWeather === "sunny" ? "晴朗" : nextWeather === "cloudy" ? "阴天" : nextWeather === "rain" ? "下雨" : "雷雨"}，小禾早上七点醒来。${shippedItemCount ? `售卖箱收入 ${shippedEarnings} 金币。` : ""}`, ...current.journalEntries].slice(0, 40),
         seasonExcursionCompleted: game.day === 28 ? false : current.seasonExcursionCompleted,
         hour: 7,
         shippingBin: {},
+        shippingCropQualityStock: makeCropQualityStock(),
         daily: { ...makeNewGame().daily, day: nextDayNumber },
         energy: remainsSick ? 65 : 100,
         sick: remainsSick,
@@ -4196,9 +4552,9 @@ export default function FarmGame() {
         groundArtifacts,
         groundSupplies,
         tiles: current.tiles.map((tile, index) => index === eatenCropIndex || index === lightningCropIndex
-          ? { state: "soil", stage: 0, watered: false }
+          ? { state: "soil", stage: 0, watered: false, care: 0 }
           : tile.state === "crop"
-            ? { ...tile, stage: Math.min(3, tile.stage + (tile.watered ? (current.upgrades.greenhouse ? 2 : 1) : greenhouseAutoDay ? 1 : 0)), watered: rainyMorning }
+            ? { ...tile, stage: Math.min(3, tile.stage + (tile.watered ? (current.upgrades.greenhouse ? 2 : 1) : greenhouseAutoDay ? 1 : 0)), watered: rainyMorning, care: (tile.care ?? 0) + (rainyMorning ? 1 : 0) }
             : tile),
       };
     });
@@ -4548,6 +4904,9 @@ export default function FarmGame() {
   const kidsStory = dailyKidsStory(tvEpisodeDay);
   const nationalStory = NATIONAL_STORIES[tvEpisodeDay % NATIONAL_STORIES.length];
   const farmStory = FARM_STORIES[game.weather === "rain" || game.weather === "thunder" ? 0 : 1];
+  const currentGuideTopic = GUIDE_TOPICS.find((topic) => topic.id === guideTopic) ?? GUIDE_TOPICS[0];
+  const relationshipPeople = Object.keys(PERSON_DIALOGUES).filter((name) => !name.includes("助手") || name === "诊所助手");
+  const qualityTotals = CROP_TYPES.reduce((totals, crop) => ({ normal: totals.normal + game.cropQualityHarvests[crop].normal, silver: totals.silver + game.cropQualityHarvests[crop].silver, gold: totals.gold + game.cropQualityHarvests[crop].gold }), { normal: 0, silver: 0, gold: 0 });
   const displaySeason = festivalPreview?.season ?? game.season;
   const displayDay = festivalPreview?.day ?? game.day;
   const festivalProcessAtVenue = Boolean(currentFestival && FESTIVAL_PROCESS_STEPS[currentFestival.id] && (
@@ -5544,7 +5903,7 @@ export default function FarmGame() {
           <button className="brand-mark" onClick={() => setBrandMenuOpen((open) => !open)} aria-label="打开青禾谷菜单" aria-expanded={brandMenuOpen}><i /><i /><i /></button>
           <div><strong>青禾谷</strong><span>GREENFIELD VALLEY</span></div>
           <div key={game.coins} className="coins top-coins coin-value-updated" aria-label={`现有 ${game.coins} 金币`}><span>●</span><b>{game.coins.toLocaleString()}</b></div>
-          {brandMenuOpen && <div className="brand-menu"><span>青禾谷村庄菜单</span><strong>想做什么？</strong><button onClick={() => { setMapOpen(true); setBrandMenuOpen(false); }}><i className="mini-map-icon" /><b>打开小地图</b><small>查看场景和建筑</small></button><button className="brand-craft-entry" onClick={() => { setCraftingOpen(true); setBrandMenuOpen(false); setMessage("打开制作手册，选择想做的东西。"); }}><i className="mini-craft-icon">⚒</i><b>打开制作</b><small>使用木头和石材做东西</small></button></div>}
+          {brandMenuOpen && <div className="brand-menu"><span>青禾谷村庄菜单</span><strong>想做什么？</strong><button className="brand-guide-entry" onClick={() => { setGuideOpen(true); setBrandMenuOpen(false); }}><i className="mini-guide-icon">?</i><b>游戏说明</b><small>第一次玩也能看懂 · 带动画演示</small></button><button onClick={() => { setMapOpen(true); setBrandMenuOpen(false); }}><i className="mini-map-icon" /><b>打开小地图</b><small>查看场景和建筑</small></button><button className="brand-craft-entry" onClick={() => { setCraftingOpen(true); setBrandMenuOpen(false); setMessage("打开制作手册，选择想做的东西。"); }}><i className="mini-craft-icon">⚒</i><b>打开制作</b><small>使用木头和石材做东西</small></button><button className="brand-journal-entry" onClick={() => { setJournalOpen(true); setBrandMenuOpen(false); }}><i className="mini-journal-icon">记</i><b>山谷日记</b><small>好感、任务、收藏与食谱</small></button></div>}
         </div>
         <div className={`day-card ${festivalPreview ? "festival-preview-day" : ""}`}>
           <span className={`season-dot season-dot-${displaySeason}`}>{SEASON_SHORT[displaySeason]}</span>
@@ -5561,6 +5920,58 @@ export default function FarmGame() {
       </header>
 
       {shippingReport && <div className="shipping-report-toast" role="dialog" aria-modal="true" aria-label="昨晚售卖收入"><span>大号售卖箱通知</span><strong>昨晚卖出 {shippingReport.itemCount} 件东西</strong><b>+ {shippingReport.earnings.toLocaleString()} 金币</b><button onClick={() => setShippingReport(null)}>知道了</button></div>}
+
+      {guideOpen && <div className="game-guide-overlay" role="presentation">
+        <section className="game-guide-panel" role="dialog" aria-modal="true" aria-labelledby="game-guide-title">
+          <header><div><span>青禾谷新手手册 · 动画教学</span><h2 id="game-guide-title">游戏说明</h2><small>从第一次走路到多人游戏，没玩过也能一步一步学会</small></div><button onClick={() => setGuideOpen(false)} aria-label="关闭游戏说明">×</button></header>
+          <div className="game-guide-layout">
+            <nav aria-label="游戏说明分类">{GUIDE_TOPICS.map((topic) => <button key={topic.id} className={guideTopic === topic.id ? "active" : ""} onClick={() => { setGuideTopic(topic.id); setGuideReplay((value) => value + 1); }}><i>{topic.icon}</i><span>{topic.title}</span></button>)}</nav>
+            <article className="guide-topic-card">
+              <div key={`${guideTopic}-${guideReplay}`} className={`guide-demo guide-demo-${guideTopic}`} aria-label={`${currentGuideTopic.title}动画演示`}>
+                <div className="guide-demo-sky"><i /><i /></div><div className="guide-demo-ground" />
+                <div className="guide-demo-house"><i /><b /></div><div className="guide-demo-field"><i /><i /><i /><i /></div>
+                <div className="guide-demo-water"><i /></div><div className="guide-demo-tree"><i /><b /></div>
+                <div className="guide-demo-player"><PlayerSprite facing="right" sick={false} /><span>小禾</span></div>
+                <div className="guide-demo-npc"><i /><b /><span>居民</span></div><div className="guide-demo-pet"><i /><b /></div>
+                <div className="guide-demo-tool"><i /></div><div className="guide-demo-bus"><i /><b /></div>
+                <div className="guide-demo-caption"><b>{currentGuideTopic.icon}</b><span>{currentGuideTopic.summary}</span></div>
+              </div>
+              <div className="guide-topic-heading"><div><small>当前说明</small><h3>{currentGuideTopic.title}</h3></div><button onClick={() => setGuideReplay((value) => value + 1)}>↻ 重新播放演示</button></div>
+              <p>{currentGuideTopic.summary}</p>
+              <ol>{currentGuideTopic.steps.map((step, index) => <li key={step}><b>{index + 1}</b><span>{step}</span></li>)}</ol>
+              <aside><strong>小提示</strong><span>{currentGuideTopic.tip}</span></aside>
+            </article>
+          </div>
+          <footer><span>说明里的小禾、工具和场景会自动演示操作</span><button onClick={() => setGuideOpen(false)}>看懂了，回到游戏</button></footer>
+        </section>
+      </div>}
+
+      {journalOpen && <div className="valley-journal-overlay" role="presentation">
+        <section className="valley-journal-panel" role="dialog" aria-modal="true" aria-labelledby="valley-journal-title">
+          <header><div><span>小禾的生活记录</span><h2 id="valley-journal-title">山谷日记与收藏册</h2></div><button onClick={() => setJournalOpen(false)} aria-label="关闭山谷日记">×</button></header>
+          <nav><button className={journalTab === "today" ? "active" : ""} onClick={() => setJournalTab("today")}>日记与任务</button><button className={journalTab === "friends" ? "active" : ""} onClick={() => setJournalTab("friends")}>居民好感</button><button className={journalTab === "collection" ? "active" : ""} onClick={() => setJournalTab("collection")}>收藏图鉴</button><button className={journalTab === "recipes" ? "active" : ""} onClick={() => setJournalTab("recipes")}>料理食谱</button></nav>
+          <div className="journal-pages">
+            {journalTab === "today" && <><article className="forest-story-journal"><span>连续故事任务</span><h3>安安与褪色的老松树</h3><div className="forest-story-progress">{[0, 1, 2, 3, 4, 5].map((stage) => <i key={stage} className={game.forestQuestStage >= stage ? "done" : ""}>{stage === 5 ? "★" : stage + 1}</i>)}</div><p>{game.forestQuestStage === 0 ? "去安安的小农场，和她一起开始第一段森林故事。" : game.forestQuestStage === 1 ? "寻找 2 份药材，再交给安安。" : game.forestQuestStage === 2 ? "睡到第二天，带火柴进入青禾山洞寻找蓝晶水。" : game.forestQuestStage === 3 ? "带着 1 滴树脂和 1 颗松果回去找安安。" : game.forestQuestStage === 4 ? "睡到第二天，再去安安的小农场治疗老松树。" : "老松树已经恢复颜色，这段故事完成了！"}</p></article><div className="journal-entry-list">{game.journalEntries.length ? game.journalEntries.map((entry, index) => <p key={`${entry}-${index}`}><i>{index === 0 ? "今" : "记"}</i><span>{entry}</span></p>) : <p>今天还没有写下新的事情。</p>}</div></>}
+            {journalTab === "friends" && <div className="friendship-grid">{relationshipPeople.map((name) => { const points = game.friendship[name] ?? 0; const hearts = Math.min(5, Math.floor(points / 20)); const activity = residentActivity(name, game.hour, game.day, game.weather); return <article key={name} style={personClothesStyle(name)}><div className="friend-portrait"><i /><b /></div><div><strong>{name}</strong><span className="heart-row">{"♥".repeat(hearts)}<em>{"♡".repeat(5 - hearts)}</em></span><small>{points}/100 · {activity.label}</small></div></article>; })}</div>}
+            {journalTab === "collection" && <div className="collection-grid"><article><b>★</b><strong>作物品质</strong><span>普通 {qualityTotals.normal}</span><span>银星 {qualityTotals.silver}</span><span>金星 {qualityTotals.gold}</span></article><article><b>书</b><strong>山谷图书</strong><span>{game.libraryBooks.length}/{LOST_BOOKS.length} 本归还</span></article><article><b>◆</b><strong>博物馆藏品</strong><span>{game.museumArtifacts.length}/{RARE_ARTIFACTS.length} 件捐赠</span></article><article><b>视</b><strong>动画收藏</strong><span>看过 {game.watchedTvEpisodes.length} 集不同动画</span></article><article><b>鱼</b><strong>钓鱼记录</strong><span>累计钓到 {game.fishCaught} 条鱼</span></article><article><b>梦</b><strong>梦境记录</strong><span>{game.lastDreamAbsoluteDay > 0 ? "已经遇见过神秘梦境" : "还没有做过特别的梦"}</span></article></div>}
+            {journalTab === "recipes" && <div className="recipe-journal"><article className={game.recipesDiscovered.includes("香草烤螃蟹") ? "discovered" : "locked"}><i className="cooked-crab-icon" /><div><strong>香草烤螃蟹</strong><p>切开蟹壳、控制火候，最后放进深盘。熟食在餐桌吃恢复更多体力。</p></div><span>{game.recipesDiscovered.includes("香草烤螃蟹") ? "已学会" : "去二楼厨房发现"}</span></article><article className={game.recipesDiscovered.includes("清香炒小虾") ? "discovered" : "locked"}><i className="cooked-shrimp-icon" /><div><strong>清香炒小虾</strong><p>处理小虾、及时翻面，再装进白瓷盘，保持清亮颜色。</p></div><span>{game.recipesDiscovered.includes("清香炒小虾") ? "已学会" : "去二楼厨房发现"}</span></article></div>}
+          </div>
+          <footer><span>聊天、送礼、看电视、做饭与重要事件都会自动写进日记</span><button onClick={() => setJournalOpen(false)}>合上日记</button></footer>
+        </section>
+      </div>}
+
+      {cookingGame && <div className="cooking-game-overlay" role="presentation">
+        <section className={`cooking-game-panel cooking-step-${cookingGame.step}`} role="dialog" aria-modal="true" aria-labelledby="cooking-game-title">
+          <header><div><span>二楼厨房 · 亲手料理</span><h2 id="cooking-game-title">{cookingGame.food === "crabs" ? "香草烤螃蟹" : "清香炒小虾"}</h2></div><button onClick={() => { setCookingGame(null); setMessage("暂时离开烹饪台，食材没有消耗。 "); }}>×</button></header>
+          <div className="cooking-worktop">
+            <div className="cooking-window"><i /><i /></div><div className="cooking-counter" />
+            {cookingGame.step === "chop" && <button className={`cooking-board food-${cookingGame.food}`} onClick={chopCookingIngredient} aria-label="点击菜刀处理食材"><i className="cooking-food" /><b className="cooking-knife" /><span>点击菜刀，沿纹理处理食材</span><em>{cookingGame.chops}/4 刀</em></button>}
+            {cookingGame.step === "heat" && <div className="cooking-pan-stage"><div className={`cooking-pan food-${cookingGame.food}`}><i /><b /></div><div className="cooking-heat-meter"><span>小火</span><div><i className="safe-heat-zone" /><b style={{ left: `${cookingHeat}%` }} /></div><span>焦糊</span></div><button onClick={stopCookingHeat}>现在翻面</button><small>让红色游标进入绿色区域再点击</small></div>}
+            {cookingGame.step === "plate" && <div className="cooking-plating"><strong>最后一步 · 选择合适的盘子</strong><div><button className="plate-wood" onClick={() => finishCooking("wood")}><i />木盘</button><button className="plate-white" onClick={() => finishCooking("white")}><i />白瓷盘<small>适合小虾</small></button><button className="plate-deep" onClick={() => finishCooking("deep")}><i />深口盘<small>适合螃蟹</small></button></div></div>}
+          </div>
+          <footer><span>{cookingGame.step === "chop" ? "第一步：处理食材" : cookingGame.step === "heat" ? "第二步：观察火候并及时翻面" : "第三步：认真装盘"}</span><button onClick={() => { setCookingGame(null); setMessage("烹饪暂停，食材仍然保留。 "); }}>暂停烹饪</button></footer>
+        </section>
+      </div>}
 
       {mapOpen && <div className="map-overlay" role="presentation">
         <section className="village-map-panel" role="dialog" aria-modal="true" aria-labelledby="village-map-title">
@@ -5656,7 +6067,7 @@ export default function FarmGame() {
             </div>
             <div className="harvest-subtitle">已经收获的水果、蔬菜和鱼</div>
             <div className="harvest-items">
-              {(Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => <button key={resource} className={heldItem?.kind === "resource" && heldItem.id === resource ? "resource-item held-material" : selectedResource === resource ? "resource-item selected" : "resource-item"} onClick={() => clickResource(resource)} onDoubleClick={() => pickUpResource(resource)} onPointerDown={() => startEating(resource)} onPointerUp={stopEating} onPointerCancel={stopEating} onPointerLeave={stopEating} onContextMenu={(event) => event.preventDefault()} aria-pressed={selectedResource === resource} aria-label={`${RESOURCE_INFO[resource].name} ${game.inventory[resource]} 个，双击拿起送人，长按食用`} title="双击拿起送人，长按吃掉"><span className={`harvest-icon ${resource}-icon`}>{resource === "fish" ? "鱼" : CROP_INFO[resource].short}</span><p>{resource === "fish" ? "鱼获" : CROP_INFO[resource].name}<strong>{game.inventory[resource]}</strong><small>双击拿起</small></p></button>)}
+              {(Object.keys(RESOURCE_INFO) as StorableResource[]).map((resource) => <button key={resource} className={heldItem?.kind === "resource" && heldItem.id === resource ? "resource-item held-material" : selectedResource === resource ? "resource-item selected" : "resource-item"} onClick={() => clickResource(resource)} onDoubleClick={() => pickUpResource(resource)} onPointerDown={() => startEating(resource)} onPointerUp={stopEating} onPointerCancel={stopEating} onPointerLeave={stopEating} onContextMenu={(event) => event.preventDefault()} aria-pressed={selectedResource === resource} aria-label={`${RESOURCE_INFO[resource].name} ${game.inventory[resource]} 个，双击拿起送人，长按食用`} title="双击拿起送人，长按吃掉"><span className={`harvest-icon ${resource}-icon`}>{resource === "fish" ? "鱼" : CROP_INFO[resource].short}</span><p>{resource === "fish" ? "鱼获" : CROP_INFO[resource].name}<strong>{game.inventory[resource]}</strong><small>双击拿起</small>{isCropResource(resource) && (game.cropQualityStock[resource].gold > 0 || game.cropQualityStock[resource].silver > 0) && <em className="crop-quality-badges">{game.cropQualityStock[resource].gold > 0 && <b>★{game.cropQualityStock[resource].gold}</b>}{game.cropQualityStock[resource].silver > 0 && <i>★{game.cropQualityStock[resource].silver}</i>}</em>}</p></button>)}
               <button className={heldItem?.kind === "material" && heldItem.id === "wood" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("wood")} title="双击拿起木头"><span className="harvest-icon wood-icon">木</span><p>木头<strong>{game.wood}</strong><small>双击拿起</small></p></button>
               <button className={heldItem?.kind === "material" && heldItem.id === "stone" ? "resource-item held-material" : "resource-item"} onDoubleClick={() => pickUpMaterial("stone")} title="双击拿起石材"><span className="harvest-icon stone-icon">石</span><p>石材<strong>{game.stone}</strong><small>双击拿起</small></p></button>
               <button className="resource-item diamond-record" onClick={() => setMessage(`山洞里挖到的钻石共有 ${game.diamonds} 颗。钻石矿每天会慢慢重新长出一处；放进大号售卖箱，每颗可以卖 2800 金币。`)}><span className="harvest-icon diamond-icon">◆</span><p>钻石<strong>{game.diamonds}</strong><small>高价稀有物 · 可售卖</small></p></button>
@@ -5773,6 +6184,7 @@ export default function FarmGame() {
                 <button className="friend-farm-shelter" onClick={(event) => { event.stopPropagation(); setFriendHomeOpen(true); setIndoorPlayer({ x: 34, y: 70 }); setMessage("走进安安的林边小屋，屋里摆着登山装备和野外收藏。 "); }} aria-label="进入安安的林边小屋"><i className="friend-shelter-roof" /><i className="friend-shelter-wall" /><i className="friend-shelter-door" /><strong>安安的林边小屋<small>点击进入拜访</small></strong></button>
                 {wildFriendVisit || wildFriendAtPlayerHome ? <button className="friend-away-note" onClick={() => setMessage(wildFriendAtPlayerHome ? `安安今天去${displayName}的农舍找你了，回自己家就能见到她。` : `安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}。`)}>安安出去玩了<small>今天在{wildFriendAtPlayerHome ? `${displayName}的农舍` : wildFriendVisit === "cave" ? "山洞" : "帐篷"}</small></button> : <button style={personClothesStyle("安安")} className="wild-friend-npc anan-character" onClick={() => interactWithPerson("安安", PERSON_DIALOGUES["安安"])} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和朋友安安聊天"}><i /><em className="anan-pigtails" /><b /><span>安安<small>{heldItem ? `送出${carriedItemName}` : "你的野外朋友"}</small></span></button>}
                 <div className="friend-farm-trees"><i /><i /><i /></div>
+                <button className={`forest-story-tree forest-story-stage-${game.forestQuestStage}`} onClick={(event) => { event.stopPropagation(); progressForestStoryWithAnan(); }}><i /><b /><span>{game.forestQuestStage === 0 ? "老松树好像在褪色" : game.forestQuestStage === 1 ? "把两份药材交给安安" : game.forestQuestStage === 2 ? "药水等待蓝晶水" : game.forestQuestStage === 3 ? "还需要树脂和松果" : game.forestQuestStage === 4 ? "明天一起涂森林药膏" : "老松树恢复健康了"}<small>连续故事 · 点击查看下一步</small></span></button>
                 <div className={`seasonal-road ${game.year === 1 && game.season === 0 ? "road-season-0" : "road-finished"}`} aria-label={game.year === 1 && game.season === 0 ? "最开始的道路修建区" : "已经永久通车的新公路"}><i className="road-surface" /><span>{game.year === 1 && game.season === 0 ? "最初修建中 · 完工后永久通车" : "远方新区公路 · 已永久通车"}</span>{game.year === 1 && game.season === 0 && <div className="road-workers"><b /><b /><b /><em /><em /></div>}</div>
                 <button className="driving-school-building" onClick={(event) => { event.stopPropagation(); setDrivingSchoolOpen(true); setDrivingQuizStep(game.driverLicense ? DRIVING_QUESTIONS.length : 0); setDrivingPracticeStep(game.driverLicense ? 3 : 0); setMessage(game.driverLicense ? "来到青禾驾校复习安全驾驶。 " : "进入青禾驾校，先参加汽车常识考试。 "); }}><i /><b>青禾驾驶学校</b><small>{game.driverLicense ? "已取得驾照 · 可以复习" : "理论考试 · 驾驶练习"}</small></button>
                 <button className={`road-car ${game.ownsCar ? "owned-car" : ""} ${game.year === 1 && game.season === 0 ? "road-closed" : ""}`} onClick={(event) => { event.stopPropagation(); buyOrDriveCar(); }}><i /><i /><b>{game.year === 1 && game.season === 0 ? "查看最初修建进度" : !game.driverLicense ? "先考驾照" : game.ownsCar ? "驾驶汽车去远方" : "购买汽车 · 3000金币"}</b></button>
@@ -5833,7 +6245,7 @@ export default function FarmGame() {
               <>
                 <div className="residential-main-path" />
                 <div className="residential-plots" aria-label="青禾住宅坡的居民院地">
-                  {RESIDENT_HOMES.map((home, index) => <article className={`resident-plot resident-plot-${index + 1}`} key={home.owner}><span className="plot-fence" /><i className="plot-tree" /><button className="resident-house" onClick={() => { setResidentHome(home.owner); setIndoorPlayer({ x: 33, y: 70 }); setMessage(`走进${home.home}，${home.owner}住在这里。`); }} aria-label={`进入${home.home}`}><span className="resident-roof" /><span className="resident-wall" /><span className="resident-door" /><span className="resident-window" /><strong>{home.home}<small>点击进入</small></strong></button><button style={personClothesStyle(home.owner)} className={`residential-resident ${isNpcSick(home.owner) ? "sick-npc" : ""} ${home.owner === "诊所助手" ? "red-uniform-resident" : ""}`} onClick={() => interactWithPerson(home.owner, `${home.owner}：${home.greeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${home.owner}` : `和${home.owner}交谈`}><i /><b /><span>{home.owner}</span></button></article>)}
+                  {RESIDENT_HOMES.map((home, index) => { const activity = residentActivity(home.owner, game.hour, game.day, game.weather); return <article className={`resident-plot resident-plot-${index + 1}`} key={home.owner}><span className="plot-fence" /><i className="plot-tree" /><button className="resident-house" onClick={() => { setResidentHome(home.owner); setIndoorPlayer({ x: 33, y: 70 }); setMessage(`走进${home.home}，${home.owner}住在这里。`); }} aria-label={`进入${home.home}`}><span className="resident-roof" /><span className="resident-wall" /><span className="resident-door" /><span className="resident-window" /><strong>{home.home}<small>点击进入</small></strong></button><button style={personClothesStyle(home.owner)} className={`residential-resident npc-activity-${activity.key} ${isNpcSick(home.owner) ? "sick-npc" : ""} ${home.owner === "诊所助手" ? "red-uniform-resident" : ""}`} onClick={() => interactWithPerson(home.owner, `${home.owner}：${home.greeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${home.owner}` : `和${home.owner}交谈`}><i /><b /><span>{home.owner}<small>{activity.label}</small></span></button></article>; })}
                 </div>
                 <button className="edge-gate residential-return" onClick={() => { setScene("cultureDistrict"); setPlayer({ x: 11, y: 5 }); setMessage("从住宅坡回到清河文化街。 "); }}><b>←</b><span>返回文化街</span><small>沿着小路向左</small></button>
               </>
@@ -6015,6 +6427,7 @@ export default function FarmGame() {
                     {wildFriendVisit === farmInterior && <button style={personClothesStyle("安安")} className="wild-friend-visitor anan-character" onClick={() => interactWithPerson("安安", farmInterior === "cave" ? "安安：这里的水晶真漂亮！我们点亮火柴，再一起找找通往深处的小路吧。" : "安安：今晚风很轻，我们可以在帐篷里讲山谷探险的故事。") }><i /><em className="anan-pigtails" /><b /><span>安安<small>来陪你玩</small></span></button>}
                     {farmInterior === "cave" && game.missingPetId && (() => { const lostPet = game.pets.find((pet) => pet.id === game.missingPetId); if (!lostPet) return null; const petName = PET_CATALOG.find((pet) => pet.id === lostPet.type)?.name; return <button className={`lost-pet-in-cave pet-${lostPet.type}`} onClick={() => { setGame((current) => ({ ...current, missingPetId: null })); setMessage(`在岩石后面找到了${petName}，小禾把它轻轻抱起来带回家，它又会跟着你了！`); playTone(900); }}><i /><b /><span>{petName}躲在洞里<small>点击抱回家</small></span></button>; })()}
                     {farmInterior === "cave" && dailyNews.kind === "cave" && <button className="cave-prospector" style={personClothesStyle("阿木")} onClick={(event) => { event.stopPropagation(); setMessage("山洞勘探员阿木：新闻是真的。今天三处矿脉的位置已经重新标记，留意岩石后露出的小尖角。"); playTone(680); }}><i /><b /><em className="prospector-helmet" /><span>勘探员阿木<small>点击询问矿脉</small></span></button>}
+                    {farmInterior === "cave" && game.forestQuestStage === 2 && <button className="forest-cave-clue" onClick={(event) => { event.stopPropagation(); inspectForestCaveClue(); }}><i /><b /><span>蓝晶水<small>{currentAbsoluteDay() <= game.forestQuestProgressDay ? "明天才会显出光" : interiorFireLit ? "点击收进药瓶" : "先点亮火把"}</small></span></button>}
                     <div className={`player indoor-player farm-special-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}><span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     {!interiorFireLit && <div className="special-darkness"><span>{farmInterior === "cave" ? "山洞里很暗" : "帐篷里还没点灯"}</span></div>}
                   </div>
@@ -6063,7 +6476,7 @@ export default function FarmGame() {
             {shippingBinOpen && (
               <div className="shop-overlay shipping-bin-overlay" role="presentation">
                 <section className="shop-panel shipping-bin-panel" role="dialog" aria-modal="true" aria-labelledby="shipping-bin-title">
-                  <header><div><span>农舍旁的大号箱子</span><h2 id="shipping-bin-title">大号售卖箱</h2></div><div className="shop-wallet"><small>睡觉后预计收入</small><strong>● {Math.round(SHIPPING_CATALOG.reduce((sum, item) => sum + (game.shippingBin[item.id] ?? 0) * item.price, 0) * (game.upgrades.storage ? 1.1 : 1)).toLocaleString()}</strong></div><button onClick={() => setShippingBinOpen(false)} aria-label="关上大号售卖箱">×</button></header>
+                  <header><div><span>农舍旁的大号箱子</span><h2 id="shipping-bin-title">大号售卖箱</h2></div><div className="shop-wallet"><small>睡觉后预计收入 · 星级作物会加价</small><strong>● {Math.round((SHIPPING_CATALOG.reduce((sum, item) => sum + (game.shippingBin[item.id] ?? 0) * item.price, 0) + cropQualityBonus(game.shippingCropQualityStock)) * (game.upgrades.storage ? 1.1 : 1)).toLocaleString()}</strong></div><button onClick={() => setShippingBinOpen(false)} aria-label="关上大号售卖箱">×</button></header>
                   <div className="shopkeeper shipping-bin-intro"><span className="shipping-bin-mini"><i /></span><p><strong>单击“放入 1 个”</strong>就会把物品放进箱子。睡到第二天，它们会自动卖掉并通知赚了多少金币。锄头、水壶、收获、鱼竿等基础工具不能放入。</p></div>
                   <div className="shipping-bin-grid">
                     {SHIPPING_CATALOG.map((item) => { const available = shippingItemCount(game, item); const inBin = game.shippingBin[item.id] ?? 0; return <article className="shipping-item-card" key={item.id}><span>{item.short}</span><div><strong>{item.name}</strong><small>背包 {available} · 待售 {inBin} · 每个 {item.price} 金币</small></div><button disabled={available <= 0} onClick={() => putInShippingBin(item)}>放入 1 个</button><button className="shipping-take-back" disabled={inBin <= 0} onClick={() => takeFromShippingBin(item)}>取回</button></article>; })}
@@ -6106,7 +6519,7 @@ export default function FarmGame() {
                       <div className="upstairs-placed-furniture">{game.atticPlacedCrafts.map((craft) => { const slot = ATTIC_PLACEMENT_SLOTS[craft.x]; if (!slot) return null; return <button key={craft.id} className={`upstairs-furniture upstairs-furniture-${craft.type} ${craft.type === "floorLamp" && game.equipment.lampOn ? "floor-lamp-on" : ""}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => useUpstairsFurniture(craft)} aria-label={craft.type === "floorLamp" ? `室内落地灯，现在${game.equipment.lampOn ? "亮着" : "关闭"}，点击${game.equipment.lampOn ? "关灯" : "开灯"}` : CRAFT_RECIPES[craft.type].name}><i /><b /><span>{craft.type === "floorLamp" ? game.equipment.lampOn ? "落地灯 · 亮着" : "落地灯 · 点击开灯" : CRAFT_RECIPES[craft.type].name}</span></button>; })}</div>
                       {upstairsRoom && <div className={`upstairs-private-room private-${upstairsRoom}`}>
                         <button className="private-room-back" onClick={() => { setUpstairsRoom(null); setMessage("从小房间回到宽敞的二楼。 "); }}>← 回到二楼</button>
-                        {upstairsRoom === "kitchen" ? <><div className="private-room-title"><strong>二楼厨房</strong><small>鲁师傅安装的每件家具都有功能</small></div><button className="functional-kitchen-stove" onClick={() => setMessage("灶台已经烧热了。选择下面的螃蟹或小虾进行烹饪，熟食会进入资源记录。 ")}><i /><b /><span>灶台 · 点火</span></button><button className="functional-kitchen-sink" onClick={() => { setMessage("用水槽把海鲜和蔬菜洗干净了，准备放到灶台上烹饪。 "); playTone(610); }}><i /><b /><span>水槽 · 清洗食材</span></button><button className="functional-kitchen-cabinet" onClick={() => setMessage(`料理柜里记录着：生螃蟹 ${game.crabs}、生小虾 ${game.shrimp}、熟螃蟹 ${game.cookedCrabs}、熟小虾 ${game.cookedShrimp}。`)}><i /><b /><span>料理柜 · 查看食材</span></button><div className="private-kitchen-actions"><button disabled={game.crabs <= 0} onClick={() => cookUpstairsSeafood("crabs")}>烹饪螃蟹 ×{game.crabs}</button><button disabled={game.shrimp <= 0} onClick={() => cookUpstairsSeafood("shrimp")}>烹饪小虾 ×{game.shrimp}</button></div></> : <><div className="private-room-title"><strong>二楼卫生间</strong><small>洗澡会恢复健康，并让明天更有精神</small></div><button className="functional-bathtub" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 15), sick: false, diagnosed: false, rainExposure: 0, showeredBeforeBed: true })); setMessage("洗了一个暖和的澡：恢复 15 点体力，身体恢复健康。睡觉后，明天农活体力消耗减少约三成。 "); playTone(720); }}><i /><b /><span>浴缸与花洒 · 洗澡</span></button><button className="functional-bath-sink" onClick={() => { setGame((current) => ({ ...current, rainExposure: 0, energy: Math.min(100, current.energy + 3) })); setMessage("在洗手台洗净泥土和雨水，恢复 3 点体力。 "); }}><i /><b /><span>洗手台 · 清洁</span></button><button className="functional-bath-mirror" onClick={() => { const nextOutfit = game.mallItems.redCoat > 0 && game.equippedOutfit !== "redCoat" ? "redCoat" : game.mallItems.blueOutfit > 0 && game.equippedOutfit !== "blueOutfit" ? "blueOutfit" : "default"; setGame((current) => ({ ...current, equippedOutfit: nextOutfit })); setMessage(nextOutfit === "default" ? "照了照镜子，换回平常的农场衣服。" : `在镜子前整理衣服，换上了${nextOutfit === "redCoat" ? "红色外套" : "蓝色套装"}。`); }}><i /><b /><span>镜子 · 整理换装</span></button></>}
+                        {upstairsRoom === "kitchen" ? <><div className="private-room-title"><strong>二楼厨房</strong><small>每道料理都要切配、控制火候并亲手装盘</small></div><button className="functional-kitchen-stove" onClick={() => setMessage("灶台已经烧热了。选择下面的螃蟹或小虾，开始完整的做饭过程。 ")}><i /><b /><span>灶台 · 点火</span></button><button className="functional-kitchen-sink" onClick={() => { setMessage("用水槽把海鲜和蔬菜洗干净了，准备放到砧板上处理。 "); playTone(610); }}><i /><b /><span>水槽 · 清洗食材</span></button><button className="functional-kitchen-cabinet" onClick={() => setMessage(`料理柜里记录着：生螃蟹 ${game.crabs}、生小虾 ${game.shrimp}、熟螃蟹 ${game.cookedCrabs}、熟小虾 ${game.cookedShrimp}。已发现食谱 ${game.recipesDiscovered.length}/2。`)}><i /><b /><span>料理柜 · 查看食材</span></button><div className="private-kitchen-actions"><button disabled={game.crabs <= 0} onClick={() => startCookingSeafood("crabs")}>亲手做螃蟹 ×{game.crabs}</button><button disabled={game.shrimp <= 0} onClick={() => startCookingSeafood("shrimp")}>亲手做小虾 ×{game.shrimp}</button></div></> : <><div className="private-room-title"><strong>二楼卫生间</strong><small>洗澡会恢复健康，并让明天更有精神</small></div><button className="functional-bathtub" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 15), sick: false, diagnosed: false, rainExposure: 0, showeredBeforeBed: true })); setMessage("洗了一个暖和的澡：恢复 15 点体力，身体恢复健康。睡觉后，明天农活体力消耗减少约三成。 "); playTone(720); }}><i /><b /><span>浴缸与花洒 · 洗澡</span></button><button className="functional-bath-sink" onClick={() => { setGame((current) => ({ ...current, rainExposure: 0, energy: Math.min(100, current.energy + 3) })); setMessage("在洗手台洗净泥土和雨水，恢复 3 点体力。 "); }}><i /><b /><span>洗手台 · 清洁</span></button><button className="functional-bath-mirror" onClick={() => { const nextOutfit = game.mallItems.redCoat > 0 && game.equippedOutfit !== "redCoat" ? "redCoat" : game.mallItems.blueOutfit > 0 && game.equippedOutfit !== "blueOutfit" ? "blueOutfit" : "default"; setGame((current) => ({ ...current, equippedOutfit: nextOutfit })); setMessage(nextOutfit === "default" ? "照了照镜子，换回平常的农场衣服。" : `在镜子前整理衣服，换上了${nextOutfit === "redCoat" ? "红色外套" : "蓝色套装"}。`); }}><i /><b /><span>镜子 · 整理换装</span></button></>}
                       </div>}
                       <div className={`player indoor-player upstairs-player facing-${facing} ${isWalking ? "walking" : ""} ${stairTravel ? `stair-traveler stair-${stairTravel}` : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍二楼">{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     </div>}

@@ -15,6 +15,7 @@
 @import "./news-events.css";
 @import "./tv-broadcast.css";
 @import "./tv-stories.css";
+@import "./living-world-expansion.css";
 
 :root {
   --ink: #263d31;
