@@ -10,6 +10,10 @@
 @import "./house-staircase.css";
 @import "./festival-process-extended.css";
 @import "./townhall-calendar.css";
+@import "./animal-rainwear.css";
+@import "./festival-preview.css";
+@import "./news-events.css";
+@import "./tv-broadcast.css";
 
 :root {
   --ink: #263d31;
