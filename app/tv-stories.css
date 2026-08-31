@@ -184,7 +184,12 @@
 }
 
 /* Cartoons: characters travel, investigate and solve the episode's problem. */
-.kids-program { transition: background 1s linear; }
+.kids-program {
+  background: linear-gradient(var(--episode-sky, #8fd5e8) 0 60%, var(--episode-ground, #9acb6c) 61%);
+  transition: background 1s linear;
+}
+.kids-program .cartoon-story-prop,
+.kids-program .cartoon-characters { filter: hue-rotate(var(--episode-hue, 0deg)); }
 .kids-program .cartoon-characters {
   z-index: 6;
   top: 51%;
@@ -273,7 +278,7 @@
 .kids-program.tv-story-step-3 .cartoon-characters { left: 60%; top: 43%; }
 .kids-program.tv-story-step-3 .cartoon-characters > i { bottom: 42px; transform: rotate(-4deg); }
 .kids-program.tv-story-step-3 .cartoon-characters > em { bottom: 54px; transform: rotate(5deg); }
-.kids-program.tv-story-step-4 { background: linear-gradient(#78cee8 0 60%, #a9d56e 61%); }
+.kids-program.tv-story-step-4 { background: linear-gradient(var(--episode-sky, #78cee8) 0 60%, var(--episode-ground, #a9d56e) 61%); }
 .kids-program.tv-story-step-4 .cartoon-characters > i,
 .kids-program.tv-story-step-4 .cartoon-characters > b,
 .kids-program.tv-story-step-4 .cartoon-characters > em { transform: translateY(-12px) rotate(3deg); }

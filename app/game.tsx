@@ -487,16 +487,28 @@ const SPORTS_STORIES: [TvStory, TvStory] = [
   { title: "山谷篮球联赛 · 青禾队对枫叶队", beats: ["裁判吹哨，青禾队从后场发球。", "阿岚运球过半场，把球传给篮下的小波。", "枫叶队突然抢断，小禾追上去把球拍了回来！", "还剩三秒，小禾在三分线外起跳投篮。", "篮球擦过篮板落进篮筐，青禾队反超一分！"] },
   { title: "山谷足球杯 · 青禾队对枫叶队", beats: ["双方在中圈站好，青禾队开球。", "小波沿边线带球，把球斜传给前方的小禾。", "枫叶后卫伸脚抢断，小禾转身又把球追回来！", "小禾把球传进禁区，阿岚迎球射门。", "守门员扑错方向，足球滚进球门，青禾队得分！"] },
 ];
-const KIDS_STORIES: TvStory[] = [
-  { title: "松果小队找彩虹", beats: ["松松醒来时，发现天空灰蒙蒙的，彩虹不见了。", "松松、莓莓和小蓝沿着发光的雨滴走进森林。", "他们发现一只翅膀被树枝缠住的小鸟，一起把树枝搬开。", "小鸟带大家飞上山坡，找到了藏在云后的太阳。", "阳光照进雨滴，一道大彩虹跨过山谷，大家终于回家了。"] },
-  { title: "小鸭侦探和丢失的帽子", beats: ["鸭鸭准备出门，却发现最喜欢的红帽子不见了。", "它在门边找到湿脚印，拿着放大镜一路追到池塘。", "脚印原来属于小青蛙，青蛙说帽子被风吹进了芦苇丛。", "鸭鸭和青蛙划着叶子小船，把挂在芦苇上的帽子取下来。", "鸭鸭戴回红帽子，并把一枚侦探徽章送给了小青蛙。"] },
-  { title: "会唱歌的萝卜", beats: ["小芽浇水时，菜地里忽然传出很小的歌声。", "她蹲下来倾听，发现一颗萝卜每到太阳升起就会唱歌。", "乌云挡住太阳，萝卜没了声音，小芽决定爬上风车。", "风车转起来吹散乌云，阳光重新落到菜地。", "整片萝卜一起唱起丰收歌，村民们围着菜地跳舞。"] },
-  { title: "星星鱼的海底旅行", beats: ["星星鱼想看陆地上的灯塔，悄悄游出了珊瑚湾。", "一股海流把它卷进黑漆漆的海沟，小虾点亮尾灯来带路。", "他们遇见被渔网缠住的海龟，一起咬断了绳结。", "海龟驮着大家穿过海沟，远处终于出现灯塔的光。", "星星鱼把灯塔的故事带回珊瑚湾，海底朋友听得入了迷。"] },
-  { title: "小牛第一次上学", beats: ["小牛背着新书包出门，却紧张得躲在校门外。", "小兔同学牵着它走进教室，老师在黑板上画出一片农场。", "轮到小牛回答问题时，它把加法题说错了，脸一下红了。", "同学们没有笑，而是用玉米粒陪它重新数了一遍。", "小牛答对最后一道题，放学时已经交到了好多朋友。"] },
-  { title: "云朵列车出发啦", beats: ["云朵列车载着孩子们出发，却在半空突然停住了。", "列车长发现前方的风被一座大山挡住，车轮转不起来。", "大家打开车窗一起吹风，小鸟们也飞来帮忙扇动翅膀。", "一阵大风托起列车，它顺利越过山顶和闪亮的湖面。", "列车准时到达星空站，每位乘客都领到一张云朵车票。"] },
-  { title: "勇敢兔子的夜晚", beats: ["停电的夜晚，小兔听见仓库里传来咚咚声。", "它提着小灯一步步靠近，影子在墙上变得好大。", "小兔推开门，原来是小刺猬被倒下的木箱困住了。", "它叫来朋友们一起抬起木箱，救出了发抖的小刺猬。", "灯重新亮起，小兔发现勇敢不是不害怕，而是害怕也去帮忙。"] },
-  { title: "安安和会跳舞的树", beats: ["安安在林边听见鼓点，却找不到是谁在敲鼓。", "她跟着节拍走进森林，看见老松树的树枝正在轻轻摆动。", "原来树根旁卡着一只发条音乐盒，风一吹就会唱歌。", "安安修好音乐盒，森林里的树一棵接一棵跳起舞来。", "夕阳落下时，老松树送给安安一颗会发光的松果。"] },
-];
+const KIDS_HEROES = ["松松", "莓莓", "小蓝", "鸭鸭", "小芽", "星星鱼", "小牛", "云朵列车长", "小兔", "安安", "小刺猬", "小海龟"];
+const KIDS_FRIENDS = ["小青蛙", "啾啾鸟", "阿栗", "灯塔爷爷", "小虾米", "风车姐姐", "月亮猫", "邮差狗", "米粒鼠", "蒲公英精灵", "小鹿", "河狸木匠"];
+const KIDS_PLACES = ["彩虹森林", "芦苇池塘", "会唱歌的菜园", "珊瑚湾", "山谷学校", "云朵车站", "旧仓库", "林边小屋", "月光山坡", "风铃小镇", "海边灯塔", "枫叶溪谷"];
+const KIDS_DISCOVERIES = ["一只发光的松果", "一顶会飞的红帽子", "一颗会唱歌的萝卜", "一张被雨打湿的地图", "一枚星星形钥匙", "一辆停住的玩具火车", "一封没有名字的信", "一盒会自己响的音乐盒", "一个装着月光的玻璃瓶", "一只迷路的小纸船", "一面不会照出影子的镜子", "一串藏着鸟鸣的风铃", "一把生锈的小铲子", "一颗滚进石缝的蓝宝珠", "一本缺了最后一页的故事书", "一盏怎么也点不亮的小灯"];
+const KIDS_REWARDS = ["彩虹徽章", "云朵车票", "金色羽毛", "星光贴纸", "勇气奖章", "一袋甜松子", "会发光的贝壳", "小小侦探证", "音乐种子", "蓝色蝴蝶结", "月亮饼干", "友谊风铃"];
+const dailyKidsStory = (absoluteDay: number): TvStory => {
+  const episode = Math.max(1, absoluteDay);
+  const hero = KIDS_HEROES[(episode - 1) % KIDS_HEROES.length];
+  const friend = KIDS_FRIENDS[Math.floor((episode - 1) / KIDS_HEROES.length) % KIDS_FRIENDS.length];
+  const place = KIDS_PLACES[Math.floor((episode - 1) / (KIDS_HEROES.length * KIDS_FRIENDS.length)) % KIDS_PLACES.length];
+  const discovery = KIDS_DISCOVERIES[(episode * 7 + Math.floor(episode / 5)) % KIDS_DISCOVERIES.length];
+  const reward = KIDS_REWARDS[(episode * 5 + Math.floor(episode / 7)) % KIDS_REWARDS.length];
+  const stories: TvStory[] = [
+    { title: `第 ${episode} 集 · ${hero}和${place}的求救声`, beats: [`${hero}经过${place}时，听见石头后面传来轻轻的求救声。`, `${friend}赶来帮忙，他们找到${discovery}，上面留着通往山坡的记号。`, `两人沿着记号前进，发现一只小鸟被倒下的树枝困住了。`, `${hero}撑起树枝，${friend}把小鸟慢慢抱了出来。`, `小鸟重新飞回天空，并送给他们${reward}作为感谢。`] },
+    { title: `第 ${episode} 集 · ${place}的神秘脚印`, beats: [`清晨，${hero}在${place}门口发现一排从没见过的小脚印。`, `${hero}请来${friend}，两人带着${discovery}沿脚印认真寻找。`, `脚印在小河边消失了，他们发现水面下藏着一条秘密石路。`, `走过石路后，他们找到了迷路一整夜的小动物。`, `大家把小动物送回家，村长奖励他们${reward}。`] },
+    { title: `第 ${episode} 集 · 给${friend}的惊喜`, beats: [`${hero}得知${friend}今天过生日，决定悄悄准备一场惊喜。`, `${hero}来到${place}寻找装饰，却只发现${discovery}。`, `一阵大风吹乱准备好的彩带，蛋糕也差点从桌上滑下来。`, `${hero}叫来附近的小伙伴，一起重新挂好彩带并扶稳蛋糕。`, `${friend}推门时大家唱起生日歌，还把${reward}挂在了门上。`] },
+    { title: `第 ${episode} 集 · ${hero}的远方旅行`, beats: [`${hero}在地图上看见${place}，背起小包第一次独自出发。`, `半路的桥被雨水冲坏，${friend}划着叶子小船赶来。`, `他们用${discovery}找到一条绕过山谷的新路，却遇到一片浓雾。`, `${hero}听着河水声辨认方向，终于带大家走出了雾林。`, `到达目的地时，车站送给他们一张${reward}作纪念。`] },
+    { title: `第 ${episode} 集 · 修好${place}的大钟`, beats: [`${place}的大钟停住了，所有居民都不知道现在几点。`, `${hero}和${friend}爬进钟楼，在齿轮旁发现${discovery}。`, `他们试着转动齿轮，却发现最里面还卡着一根细树枝。`, `${hero}取出树枝，${friend}给齿轮抹上树脂，大钟重新转动。`, `整座山谷再次听见钟声，居民把${reward}送给了他们。`] },
+    { title: `第 ${episode} 集 · ${place}的小小演出`, beats: [`${hero}答应在${place}演出，可上台前紧张得一句话也说不出。`, `${friend}拿来${discovery}，陪着${hero}在幕后重新练习。`, `演出开始后灯忽然熄灭，台下变得黑漆漆的。`, `${hero}没有逃走，而是带着观众一起拍手打节奏，${friend}趁机修好了灯。`, `灯光亮起，演出顺利完成，观众把${reward}抛上舞台。`] },
+  ];
+  return stories[episode % stories.length];
+};
 const NATIONAL_STORIES: TvStory[] = [
   { title: "山谷溪流与古桥", beats: ["摄制组从北林泉眼出发，沿着清澈溪流向南走。", "他们在石桥下发现百年前工匠留下的刻痕。", "大雨让水位上涨，护桥员赶来检查每一块桥石。", "村民一起清走漂来的树枝，溪水重新顺畅流过桥洞。", "夕阳照亮古桥，节目记录下它继续守护山谷的一天。"] },
   { title: "四季农耕纪录", beats: ["清晨，农夫先摸土壤，判断今天要浇多少水。", "中午大家给幼苗搭架，防止风把嫩茎吹倒。", "一只乌鸦靠近田地，稻草人和围栏保护了种子。", "傍晚成熟作物被装进木箱，送往中心街超市。", "夜里土地安静下来，新的嫩芽正在泥土中生长。"] },
@@ -4533,7 +4545,7 @@ export default function FarmGame() {
   const dailyNews = dailyNewsForState(game);
   const tvEpisodeDay = (game.year - 1) * 112 + game.season * 28 + game.day;
   const sportsStory = SPORTS_STORIES[tvEpisodeDay % SPORTS_STORIES.length];
-  const kidsStory = KIDS_STORIES[tvEpisodeDay % KIDS_STORIES.length];
+  const kidsStory = dailyKidsStory(tvEpisodeDay);
   const nationalStory = NATIONAL_STORIES[tvEpisodeDay % NATIONAL_STORIES.length];
   const farmStory = FARM_STORIES[game.weather === "rain" || game.weather === "thunder" ? 0 : 1];
   const displaySeason = festivalPreview?.season ?? game.season;
@@ -5519,7 +5531,7 @@ export default function FarmGame() {
             {newsBroadcast.channel === "news" && <><div className="news-location-scene"><i className="news-place-building" /><i className="news-place-roof" /><i className="news-place-door" /><b className="news-place-event" /><em className="news-place-person" /><u className="news-place-detail" /><span>{newsBroadcast.news.kind === "fire" ? "中心街 · 木匠工坊" : newsBroadcast.news.kind === "theft" ? "中心街 · 青禾超市" : newsBroadcast.news.kind === "injury" ? "中心街 · 健康诊所外" : newsBroadcast.news.kind === "cave" || newsBroadcast.news.kind === "missingPet" ? "青禾农场 · 山洞内部" : newsBroadcast.news.kind === "anan" ? "西边 · 安安的林边小屋" : newsBroadcast.news.kind === "school" ? "文化街 · 青禾学校" : newsBroadcast.news.kind === "supermarket" ? "中心街 · 青禾超市" : newsBroadcast.news.kind === "festival" ? "节日活动现场" : "青禾农场 · 雷雨现场"}</span></div><div className="news-presenter"><i /><b /><em className="presenter-microphone" /><u className="presenter-pointing-arm" /><span>主持人 青青</span></div><div className="news-caption"><strong>{newsBroadcast.news.urgent ? "紧急" : "今日"}新闻</strong><p>{newsBroadcast.news.text}</p><small>{newsBroadcast.forecast}</small></div></>}
             {newsBroadcast.channel === "sports" && <div className={`sports-program sports-match-${tvEpisodeDay % 2} tv-story-step-${tvProgramStep}`}><div className="sports-scoreboard"><span>青禾队</span><b>{2 + game.day % 4 + (tvProgramStep >= 4 ? 1 : 0)} : {1 + (game.day * 2) % 4}</b><span>枫叶队</span></div><div className="sports-field"><i className="sports-player player-one" /><i className="sports-player player-two" /><i className="sports-player player-three" /><i className="sports-player player-four" /><b className="sports-ball" /><em className="sports-goal" /><span className="sports-referee" /></div><strong>{sportsStory.title}</strong><div className="tv-story-caption"><b>第 {tvProgramStep + 1} 幕</b><span>{sportsStory.beats[tvProgramStep]}</span></div></div>}
             {newsBroadcast.channel === "national" && <div className={`national-program national-episode-${tvEpisodeDay % 4} tv-story-step-${tvProgramStep}`}><i className="national-mountain" /><i className="national-river" /><i className="national-train" /><b className="national-village" /><span className="national-camera-team"><i /><b /></span><strong>{nationalStory.title}</strong><div className="tv-story-caption"><b>纪录片 · 第 {tvProgramStep + 1} 段</b><span>{nationalStory.beats[tvProgramStep]}</span></div></div>}
-            {newsBroadcast.channel === "kids" && <div className={`kids-program kids-episode-${tvEpisodeDay % 8} tv-story-step-${tvProgramStep}`}><div className="cartoon-sky"><i /><i /></div><div className="cartoon-story-prop"><i /><b /><em /></div><div className="cartoon-characters"><i /><b /><em /></div><strong>{kidsStory.title}</strong><div className="cartoon-speech">{tvProgramStep === 4 ? "我们成功啦！" : tvProgramStep === 0 ? "今天发生了什么？" : "一起想办法吧！"}</div><div className="tv-story-caption"><b>第 {tvProgramStep + 1} 幕</b><span>{kidsStory.beats[tvProgramStep]}</span></div></div>}
+            {newsBroadcast.channel === "kids" && <div className={`kids-program kids-episode-${tvEpisodeDay % 8} tv-story-step-${tvProgramStep}`} style={{ "--episode-hue": `${(tvEpisodeDay * 47) % 360}deg`, "--episode-sky": `hsl(${(tvEpisodeDay * 37) % 360} 62% 76%)`, "--episode-ground": `hsl(${(tvEpisodeDay * 29 + 84) % 360} 46% 61%)` } as CSSProperties}><div className="cartoon-sky"><i /><i /></div><div className="cartoon-story-prop"><i /><b /><em /></div><div className="cartoon-characters"><i /><b /><em /></div><strong>{kidsStory.title}</strong><div className="cartoon-speech">{tvProgramStep === 4 ? "今天的故事圆满结束！" : tvProgramStep === 0 ? "新的故事开始啦！" : "我们一起继续想办法！"}</div><div className="tv-story-caption"><b>第 {tvProgramStep + 1} 幕</b><span>{kidsStory.beats[tvProgramStep]}</span></div></div>}
             {newsBroadcast.channel === "farm" && <div className={`farm-channel-program tv-story-step-${tvProgramStep}`}><div className="farm-channel-field"><i /><i /><i /><i /><b /><span className="farm-host" /></div><strong>{farmStory.title}</strong><div className="tv-story-caption"><b>步骤 {tvProgramStep + 1}/5</b><span>{farmStory.beats[tvProgramStep]}</span></div><small>{newsBroadcast.forecast}</small></div>}
           </div>
           <footer><span>{newsBroadcast.automatic && newsBroadcast.news.urgent ? "紧急节目结束后，请立即赶到画面里的地点帮忙" : newsBroadcast.channel === "news" ? "新闻播放完会自动关闭 · 也可以使用上方遥控器换台" : "五幕剧情会依次播放 · 播完自动关闭 · 可随时换台"}</span><i /></footer>
