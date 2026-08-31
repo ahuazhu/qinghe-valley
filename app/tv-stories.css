@@ -1,0 +1,451 @@
+/* Story-driven television programs: five staged scenes instead of looping props. */
+.tv-story-caption {
+  position: absolute;
+  z-index: 18;
+  left: 5%;
+  right: 5%;
+  bottom: 4%;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 9px 12px;
+  border: 4px solid rgba(255, 250, 225, .88);
+  border-radius: 8px;
+  color: #fffdf0;
+  background: rgba(20, 31, 39, .91);
+  box-shadow: 0 5px 0 rgba(16, 22, 27, .42);
+  text-align: left;
+}
+
+.tv-story-caption b {
+  padding: 5px 8px;
+  border-radius: 5px;
+  color: #24372e;
+  background: #f2cc64;
+  font-size: 7px;
+  white-space: nowrap;
+}
+
+.tv-story-caption span {
+  font-size: 8px;
+  line-height: 1.55;
+}
+
+.sports-program > strong,
+.national-program > strong,
+.kids-program > strong,
+.farm-channel-program > strong {
+  z-index: 16;
+  top: 63px;
+  bottom: auto;
+  min-width: 40%;
+  padding: 6px 10px;
+  font-size: 9px;
+  box-shadow: 0 4px 0 rgba(20, 27, 30, .35);
+}
+
+.sports-program > strong { top: 70px; }
+.tv-channel-sports .tv-broadcast-frame > footer i,
+.tv-channel-national .tv-broadcast-frame > footer i,
+.tv-channel-kids .tv-broadcast-frame > footer i,
+.tv-channel-farm .tv-broadcast-frame > footer i {
+  animation-duration: 16.5s;
+}
+
+/* Sports: each state advances the play from kick-off to score. */
+.sports-field {
+  top: 31%;
+  bottom: 22%;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 3px rgba(43, 89, 48, .32);
+}
+
+.sports-field > .sports-player {
+  z-index: 4;
+  transition: left .72s steps(5), right .72s steps(5), top .72s steps(5), transform .35s steps(2);
+}
+
+.sports-field > .sports-player::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 10px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #313331;
+  box-shadow: 11px 0 #313331;
+}
+
+.sports-field > .sports-player::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  bottom: -10px;
+  width: 7px;
+  height: 18px;
+  border-radius: 0 0 4px 4px;
+  background: #303a42;
+  box-shadow: 13px 0 #303a42;
+}
+
+.sports-program .sports-ball {
+  z-index: 7;
+  animation: none !important;
+  transition: left .72s cubic-bezier(.4, 0, .2, 1), top .72s cubic-bezier(.4, 0, .2, 1), transform .72s steps(5);
+}
+
+.sports-referee {
+  position: absolute;
+  z-index: 5;
+  left: 48%;
+  top: 8%;
+  width: 24px;
+  height: 48px;
+  border: 3px solid #373e3a;
+  border-radius: 50% 50% 5px 5px;
+  background: linear-gradient(#d7a17c 0 30%, #eee 31% 44%, #31383a 45% 52%, #eee 53% 62%, #31383a 63%);
+}
+
+.sports-referee::after {
+  content: "";
+  position: absolute;
+  right: -13px;
+  top: 14px;
+  width: 15px;
+  height: 4px;
+  background: #d7a17c;
+  transform: rotate(-24deg);
+  transform-origin: left;
+}
+
+.sports-program.tv-story-step-0 .sports-ball { left: 49%; top: 53%; transform: rotate(0); }
+.sports-program.tv-story-step-1 .sports-ball { left: 33%; top: 66%; transform: rotate(120deg); }
+.sports-program.tv-story-step-2 .sports-ball { left: 61%; top: 32%; transform: rotate(240deg); }
+.sports-program.tv-story-step-3 .sports-ball { left: 76%; top: 24%; transform: rotate(390deg) scale(1.05); }
+.sports-program.tv-story-step-4 .sports-ball { left: 91%; top: 40%; transform: rotate(540deg) scale(.78); }
+.sports-program.tv-story-step-1 .player-one { left: 29%; top: 47%; transform: rotate(-3deg); }
+.sports-program.tv-story-step-2 .player-one { left: 50%; top: 33%; }
+.sports-program.tv-story-step-2 .player-three { right: 32%; top: 25%; transform: rotate(5deg); }
+.sports-program.tv-story-step-3 .player-one { left: 68%; top: 29%; transform: translateY(-9px) rotate(-7deg); }
+.sports-program.tv-story-step-3 .player-two { left: 53%; top: 58%; }
+.sports-program.tv-story-step-4 .player-one { left: 75%; top: 36%; transform: translateY(0); }
+.sports-program.tv-story-step-4 .sports-goal { filter: drop-shadow(0 0 10px #fff176); }
+.sports-program.tv-story-step-4 .sports-goal::after {
+  content: "得分！";
+  position: absolute;
+  right: 11px;
+  top: -29px;
+  width: 54px;
+  color: #ffe86b;
+  font-size: 10px;
+  text-shadow: 2px 2px #6f3a2b;
+  animation: tvScorePop .55s steps(3) both;
+}
+
+.sports-match-0 .sports-field {
+  border-color: #f4dfbf;
+  background: repeating-linear-gradient(90deg, #c98f5b 0 50px, #d9a36d 50px 100px);
+}
+
+.sports-match-0 .sports-ball {
+  border-width: 3px;
+  border-color: #66391f;
+  background: radial-gradient(circle at 35% 30%, #f5b252 0 20%, #c86c2e 23% 100%);
+}
+
+.sports-match-0 .sports-goal {
+  right: 3%;
+  top: 26%;
+  width: 51px;
+  height: 62px;
+  border: 6px solid #ece6d4;
+  border-left: 6px solid #ece6d4;
+  border-bottom: 0;
+}
+
+.sports-match-0 .sports-goal::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 24px;
+  width: 31px;
+  height: 14px;
+  border: 5px solid #d15831;
+  border-top: 0;
+  border-radius: 0 0 50% 50%;
+}
+
+@keyframes tvScorePop {
+  0% { opacity: 0; transform: scale(.3); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Cartoons: characters travel, investigate and solve the episode's problem. */
+.kids-program { transition: background 1s linear; }
+.kids-program .cartoon-characters {
+  z-index: 6;
+  top: 51%;
+  height: 185px;
+  transition: left .7s steps(5), top .7s steps(5), transform .7s steps(5);
+}
+
+.kids-program .cartoon-characters > i,
+.kids-program .cartoon-characters > b,
+.kids-program .cartoon-characters > em {
+  bottom: 19px;
+  width: 76px;
+  height: 96px;
+  border-width: 5px;
+  animation: none !important;
+  transition: left .7s steps(5), right .7s steps(5), bottom .55s steps(3), transform .55s steps(3);
+}
+
+.kids-program .cartoon-characters > i::before,
+.kids-program .cartoon-characters > b::before,
+.kids-program .cartoon-characters > em::before {
+  left: 19px;
+  top: 27px;
+  width: 7px;
+  height: 7px;
+  box-shadow: 26px 0 #333, 13px 22px 0 -2px #a8524e;
+}
+
+.kids-program .cartoon-characters > i::after,
+.kids-program .cartoon-characters > b::after,
+.kids-program .cartoon-characters > em::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  bottom: -15px;
+  width: 18px;
+  height: 19px;
+  border-radius: 0 0 8px 8px;
+  background: #554a3e;
+  box-shadow: 31px 0 #554a3e;
+}
+
+.kids-program .cartoon-characters > i { left: 14px; }
+.kids-program .cartoon-characters > b { left: 140px; }
+.kids-program .cartoon-characters > em { right: 5px; }
+
+.cartoon-story-prop {
+  position: absolute;
+  z-index: 5;
+  left: 42%;
+  top: 33%;
+  width: 120px;
+  height: 110px;
+  opacity: 0;
+  transform: scale(.5);
+  transition: left .7s steps(4), top .7s steps(4), opacity .4s, transform .55s steps(4);
+}
+
+.cartoon-story-prop > i {
+  position: absolute;
+  left: 22px;
+  top: 16px;
+  width: 68px;
+  height: 50px;
+  border: 6px solid #654638;
+  border-radius: 50% 50% 38% 38%;
+  background: #d85f4b;
+  box-shadow: inset 0 -8px #a83e37;
+}
+
+.cartoon-story-prop > b,
+.cartoon-story-prop > em {
+  position: absolute;
+  background: #4b874f;
+}
+
+.cartoon-story-prop > b { left: 51px; top: 0; width: 9px; height: 22px; transform: rotate(-13deg); }
+.cartoon-story-prop > em { left: 58px; top: 1px; width: 25px; height: 13px; border-radius: 50%; transform: rotate(-25deg); }
+.kids-program.tv-story-step-1 .cartoon-story-prop,
+.kids-program.tv-story-step-2 .cartoon-story-prop,
+.kids-program.tv-story-step-3 .cartoon-story-prop,
+.kids-program.tv-story-step-4 .cartoon-story-prop { opacity: 1; transform: scale(1); }
+.kids-program.tv-story-step-1 .cartoon-characters { left: 45%; }
+.kids-program.tv-story-step-2 .cartoon-characters { left: 56%; top: 53%; }
+.kids-program.tv-story-step-2 .cartoon-story-prop { left: 25%; top: 43%; }
+.kids-program.tv-story-step-3 .cartoon-characters { left: 60%; top: 43%; }
+.kids-program.tv-story-step-3 .cartoon-characters > i { bottom: 42px; transform: rotate(-4deg); }
+.kids-program.tv-story-step-3 .cartoon-characters > em { bottom: 54px; transform: rotate(5deg); }
+.kids-program.tv-story-step-4 { background: linear-gradient(#78cee8 0 60%, #a9d56e 61%); }
+.kids-program.tv-story-step-4 .cartoon-characters > i,
+.kids-program.tv-story-step-4 .cartoon-characters > b,
+.kids-program.tv-story-step-4 .cartoon-characters > em { transform: translateY(-12px) rotate(3deg); }
+
+.cartoon-speech {
+  position: absolute;
+  z-index: 12;
+  right: 7%;
+  top: 29%;
+  max-width: 135px;
+  padding: 8px 10px;
+  border: 4px solid #514a3e;
+  border-radius: 12px 12px 12px 2px;
+  color: #423c31;
+  background: #fffbea;
+  font-size: 7px;
+  box-shadow: 4px 4px 0 rgba(53, 54, 44, .22);
+}
+
+.kids-episode-0.tv-story-step-4::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: 15%;
+  top: 18%;
+  width: 70%;
+  height: 43%;
+  border: 13px solid #ec655c;
+  border-bottom: 0;
+  border-radius: 50% 50% 0 0;
+  box-shadow: inset 0 8px #f4a24f, inset 0 16px #f2db59, inset 0 24px #60ae6c, inset 0 32px #5d86ca;
+  opacity: .78;
+}
+
+.kids-episode-3 { background: linear-gradient(#57b7d4 0 14%, #2f8eb3 15% 60%, #d7bd78 61%); }
+.kids-episode-3 .cartoon-sky { display: none; }
+.kids-episode-3 .cartoon-story-prop > i { border-radius: 70% 30% 65% 35%; background: #f3cf55; box-shadow: 29px 8px 0 -14px #f3cf55; }
+.kids-episode-4 .cartoon-story-prop > i { border-radius: 2px; background: #315948; box-shadow: inset 0 0 0 5px #d9c188; }
+.kids-episode-5 .cartoon-story-prop > i { width: 92px; border-radius: 16px; background: #e7e4d9; box-shadow: 33px 16px 0 -9px #fff; }
+.kids-episode-6 .cartoon-story-prop > i { width: 39px; height: 58px; border-radius: 4px; background: #f4c84d; box-shadow: 0 0 18px #ffe59a; }
+.kids-episode-7 .cartoon-story-prop > i { border-radius: 5px; background: repeating-linear-gradient(90deg, #b77448 0 9px, #8d5939 9px 13px); }
+
+/* Documentary: the camera crew and train move through a beginning, middle and end. */
+.national-program .national-train {
+  z-index: 5;
+  animation: none !important;
+  transition: left .9s steps(7), bottom .9s steps(5), transform .9s steps(5);
+}
+
+.national-camera-team {
+  position: absolute;
+  z-index: 9;
+  left: 11%;
+  bottom: 23%;
+  width: 78px;
+  height: 86px;
+  transition: left .85s steps(7), bottom .85s steps(5), transform .55s steps(3);
+}
+
+.national-camera-team > i {
+  position: absolute;
+  left: 5px;
+  bottom: 0;
+  width: 29px;
+  height: 61px;
+  border: 4px solid #3d403b;
+  border-radius: 48% 48% 5px 5px;
+  background: linear-gradient(#d9a17d 0 30%, #e2a843 31% 67%, #4e5660 68%);
+}
+
+.national-camera-team > b {
+  position: absolute;
+  right: 3px;
+  top: 17px;
+  width: 40px;
+  height: 29px;
+  border: 5px solid #333c40;
+  background: #596970;
+  box-shadow: -7px 30px 0 -3px #383e3e;
+}
+
+.national-camera-team > b::after {
+  content: "";
+  position: absolute;
+  right: -15px;
+  top: 4px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 14px solid #333c40;
+}
+
+.national-program.tv-story-step-0 .national-train { left: -24%; }
+.national-program.tv-story-step-1 .national-train { left: 2%; }
+.national-program.tv-story-step-2 .national-train { left: 31%; }
+.national-program.tv-story-step-3 .national-train { left: 58%; }
+.national-program.tv-story-step-4 .national-train { left: 78%; }
+.national-program.tv-story-step-1 .national-camera-team { left: 25%; }
+.national-program.tv-story-step-2 .national-camera-team { left: 44%; bottom: 28%; }
+.national-program.tv-story-step-3 .national-camera-team { left: 61%; transform: scale(.92); }
+.national-program.tv-story-step-4 .national-camera-team { left: 77%; transform: scale(.82); }
+
+/* Farm channel: a host demonstrates each visible stage on the actual plots. */
+.farm-channel-field { bottom: 25%; }
+.farm-host {
+  position: absolute;
+  z-index: 8;
+  left: 4%;
+  bottom: 7%;
+  width: 30px;
+  height: 66px;
+  border: 4px solid #3e443d;
+  border-radius: 48% 48% 5px 5px;
+  background: linear-gradient(#d9a27f 0 28%, #edd45e 29% 60%, #556b79 61%);
+  transition: left .8s steps(6), transform .5s steps(3);
+}
+
+.farm-host::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: -10px;
+  width: 42px;
+  height: 10px;
+  border: 3px solid #634d34;
+  background: #cba54f;
+}
+
+.farm-channel-field > i {
+  position: relative;
+  overflow: hidden;
+  transition: background .6s steps(4), box-shadow .6s steps(4);
+}
+
+.farm-channel-field > i::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d7b46d;
+  box-shadow: 24px 6px #d7b46d, -22px 8px #d7b46d;
+  transform: translateX(-50%) scale(.2);
+  transition: width .6s steps(4), height .6s steps(4), background .6s steps(4), box-shadow .6s steps(4), transform .6s steps(4);
+}
+
+.farm-channel-program.tv-story-step-1 .farm-channel-field > i { background: #513f35; box-shadow: inset 0 8px rgba(112, 174, 205, .35); }
+.farm-channel-program.tv-story-step-2 .farm-channel-field > i::before { width: 14px; height: 27px; border-radius: 60% 10%; background: #76b552; box-shadow: 22px 5px #6ba94c, -20px 8px #84be5a; transform: translateX(-50%) scale(.8) rotate(-8deg); }
+.farm-channel-program.tv-story-step-3 .farm-channel-field > i::before { width: 18px; height: 42px; background: #5f9f42; box-shadow: 26px 3px #72aa48, -24px 5px #629b3f; transform: translateX(-50%) scale(1); }
+.farm-channel-program.tv-story-step-4 .farm-channel-field > i::before { width: 24px; height: 49px; background: #52923b; box-shadow: 27px 2px #e3c54a, -26px 4px #d66e49; transform: translateX(-50%) scale(1); }
+.farm-channel-program.tv-story-step-1 .farm-host { left: 23%; }
+.farm-channel-program.tv-story-step-2 .farm-host { left: 42%; }
+.farm-channel-program.tv-story-step-3 .farm-host { left: 61%; }
+.farm-channel-program.tv-story-step-4 .farm-host { left: 80%; transform: translateY(-4px); }
+
+@media (max-width: 760px) {
+  .tv-story-caption { left: 2%; right: 2%; bottom: 3%; min-height: 52px; gap: 6px; padding: 6px 8px; }
+  .tv-story-caption span { font-size: 6px; }
+  .sports-program > strong,
+  .national-program > strong,
+  .kids-program > strong,
+  .farm-channel-program > strong { top: 52px; min-width: 56%; font-size: 7px; }
+  .sports-program > strong { top: 60px; }
+  .sports-field { bottom: 26%; }
+  .cartoon-characters { transform: translate(-50%, -50%) scale(.72) !important; }
+  .cartoon-story-prop { transform: scale(.7); }
+  .kids-program.tv-story-step-1 .cartoon-story-prop,
+  .kids-program.tv-story-step-2 .cartoon-story-prop,
+  .kids-program.tv-story-step-3 .cartoon-story-prop,
+  .kids-program.tv-story-step-4 .cartoon-story-prop { transform: scale(.7); }
+  .cartoon-speech { right: 3%; top: 27%; max-width: 105px; font-size: 6px; }
+  .national-camera-team { transform: scale(.72); transform-origin: bottom left; }
+  .farm-channel-field { left: 5%; right: 5%; padding: 10px; }
+}

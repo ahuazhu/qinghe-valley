@@ -482,6 +482,31 @@ const RESIDENT_BIRTHDAYS = [
 type DailyNews = { kind: "festival" | "thunder" | "missingPet" | "cave" | "supermarket" | "school" | "anan" | UrgentEventKind; text: string; urgent: boolean };
 type TvChannel = "news" | "sports" | "national" | "kids" | "farm";
 type NewsBroadcast = { news: DailyNews; forecast: string; automatic: boolean; channel: TvChannel };
+type TvStory = { title: string; beats: [string, string, string, string, string] };
+const SPORTS_STORIES: [TvStory, TvStory] = [
+  { title: "山谷篮球联赛 · 青禾队对枫叶队", beats: ["裁判吹哨，青禾队从后场发球。", "阿岚运球过半场，把球传给篮下的小波。", "枫叶队突然抢断，小禾追上去把球拍了回来！", "还剩三秒，小禾在三分线外起跳投篮。", "篮球擦过篮板落进篮筐，青禾队反超一分！"] },
+  { title: "山谷足球杯 · 青禾队对枫叶队", beats: ["双方在中圈站好，青禾队开球。", "小波沿边线带球，把球斜传给前方的小禾。", "枫叶后卫伸脚抢断，小禾转身又把球追回来！", "小禾把球传进禁区，阿岚迎球射门。", "守门员扑错方向，足球滚进球门，青禾队得分！"] },
+];
+const KIDS_STORIES: TvStory[] = [
+  { title: "松果小队找彩虹", beats: ["松松醒来时，发现天空灰蒙蒙的，彩虹不见了。", "松松、莓莓和小蓝沿着发光的雨滴走进森林。", "他们发现一只翅膀被树枝缠住的小鸟，一起把树枝搬开。", "小鸟带大家飞上山坡，找到了藏在云后的太阳。", "阳光照进雨滴，一道大彩虹跨过山谷，大家终于回家了。"] },
+  { title: "小鸭侦探和丢失的帽子", beats: ["鸭鸭准备出门，却发现最喜欢的红帽子不见了。", "它在门边找到湿脚印，拿着放大镜一路追到池塘。", "脚印原来属于小青蛙，青蛙说帽子被风吹进了芦苇丛。", "鸭鸭和青蛙划着叶子小船，把挂在芦苇上的帽子取下来。", "鸭鸭戴回红帽子，并把一枚侦探徽章送给了小青蛙。"] },
+  { title: "会唱歌的萝卜", beats: ["小芽浇水时，菜地里忽然传出很小的歌声。", "她蹲下来倾听，发现一颗萝卜每到太阳升起就会唱歌。", "乌云挡住太阳，萝卜没了声音，小芽决定爬上风车。", "风车转起来吹散乌云，阳光重新落到菜地。", "整片萝卜一起唱起丰收歌，村民们围着菜地跳舞。"] },
+  { title: "星星鱼的海底旅行", beats: ["星星鱼想看陆地上的灯塔，悄悄游出了珊瑚湾。", "一股海流把它卷进黑漆漆的海沟，小虾点亮尾灯来带路。", "他们遇见被渔网缠住的海龟，一起咬断了绳结。", "海龟驮着大家穿过海沟，远处终于出现灯塔的光。", "星星鱼把灯塔的故事带回珊瑚湾，海底朋友听得入了迷。"] },
+  { title: "小牛第一次上学", beats: ["小牛背着新书包出门，却紧张得躲在校门外。", "小兔同学牵着它走进教室，老师在黑板上画出一片农场。", "轮到小牛回答问题时，它把加法题说错了，脸一下红了。", "同学们没有笑，而是用玉米粒陪它重新数了一遍。", "小牛答对最后一道题，放学时已经交到了好多朋友。"] },
+  { title: "云朵列车出发啦", beats: ["云朵列车载着孩子们出发，却在半空突然停住了。", "列车长发现前方的风被一座大山挡住，车轮转不起来。", "大家打开车窗一起吹风，小鸟们也飞来帮忙扇动翅膀。", "一阵大风托起列车，它顺利越过山顶和闪亮的湖面。", "列车准时到达星空站，每位乘客都领到一张云朵车票。"] },
+  { title: "勇敢兔子的夜晚", beats: ["停电的夜晚，小兔听见仓库里传来咚咚声。", "它提着小灯一步步靠近，影子在墙上变得好大。", "小兔推开门，原来是小刺猬被倒下的木箱困住了。", "它叫来朋友们一起抬起木箱，救出了发抖的小刺猬。", "灯重新亮起，小兔发现勇敢不是不害怕，而是害怕也去帮忙。"] },
+  { title: "安安和会跳舞的树", beats: ["安安在林边听见鼓点，却找不到是谁在敲鼓。", "她跟着节拍走进森林，看见老松树的树枝正在轻轻摆动。", "原来树根旁卡着一只发条音乐盒，风一吹就会唱歌。", "安安修好音乐盒，森林里的树一棵接一棵跳起舞来。", "夕阳落下时，老松树送给安安一颗会发光的松果。"] },
+];
+const NATIONAL_STORIES: TvStory[] = [
+  { title: "山谷溪流与古桥", beats: ["摄制组从北林泉眼出发，沿着清澈溪流向南走。", "他们在石桥下发现百年前工匠留下的刻痕。", "大雨让水位上涨，护桥员赶来检查每一块桥石。", "村民一起清走漂来的树枝，溪水重新顺畅流过桥洞。", "夕阳照亮古桥，节目记录下它继续守护山谷的一天。"] },
+  { title: "四季农耕纪录", beats: ["清晨，农夫先摸土壤，判断今天要浇多少水。", "中午大家给幼苗搭架，防止风把嫩茎吹倒。", "一只乌鸦靠近田地，稻草人和围栏保护了种子。", "傍晚成熟作物被装进木箱，送往中心街超市。", "夜里土地安静下来，新的嫩芽正在泥土中生长。"] },
+  { title: "青禾谷传统节日", beats: ["老师带学生拜访做花灯的老手艺人。", "竹条先弯成骨架，再一张张贴上彩纸。", "孩子们在灯面写下谜语，把灯挂到中心广场。", "夜幕降临，村民提着完成的花灯沿河慢慢走。", "最后一盏河灯漂远，大家约好明年再见。"] },
+  { title: "清晨列车穿过枫树林", beats: ["列车员在天亮前检查车灯、车门和每一节车厢。", "第一批乘客上车，列车缓缓离开青禾站。", "枫树林里有小鹿靠近铁轨，司机提前减速等待它离开。", "列车驶过河桥，车窗外的村庄一间间亮起灯。", "太阳升起时，列车准时抵达远方新区。"] },
+];
+const FARM_STORIES: [TvStory, TvStory] = [
+  { title: "雨天宠物照顾课", beats: ["主持人先观察乌云和风向，确认今天会持续下雨。", "小宠物跟着主人出门，没穿雨衣的毛很快被淋湿。", "主人从背包拿出黄色宠物雨衣，逐只扣好扣子。", "穿好雨衣的小宠物在水坑里玩耍，身体仍然暖暖的。", "回到室内后擦干脚掌；鸡、牛、羊不受这套生病规则影响。"] },
+  { title: "幼苗成长观察课", beats: ["主持人把种子放进松软土壤，再轻轻盖上一层土。", "洒水壶从根部慢慢浇水，泥土颜色变深。", "第二天嫩芽钻出地面，保温室让它多长了一个阶段。", "农夫放好稻草人与围栏，乌鸦和小动物不能靠近。", "成熟作物被完整收下，新的种植记录写进农场手册。"] },
+];
 const dailyNewsForState = (state: GameState): DailyNews => {
   const festival = FESTIVAL_SCHEDULE.find((entry) => entry.season === state.season && entry.day === state.day);
   if (state.urgentEvent && !state.urgentEventResolved) {
@@ -853,6 +878,7 @@ export default function FarmGame() {
   const [shippingBinOpen, setShippingBinOpen] = useState(false);
   const [shippingReport, setShippingReport] = useState<{ itemCount: number; earnings: number } | null>(null);
   const [newsBroadcast, setNewsBroadcast] = useState<NewsBroadcast | null>(null);
+  const [tvProgramStep, setTvProgramStep] = useState(0);
   const [chestDepositStreak, setChestDepositStreak] = useState<{ resource: StorableResource; count: number } | null>(null);
   const [bulkChestPrompt, setBulkChestPrompt] = useState<StorableResource | null>(null);
   const [shippingDepositStreak, setShippingDepositStreak] = useState<{ itemId: string; count: number } | null>(null);
@@ -1232,12 +1258,19 @@ export default function FarmGame() {
 
   useEffect(() => {
     if (!newsBroadcast) return;
+    setTvProgramStep(0);
+    const storyTimer = newsBroadcast.channel === "news" ? null : window.setInterval(() => {
+      setTvProgramStep((step) => Math.min(4, step + 1));
+    }, 3_000);
     const broadcastTimer = window.setTimeout(() => {
       setNewsBroadcast(null);
       setMessage(newsBroadcast.automatic ? "紧急新闻播报结束。请根据大屏幕地点赶到现场帮忙。" : "本次电视节目播放结束，画面自动关闭了。 ");
-    }, newsBroadcast.channel === "news" ? 9_000 : 12_000);
-    return () => window.clearTimeout(broadcastTimer);
-  }, [newsBroadcast]);
+    }, newsBroadcast.channel === "news" ? 9_000 : 16_500);
+    return () => {
+      window.clearTimeout(broadcastTimer);
+      if (storyTimer) window.clearInterval(storyTimer);
+    };
+  }, [newsBroadcast?.automatic, newsBroadcast?.channel, newsBroadcast?.news.kind]);
 
   useEffect(() => {
     if (!ready) return;
@@ -4498,6 +4531,11 @@ export default function FarmGame() {
   const previewFestival = festivalPreview ? FESTIVAL_SCHEDULE.find((festival) => festival.id === festivalPreview.festivalId) ?? null : null;
   const currentFestival = previewFestival ?? actualFestival;
   const dailyNews = dailyNewsForState(game);
+  const tvEpisodeDay = (game.year - 1) * 112 + game.season * 28 + game.day;
+  const sportsStory = SPORTS_STORIES[tvEpisodeDay % SPORTS_STORIES.length];
+  const kidsStory = KIDS_STORIES[tvEpisodeDay % KIDS_STORIES.length];
+  const nationalStory = NATIONAL_STORIES[tvEpisodeDay % NATIONAL_STORIES.length];
+  const farmStory = FARM_STORIES[game.weather === "rain" || game.weather === "thunder" ? 0 : 1];
   const displaySeason = festivalPreview?.season ?? game.season;
   const displayDay = festivalPreview?.day ?? game.day;
   const festivalProcessAtVenue = Boolean(currentFestival && FESTIVAL_PROCESS_STEPS[currentFestival.id] && (
@@ -5479,12 +5517,12 @@ export default function FarmGame() {
           <nav aria-label="电视遥控器频道"><button className={newsBroadcast.channel === "news" ? "active" : ""} onClick={() => setNewsBroadcast((current) => current ? { ...current, channel: "news" } : current)}>1 新闻</button><button className={newsBroadcast.channel === "sports" ? "active" : ""} onClick={() => setNewsBroadcast((current) => current ? { ...current, channel: "sports" } : current)}>2 体育</button><button className={newsBroadcast.channel === "national" ? "active" : ""} onClick={() => setNewsBroadcast((current) => current ? { ...current, channel: "national" } : current)}>3 国家</button><button className={newsBroadcast.channel === "kids" ? "active" : ""} onClick={() => setNewsBroadcast((current) => current ? { ...current, channel: "kids" } : current)}>4 少儿</button><button className={newsBroadcast.channel === "farm" ? "active" : ""} onClick={() => setNewsBroadcast((current) => current ? { ...current, channel: "farm" } : current)}>5 农场</button></nav>
           <div className="tv-program-screen">
             {newsBroadcast.channel === "news" && <><div className="news-location-scene"><i className="news-place-building" /><i className="news-place-roof" /><i className="news-place-door" /><b className="news-place-event" /><em className="news-place-person" /><u className="news-place-detail" /><span>{newsBroadcast.news.kind === "fire" ? "中心街 · 木匠工坊" : newsBroadcast.news.kind === "theft" ? "中心街 · 青禾超市" : newsBroadcast.news.kind === "injury" ? "中心街 · 健康诊所外" : newsBroadcast.news.kind === "cave" || newsBroadcast.news.kind === "missingPet" ? "青禾农场 · 山洞内部" : newsBroadcast.news.kind === "anan" ? "西边 · 安安的林边小屋" : newsBroadcast.news.kind === "school" ? "文化街 · 青禾学校" : newsBroadcast.news.kind === "supermarket" ? "中心街 · 青禾超市" : newsBroadcast.news.kind === "festival" ? "节日活动现场" : "青禾农场 · 雷雨现场"}</span></div><div className="news-presenter"><i /><b /><em className="presenter-microphone" /><u className="presenter-pointing-arm" /><span>主持人 青青</span></div><div className="news-caption"><strong>{newsBroadcast.news.urgent ? "紧急" : "今日"}新闻</strong><p>{newsBroadcast.news.text}</p><small>{newsBroadcast.forecast}</small></div></>}
-            {newsBroadcast.channel === "sports" && <div className={`sports-program sports-match-${((game.year - 1) * 112 + game.season * 28 + game.day) % 2}`}><div className="sports-scoreboard"><span>青禾队</span><b>{2 + game.day % 4} : {1 + (game.day * 2) % 4}</b><span>枫叶队</span></div><div className="sports-field"><i /><i /><i /><i /><b className="sports-ball" /><em className="sports-goal" /></div><strong>{game.day % 2 ? "今日足球赛 · 下半场" : "山谷篮球联赛 · 第三节"}</strong></div>}
-            {newsBroadcast.channel === "national" && <div className={`national-program national-episode-${game.day % 4}`}><i className="national-mountain" /><i className="national-river" /><i className="national-train" /><b className="national-village" /><strong>{["山谷溪流与古桥", "四季农耕纪录", "青禾谷传统节日", "清晨列车穿过枫树林"][game.day % 4]}</strong><p>今天的纪录片正在介绍青禾谷真实存在的风景和生活。</p></div>}
-            {newsBroadcast.channel === "kids" && <div className={`kids-program kids-episode-${((game.year - 1) * 112 + game.season * 28 + game.day) % 8}`}><div className="cartoon-sky"><i /><i /></div><div className="cartoon-characters"><i /><b /><em /></div><strong>{["松果小队找彩虹", "小鸭侦探和丢失的帽子", "会唱歌的萝卜", "星星鱼的海底旅行", "小牛第一次上学", "云朵列车出发啦", "勇敢兔子的夜晚", "安安和会跳舞的树"][((game.year - 1) * 112 + game.season * 28 + game.day) % 8]}</strong><p>每天轮换一集的像素动画片。</p></div>}
-            {newsBroadcast.channel === "farm" && <div className="farm-channel-program"><div className="farm-channel-field"><i /><i /><i /><i /><b /></div><strong>今日农场小课堂</strong><p>{game.weather === "rain" || game.weather === "thunder" ? "今天雨水会自动浇湿作物；跟在脚边的小宠物要穿黄色雨衣，鸡、牛、羊不会淋雨生病。" : "幼苗浇水后会在第二天成长，保温室还能额外加快一个阶段。"}</p><small>{newsBroadcast.forecast}</small></div>}
+            {newsBroadcast.channel === "sports" && <div className={`sports-program sports-match-${tvEpisodeDay % 2} tv-story-step-${tvProgramStep}`}><div className="sports-scoreboard"><span>青禾队</span><b>{2 + game.day % 4 + (tvProgramStep >= 4 ? 1 : 0)} : {1 + (game.day * 2) % 4}</b><span>枫叶队</span></div><div className="sports-field"><i className="sports-player player-one" /><i className="sports-player player-two" /><i className="sports-player player-three" /><i className="sports-player player-four" /><b className="sports-ball" /><em className="sports-goal" /><span className="sports-referee" /></div><strong>{sportsStory.title}</strong><div className="tv-story-caption"><b>第 {tvProgramStep + 1} 幕</b><span>{sportsStory.beats[tvProgramStep]}</span></div></div>}
+            {newsBroadcast.channel === "national" && <div className={`national-program national-episode-${tvEpisodeDay % 4} tv-story-step-${tvProgramStep}`}><i className="national-mountain" /><i className="national-river" /><i className="national-train" /><b className="national-village" /><span className="national-camera-team"><i /><b /></span><strong>{nationalStory.title}</strong><div className="tv-story-caption"><b>纪录片 · 第 {tvProgramStep + 1} 段</b><span>{nationalStory.beats[tvProgramStep]}</span></div></div>}
+            {newsBroadcast.channel === "kids" && <div className={`kids-program kids-episode-${tvEpisodeDay % 8} tv-story-step-${tvProgramStep}`}><div className="cartoon-sky"><i /><i /></div><div className="cartoon-story-prop"><i /><b /><em /></div><div className="cartoon-characters"><i /><b /><em /></div><strong>{kidsStory.title}</strong><div className="cartoon-speech">{tvProgramStep === 4 ? "我们成功啦！" : tvProgramStep === 0 ? "今天发生了什么？" : "一起想办法吧！"}</div><div className="tv-story-caption"><b>第 {tvProgramStep + 1} 幕</b><span>{kidsStory.beats[tvProgramStep]}</span></div></div>}
+            {newsBroadcast.channel === "farm" && <div className={`farm-channel-program tv-story-step-${tvProgramStep}`}><div className="farm-channel-field"><i /><i /><i /><i /><b /><span className="farm-host" /></div><strong>{farmStory.title}</strong><div className="tv-story-caption"><b>步骤 {tvProgramStep + 1}/5</b><span>{farmStory.beats[tvProgramStep]}</span></div><small>{newsBroadcast.forecast}</small></div>}
           </div>
-          <footer><span>{newsBroadcast.automatic && newsBroadcast.news.urgent ? "紧急节目结束后，请立即赶到画面里的地点帮忙" : "节目播放完会自动关闭 · 也可以使用上方遥控器换台"}</span><i /></footer>
+          <footer><span>{newsBroadcast.automatic && newsBroadcast.news.urgent ? "紧急节目结束后，请立即赶到画面里的地点帮忙" : newsBroadcast.channel === "news" ? "新闻播放完会自动关闭 · 也可以使用上方遥控器换台" : "五幕剧情会依次播放 · 播完自动关闭 · 可随时换台"}</span><i /></footer>
         </section>
       </div>}
       {mallOpen && mallFloor === 1 && <button className="mall-pet-food-kiosk" onClick={buyPetFood}><i /><span><b>宠物补给柜</b><small>便宜宠物粮 · 5 金币 / 10份</small></span></button>}
