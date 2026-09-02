@@ -7669,10 +7669,15 @@ export default function FarmGame() {
         </section>
       </section>
 
-      <div className="mobile-controls" aria-label="移动控制">
-        <button onClick={() => move(-1, 0)} aria-label="向左">←</button>
-        <div><button onClick={() => move(0, -1)} aria-label="向上">↑</button><button onClick={() => move(0, 1)} aria-label="向下">↓</button></div>
-        <button onClick={() => move(1, 0)} aria-label="向右">→</button>
+      <div className="mobile-controls" aria-label="触屏方向键">
+        <span>方向键</span>
+        <div className="mobile-control-grid">
+          <button className="mobile-up" onClick={() => move(0, -1)} aria-label="向上走一步">↑</button>
+          <button className="mobile-left" onClick={() => move(-1, 0)} aria-label="向左走一步">←</button>
+          <i aria-hidden="true" />
+          <button className="mobile-right" onClick={() => move(1, 0)} aria-label="向右走一步">→</button>
+          <button className="mobile-down" onClick={() => move(0, 1)} aria-label="向下走一步">↓</button>
+        </div>
       </div>
     </main>
   );
