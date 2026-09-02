@@ -19,6 +19,7 @@
 @import "./tv-stories.css";
 @import "./living-world-expansion.css";
 @import "./village-map.css";
+@import "./resident-quests.css";
 
 :root {
   --ink: #263d31;

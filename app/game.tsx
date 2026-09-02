@@ -44,6 +44,8 @@ type ShippingItemGroup = "resource" | "seed" | "craft" | "single";
 type ShippingSingleField = "wood" | "stone" | "diamonds" | "herbs" | "pinecones" | "pineNuts" | "resin" | "eggs" | "milk" | "wool" | "feathers" | "softFur" | "petBones" | "cookies" | "crabs" | "shrimp" | "cookedCrabs" | "cookedShrimp" | "drinks" | "oldSocks" | "puddleHoes";
 type ShippingCatalogItem = { id: string; name: string; short: string; price: number; group: ShippingItemGroup; key: string };
 type AtticResource = "wood" | "stone" | "diamonds" | "herbs" | "resin" | "pinecones" | "pineNuts" | "eggs" | "milk" | "wool";
+type ResidentQuestId = "orchardCrate" | "clinicParcel" | "roadSigns" | "workshopMeasure" | "springWater" | "museumRubbing" | "libraryPages" | "schoolSpecimen" | "ananTrail";
+type ResidentQuest = { id: ResidentQuestId; giver: string; title: string; location: string; village: VillageId; scene: Scene; detail: string; action: string; icon: string; reward: number };
 
 type OnlinePlayer = {
   deviceId: string;
@@ -199,6 +201,7 @@ type GameState = {
   forestQuestProgressDay: number;
   forestQuestEpisode: number;
   forestQuestNextAbsoluteDay: number;
+  residentQuestCompletions: string[];
   residentTripDays: string[];
   cropQualityHarvests: CropQualityRecord;
   cropQualityStock: CropQualityStock;
@@ -558,6 +561,18 @@ const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description:
   qinghe: { name: "青禾村", farm: "青禾农场", description: "绿野、溪流与温暖的木屋" },
   maple: { name: "枫叶村", farm: "枫叶农场", description: "红枫、山路与安静的坡地" },
 };
+
+const RESIDENT_QUESTS: ResidentQuest[] = [
+  { id: "orchardCrate", giver: "林婶", title: "果园里滚走的果篮", location: "东郊果园", village: "qinghe", scene: "eastNeighbor", detail: "林婶的竹篮滚到果树后面，请到东郊找到它并把散落果子装回去。", action: "扶正竹篮并装回果子", icon: "篮", reward: 75 },
+  { id: "clinicParcel", giver: "白医生", title: "诊所门前的护理包", location: "青禾中心街", village: "qinghe", scene: "town", detail: "送药车把护理包放错了门口，请在诊所外核对名字和封口。", action: "核对护理包标签", icon: "护", reward: 80 },
+  { id: "roadSigns", giver: "周镇长", title: "文化街褪色的路牌", location: "清河文化街", village: "qinghe", scene: "cultureDistrict", detail: "雨水冲淡了文化街路牌，请逐字查看方向，免得来访居民走错路。", action: "擦净路牌并核对方向", icon: "牌", reward: 90 },
+  { id: "workshopMeasure", giver: "鲁师傅", title: "山脚院子的木料尺寸", location: "南坡木匠院", village: "qinghe", scene: "southNeighbor", detail: "鲁师傅留下三块长短不同的木料，请到院里重新量好顺序。", action: "按长短整理木料", icon: "尺", reward: 85 },
+  { id: "springWater", giver: "阿麦", title: "咖啡要用的清晨泉水", location: "青禾农场鱼塘边", village: "qinghe", scene: "farm", detail: "阿麦想试做一壶山泉咖啡，请在农场水边装一瓶清晨的水。", action: "在水边装满玻璃瓶", icon: "泉", reward: 70 },
+  { id: "museumRubbing", giver: "沈馆长", title: "博物馆前的旧石纹", location: "清河文化街", village: "qinghe", scene: "cultureDistrict", detail: "博物馆台阶边露出一道旧纹样，请轻轻清理泥土并拓下完整轮廓。", action: "清泥并拓印石纹", icon: "纹", reward: 100 },
+  { id: "libraryPages", giver: "叶老师", title: "北林飘散的书页", location: "北林书屋", village: "qinghe", scene: "northNeighbor", detail: "风把三页农事笔记吹到书屋外，请按照页码收回。", action: "按页码收好散页", icon: "页", reward: 80 },
+  { id: "schoolSpecimen", giver: "许老师", title: "课堂缺少的种子标本", location: "清河文化街", village: "qinghe", scene: "cultureDistrict", detail: "学校标本盒少了一格，请查看花园边的种子并贴上正确名字。", action: "辨认并装好种子标本", icon: "种", reward: 95 },
+  { id: "ananTrail", giver: "安安", title: "林边小路的新脚印", location: "安安的小农场", village: "qinghe", scene: "westFriendFarm", detail: "安安在小路上发现一串陌生脚印，请沿地面慢慢观察它通向哪里。", action: "沿着脚印调查小路", icon: "印", reward: 75 },
+];
 
 const FESTIVAL_SCHEDULE: { season: number; day: number; id: FestivalId; name: string; place: string; description: string }[] = [
   { season: 0, day: 3, id: "seeds", name: "种子分享日", place: "青禾超市", description: "免费领取水果和蔬菜种子大礼包" },
@@ -963,6 +978,7 @@ const makeNewGame = (): GameState => ({
   forestQuestProgressDay: 0,
   forestQuestEpisode: 0,
   forestQuestNextAbsoluteDay: 0,
+  residentQuestCompletions: [],
   residentTripDays: [],
   cropQualityHarvests: makeCropQualityRecord(),
   cropQualityStock: makeCropQualityStock(),
@@ -1027,6 +1043,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       lastTalkedDays: parsed.lastTalkedDays ?? {},
       forestQuestEpisode: parsed.forestQuestEpisode ?? 0,
       forestQuestNextAbsoluteDay: parsed.forestQuestNextAbsoluteDay ?? 0,
+      residentQuestCompletions: parsed.residentQuestCompletions ?? [],
       residentTripDays: parsed.residentTripDays ?? [],
       cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
       cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
@@ -1324,6 +1341,7 @@ export default function FarmGame() {
             lastTalkedDays: parsed.lastTalkedDays ?? {},
             forestQuestEpisode: parsed.forestQuestEpisode ?? 0,
             forestQuestNextAbsoluteDay: parsed.forestQuestNextAbsoluteDay ?? 0,
+            residentQuestCompletions: parsed.residentQuestCompletions ?? [],
             residentTripDays: parsed.residentTripDays ?? [],
             cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
             cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
@@ -1503,6 +1521,7 @@ export default function FarmGame() {
           lastTalkedDays: data.save.lastTalkedDays ?? {},
           forestQuestEpisode: data.save.forestQuestEpisode ?? 0,
           forestQuestNextAbsoluteDay: data.save.forestQuestNextAbsoluteDay ?? 0,
+          residentQuestCompletions: data.save.residentQuestCompletions ?? [],
           residentTripDays: data.save.residentTripDays ?? [],
           cropQualityHarvests: mergeCropQualityRecord(data.save.cropQualityHarvests),
           cropQualityStock: mergeCropQualityStock(data.save.cropQualityStock),
@@ -5568,6 +5587,26 @@ export default function FarmGame() {
   const relationshipPeople = Object.keys(PERSON_DIALOGUES).filter((name) => !name.includes("助手") || name === "诊所助手");
   const qualityTotals = CROP_TYPES.reduce((totals, crop) => ({ normal: totals.normal + game.cropQualityHarvests[crop].normal, silver: totals.silver + game.cropQualityHarvests[crop].silver, gold: totals.gold + game.cropQualityHarvests[crop].gold }), { normal: 0, silver: 0, gold: 0 });
   const absoluteGameDay = (game.year - 1) * 112 + game.season * 28 + game.day;
+  const residentQuestCycle = Math.floor(Math.max(0, absoluteGameDay - 1) / 3);
+  const activeResidentQuests = Array.from({ length: 3 }, (_, index) => RESIDENT_QUESTS[(residentQuestCycle * 3 + index) % RESIDENT_QUESTS.length]);
+  const residentQuestKey = (quest: ResidentQuest) => `${residentQuestCycle}-${quest.id}`;
+  const completedResidentQuestCount = activeResidentQuests.filter((quest) => game.residentQuestCompletions.includes(residentQuestKey(quest))).length;
+  const residentQuestsHere = activeResidentQuests.filter((quest) => quest.village === activeVillage && quest.scene === scene && !game.residentQuestCompletions.includes(residentQuestKey(quest)));
+  const completeResidentQuest = (quest: ResidentQuest) => {
+    const completionKey = residentQuestKey(quest);
+    if (game.residentQuestCompletions.includes(completionKey)) {
+      setMessage(`${quest.giver}的“${quest.title}”已经完成了。`);
+      return;
+    }
+    setGame((current) => withFriendship({
+      ...current,
+      coins: current.coins + quest.reward,
+      residentQuestCompletions: [...current.residentQuestCompletions, completionKey].slice(-48),
+      journalEntries: [`完成${quest.giver}发布的“${quest.title}”：${quest.action}。获得 ${quest.reward} 金币。`, ...current.journalEntries].slice(0, 40),
+    }, quest.giver, 5));
+    setMessage(`${quest.action}完成！${quest.giver}送来 ${quest.reward} 金币，并且和小禾更亲近了。`);
+    playTone(920);
+  };
   const forestStoryTitle = FOREST_STORY_TITLES[game.forestQuestEpisode] ?? FOREST_STORY_TITLES[0];
   const forestStoryDaysLeft = game.forestQuestStage === 5 ? Math.max(0, game.forestQuestNextAbsoluteDay - absoluteGameDay) : 0;
   const residentBoardDaysLeft = 3 - (absoluteGameDay % 3);
@@ -6971,7 +7010,7 @@ export default function FarmGame() {
           <header><div><span>小禾的生活记录</span><h2 id="valley-journal-title">山谷日记与收藏册</h2></div><button onClick={() => setJournalOpen(false)} aria-label="关闭山谷日记">×</button></header>
           <nav><button className={journalTab === "today" ? "active" : ""} onClick={() => setJournalTab("today")}>日记与任务</button><button className={journalTab === "friends" ? "active" : ""} onClick={() => setJournalTab("friends")}>居民好感</button><button className={journalTab === "collection" ? "active" : ""} onClick={() => setJournalTab("collection")}>收藏图鉴</button><button className={journalTab === "recipes" ? "active" : ""} onClick={() => setJournalTab("recipes")}>料理食谱</button></nav>
           <div className="journal-pages">
-            {journalTab === "today" && <><div className="task-refresh-board"><article><i>日</i><div><strong>今日小目标</strong><span>{game.daily.rewardClaimed ? "今天已经完成" : `${completed}/3 已完成`}</span><small>还有 1 个游戏日 · 明天早上 7:00 刷新</small></div></article><article><i>委</i><div><strong>居民委托板</strong><span>{residentBoardDaysLeft} 个游戏日后更换一批新委托</span><small>旧委托不会一直占着公告栏</small></div></article><article className={game.forestQuestStage === 5 ? "waiting-story" : "active-story"}><i>林</i><div><strong>安安的连续森林故事</strong><span>{game.forestQuestStage === 5 ? forestStoryDaysLeft > 0 ? `还有 ${forestStoryDaysLeft} 个游戏日出现新任务` : "新线索已经出现，去找安安" : `正在进行：${forestStoryTitle}`}</span><small>故事完成后会休息几天，不会永远停在同一项</small></div></article></div><article className="forest-story-journal"><span>第 {game.forestQuestEpisode + 1} 段连续故事</span><h3>安安与{forestStoryTitle}</h3><div className="forest-story-progress">{[0, 1, 2, 3, 4, 5].map((stage) => <i key={stage} className={game.forestQuestStage >= stage ? "done" : ""}>{stage === 5 ? "★" : stage + 1}</i>)}</div><p>{game.forestQuestStage === 5 ? forestStoryDaysLeft > 0 ? `这段故事已经完成。安安还在观察森林，${forestStoryDaysLeft} 个游戏日后日记会出现新的动静。` : "纸页边缘出现了新记号，安安似乎已经发现下一件事。" : game.forestQuestEpisode === 0 ? game.forestQuestStage === 0 ? "老松树的颜色有些不对，先去安安的小农场亲自看看。" : "日记只记录已经观察到的现象；去现场、等待天气与材料慢慢发生变化。" : game.forestQuestEpisode === 1 ? "玻璃瓶里的小种子会对不同气味和夜晚光线产生反应。" : game.forestQuestEpisode === 2 ? "湿木板、羽毛和树脂留下的痕迹，正在慢慢指向一座旧鸟屋。" : "小溪石缝里仍有很轻的水声，答案可能藏在潮湿的泥土下面。"}</p></article><div className="journal-entry-list">{game.journalEntries.length ? game.journalEntries.map((entry, index) => <p key={`${entry}-${index}`}><i>{index === 0 ? "今" : "记"}</i><span>{entry}</span></p>) : <p>今天还没有写下新的事情。</p>}</div></>}
+            {journalTab === "today" && <><div className="task-refresh-board"><article><i>日</i><div><strong>今日小目标</strong><span>{game.daily.rewardClaimed ? "今天已经完成" : `${completed}/3 已完成`}</span><small>还有 1 个游戏日 · 明天早上 7:00 刷新</small></div></article><article><i>委</i><div><strong>居民轮流发布委托</strong><span>{completedResidentQuestCount}/3 已完成 · {residentBoardDaysLeft} 天后换一批</span><small>林婶、鲁师傅、叶老师等居民都会发布任务</small></div></article><article className={game.forestQuestStage === 5 ? "waiting-story" : "active-story"}><i>林</i><div><strong>安安的连续森林故事</strong><span>{game.forestQuestStage === 5 ? forestStoryDaysLeft > 0 ? `还有 ${forestStoryDaysLeft} 个游戏日出现新任务` : "新线索已经出现，去找安安" : `正在进行：${forestStoryTitle}`}</span><small>森林故事只是任务中的一条，不是全部任务</small></div></article></div><section className="resident-quest-journal"><header><div><span>本期三份委托 · 每三天轮换</span><h3>邻居们正在等小禾帮忙</h3></div><b>{completedResidentQuestCount}/3</b></header><div>{activeResidentQuests.map((quest) => { const done = game.residentQuestCompletions.includes(residentQuestKey(quest)); const here = quest.village === activeVillage && quest.scene === scene; return <article key={quest.id} className={done ? "completed" : here ? "at-location" : ""} style={personClothesStyle(quest.giver)}><i>{quest.icon}</i><div><small>{quest.giver}发布 · {quest.location}</small><strong>{quest.title}</strong><p>{quest.detail}</p><em>{done ? `已领取 ${quest.reward} 金币 · ${quest.giver}好感 +5` : here ? `已到达 · 奖励 ${quest.reward} 金币 · 好感 +5` : `前往${quest.location} · 完成后好感 +5`}</em></div><button disabled={done} onClick={() => { setJournalOpen(false); if (here) setMessage(`${quest.giver}的委托就在这里：${quest.action}。寻找带黄色感叹号的任务物品。`); else { setMapOpen(true); setMessage(`打开地图，准备前往${quest.location}完成${quest.giver}的委托。`); } }}>{done ? "完成 ✓" : here ? "去现场查看" : "打开地图找地点"}</button></article>; })}</div></section><article className="forest-story-journal"><span>另外保留 · 第 {game.forestQuestEpisode + 1} 段森林故事</span><h3>安安与{forestStoryTitle}</h3><div className="forest-story-progress">{[0, 1, 2, 3, 4, 5].map((stage) => <i key={stage} className={game.forestQuestStage >= stage ? "done" : ""}>{stage === 5 ? "★" : stage + 1}</i>)}</div><p>{game.forestQuestStage === 5 ? forestStoryDaysLeft > 0 ? `这段故事已经完成。安安还在观察森林，${forestStoryDaysLeft} 个游戏日后日记会出现新的动静。` : "纸页边缘出现了新记号，安安似乎已经发现下一件事。" : game.forestQuestEpisode === 0 ? game.forestQuestStage === 0 ? "老松树的颜色有些不对，先去安安的小农场亲自看看。" : "日记只记录已经观察到的现象；去现场、等待天气与材料慢慢发生变化。" : game.forestQuestEpisode === 1 ? "玻璃瓶里的小种子会对不同气味和夜晚光线产生反应。" : game.forestQuestEpisode === 2 ? "湿木板、羽毛和树脂留下的痕迹，正在慢慢指向一座旧鸟屋。" : "小溪石缝里仍有很轻的水声，答案可能藏在潮湿的泥土下面。"}</p></article><div className="journal-entry-list">{game.journalEntries.length ? game.journalEntries.map((entry, index) => <p key={`${entry}-${index}`}><i>{index === 0 ? "今" : "记"}</i><span>{entry}</span></p>) : <p>今天还没有写下新的事情。</p>}</div></>}
             {journalTab === "friends" && <div className="friendship-grid">{relationshipPeople.map((name) => { const points = game.friendship[name] ?? 0; const hearts = Math.min(5, Math.floor(points / 20)); const activity = residentActivity(name, game.hour, game.day, game.weather); return <article key={name} style={personClothesStyle(name)}><div className="friend-portrait"><i /><b /></div><div><strong>{name}</strong><span className="heart-row">{"♥".repeat(hearts)}<em>{"♡".repeat(5 - hearts)}</em></span><small>{points}/100 · {activity.label}</small></div></article>; })}</div>}
             {journalTab === "collection" && <div className="collection-grid"><article><b>★</b><strong>作物品质</strong><span>普通 {qualityTotals.normal}</span><span>银星 {qualityTotals.silver}</span><span>金星 {qualityTotals.gold}</span></article><article><b>书</b><strong>山谷图书</strong><span>{game.libraryBooks.length}/{LOST_BOOKS.length} 本归还</span></article><article><b>◆</b><strong>博物馆藏品</strong><span>{game.museumArtifacts.length}/{RARE_ARTIFACTS.length} 件捐赠</span></article><article><b>视</b><strong>动画收藏</strong><span>看过 {game.watchedTvEpisodes.length} 集不同动画</span></article><article><b>鱼</b><strong>钓鱼记录</strong><span>累计钓到 {game.fishCaught} 条鱼</span></article><article><b>梦</b><strong>梦境记录</strong><span>{game.lastDreamAbsoluteDay > 0 ? "已经遇见过神秘梦境" : "还没有做过特别的梦"}</span></article></div>}
             {journalTab === "recipes" && <div className="recipe-journal"><article className={game.recipesDiscovered.includes("香草烤螃蟹") ? "discovered" : "locked"}><i className="cooked-crab-icon" /><div><strong>香草烤螃蟹</strong><p>切开蟹壳、控制火候，最后放进深盘。熟食在餐桌吃恢复更多体力。</p></div><span>{game.recipesDiscovered.includes("香草烤螃蟹") ? "已学会" : "去二楼厨房发现"}</span></article><article className={game.recipesDiscovered.includes("清香炒小虾") ? "discovered" : "locked"}><i className="cooked-shrimp-icon" /><div><strong>清香炒小虾</strong><p>处理小虾、及时翻面，再装进白瓷盘，保持清亮颜色。</p></div><span>{game.recipesDiscovered.includes("清香炒小虾") ? "已学会" : "去二楼厨房发现"}</span></article></div>}
@@ -7153,6 +7192,7 @@ export default function FarmGame() {
             {twilightLevel > 0 && <div className="twilight-layer" aria-hidden="true" />}
             {scene !== "farm" && <div className={`outdoor-lamps outdoor-lamps-${scene}`} aria-hidden="true"><i /><i /><i /><i /></div>}
             {!activeBuilding && !neighborInterior && !residentHome && !friendHomeOpen && roamingResidents.length > 0 && <div className={`roaming-residents roaming-${scene}`} aria-label="按照当天作息来到这里的居民">{roamingResidents.map(({ name, schedule }, index) => <button key={`roaming-${name}`} className={`roaming-resident npc-activity-${schedule.key}`} style={{ ...personClothesStyle(name), "--roam-index": index } as CSSProperties} onClick={(event) => { event.stopPropagation(); meetScheduledResident(name, schedule); }}><i /><b /><span>{name}<small>{schedule.label}</small>{schedule.invite && (game.friendship[name] ?? 0) >= 20 && <em>可能邀请小禾一起去玩</em>}</span></button>)}</div>}
+            {!activeBuilding && !neighborInterior && !residentHome && !friendHomeOpen && residentQuestsHere.length > 0 && <div className={`resident-quest-scene quest-scene-${scene}`} aria-label="当前地点的居民委托">{residentQuestsHere.map((quest, index) => <button key={`scene-quest-${quest.id}`} className={`resident-quest-object quest-${quest.id}`} style={{ "--quest-index": index } as CSSProperties} onClick={(event) => { event.stopPropagation(); completeResidentQuest(quest); }}><span className="quest-alert">!</span><i>{quest.icon}</i><div><small>{quest.giver}发布的任务</small><strong>{quest.title}</strong><p>{quest.action}</p><em>完成奖励：{quest.reward} 金币 · 好感 +5</em></div><b>动手完成</b></button>)}</div>}
             {selectedCraftItem && scene === "farm" && <div className="placement-controls" onClick={(event) => event.stopPropagation()}><strong>正在摆放：{CRAFT_RECIPES[selectedCraftItem].name}</strong>{(selectedCraftItem === "sign" || selectedCraftItem === "bench") && <div><button className={craftRotation === 0 ? "selected" : ""} onClick={() => setCraftRotation(0)}>横着</button><button className={craftRotation === 90 ? "selected" : ""} onClick={() => setCraftRotation(90)}>竖着</button><button className={craftRotation === 45 ? "selected" : ""} onClick={() => setCraftRotation(45)}>斜着</button></div>}<span>{selectedCraftItem === "fence" ? "点击农田四周的绿色位置，围栏会自动对齐" : "选好方向后，点击农场空地"}</span><button className="cancel-placement" onClick={() => setSelectedCraftItem(null)}>取消</button></div>}
 
             {scene === "farm" ? (

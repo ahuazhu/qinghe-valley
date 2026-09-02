@@ -1,0 +1,180 @@
+/* Rotating neighbour commissions appear both in the journal and as grounded
+   task objects at their real locations. */
+.resident-quest-journal {
+  margin: 0 0 13px;
+  padding: 14px;
+  border: 3px solid #b9864e;
+  border-radius: 13px;
+  background: linear-gradient(145deg, #fff5d4, #eed6a5);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .5);
+}
+.resident-quest-journal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.resident-quest-journal > header span,
+.resident-quest-journal > header h3 { display: block; }
+.resident-quest-journal > header span { color: #8d633d; font-size: 8px; }
+.resident-quest-journal > header h3 { margin: 2px 0 0; color: #574333; font-size: 15px; }
+.resident-quest-journal > header > b {
+  min-width: 48px;
+  padding: 8px;
+  border: 3px solid #6d533e;
+  border-radius: 12px;
+  color: white;
+  background: #648255;
+  text-align: center;
+  font-size: 13px;
+}
+.resident-quest-journal > div { display: grid; gap: 8px; }
+.resident-quest-journal article {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  border: 3px solid #c6aa72;
+  border-radius: 12px;
+  background: #fffaf0;
+}
+.resident-quest-journal article > i {
+  display: grid;
+  place-items: center;
+  width: 47px;
+  height: 47px;
+  border: 4px solid #634738;
+  border-radius: 50%;
+  color: white;
+  background: var(--cloth, #7e9c66);
+  box-shadow: inset -6px -7px rgba(63, 52, 38, .2);
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 900;
+}
+.resident-quest-journal article small,
+.resident-quest-journal article strong,
+.resident-quest-journal article p,
+.resident-quest-journal article em { display: block; }
+.resident-quest-journal article small { color: #8b684b; font-size: 7px; }
+.resident-quest-journal article strong { margin-top: 2px; color: #4d4035; font-size: 12px; }
+.resident-quest-journal article p { margin: 3px 0; color: #706150; font-size: 9px; line-height: 1.45; }
+.resident-quest-journal article em { color: #55714e; font-size: 8px; font-style: normal; font-weight: 900; }
+.resident-quest-journal article > button {
+  min-width: 104px;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 9px;
+  color: white;
+  background: #648255;
+  box-shadow: inset 0 -4px #49663f;
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 900;
+}
+.resident-quest-journal article.at-location { border-color: #d18a3f; background: #fff1bd; box-shadow: 0 0 0 3px rgba(246, 196, 76, .25); }
+.resident-quest-journal article.completed { border-color: #9ab88c; background: #eef5df; opacity: .76; }
+.resident-quest-journal article.completed > button { background: #82917b; box-shadow: none; cursor: default; }
+
+.resident-quest-scene {
+  position: absolute;
+  z-index: 74;
+  right: 2%;
+  top: 16%;
+  width: min(285px, 31%);
+  pointer-events: none;
+}
+.resident-quest-object {
+  position: relative;
+  width: 100%;
+  min-height: 91px;
+  margin-top: calc(var(--quest-index, 0) * 7px);
+  display: grid;
+  grid-template-columns: 49px minmax(0, 1fr);
+  gap: 8px;
+  padding: 9px 9px 8px;
+  border: 5px solid #6d4a33;
+  border-radius: 14px;
+  color: #4b3a2e;
+  background: linear-gradient(145deg, #fff0b3, #e3b767);
+  box-shadow: 0 8px 0 rgba(75, 52, 36, .23), 0 13px 25px rgba(41, 47, 30, .22);
+  cursor: pointer;
+  pointer-events: auto;
+  text-align: left;
+  image-rendering: pixelated;
+}
+.resident-quest-object:hover,
+.resident-quest-object:focus-visible { transform: translateY(-3px); outline: 4px solid rgba(255, 238, 126, .82); }
+.resident-quest-object > i {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  align-self: center;
+  border: 4px solid #624534;
+  border-radius: 9px;
+  color: #fff8d2;
+  background: #9f6841;
+  box-shadow: inset -7px -8px #76503b;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 900;
+}
+.resident-quest-object small,
+.resident-quest-object strong,
+.resident-quest-object p,
+.resident-quest-object em { display: block; }
+.resident-quest-object small { color: #8a5d3a; font-size: 6px; font-weight: 900; }
+.resident-quest-object strong { margin-top: 2px; font-size: 10px; }
+.resident-quest-object p { margin: 3px 0 2px; font-size: 7px; line-height: 1.35; }
+.resident-quest-object em { color: #4f7148; font-size: 6px; font-style: normal; font-weight: 900; }
+.resident-quest-object > b {
+  grid-column: 1 / -1;
+  padding: 5px 7px;
+  border-radius: 7px;
+  color: white;
+  background: #618150;
+  text-align: center;
+  font-size: 7px;
+}
+.quest-alert {
+  position: absolute;
+  z-index: 3;
+  left: -12px;
+  top: -22px;
+  width: 34px;
+  height: 43px;
+  display: grid;
+  place-items: center;
+  border: 5px solid #704a31;
+  border-radius: 50% 50% 45% 45%;
+  color: #6c462e;
+  background: #ffd85a;
+  box-shadow: 0 4px #b77b3c;
+  font-size: 20px;
+  font-weight: 1000;
+  animation: residentQuestBounce .8s steps(2, end) infinite;
+}
+.quest-orchardCrate > i { background: #bd7b42; box-shadow: inset -7px -8px #8b5b38; }
+.quest-clinicParcel > i { background: #e6ece4; color: #c64845; box-shadow: inset -7px -8px #bbc8bf; }
+.quest-roadSigns > i { background: #637f4d; box-shadow: inset -7px -8px #48633f; }
+.quest-workshopMeasure > i { background: #bd9957; box-shadow: inset -7px -8px #8c6a43; }
+.quest-springWater > i { background: #68a9b8; box-shadow: inset -7px -8px #4c7f8b; }
+.quest-museumRubbing > i { background: #7b748a; box-shadow: inset -7px -8px #5b566a; }
+.quest-libraryPages > i { background: #8a685c; box-shadow: inset -7px -8px #644d44; }
+.quest-schoolSpecimen > i { background: #718f51; box-shadow: inset -7px -8px #526c42; }
+.quest-ananTrail > i { background: #9b6a51; box-shadow: inset -7px -8px #704d3e; }
+@keyframes residentQuestBounce { 50% { translate: 0 -6px; } }
+
+@media (max-width: 760px) {
+  .resident-quest-journal article { grid-template-columns: 42px 1fr; }
+  .resident-quest-journal article > i { width: 40px; height: 40px; }
+  .resident-quest-journal article > button { grid-column: 1 / -1; width: 100%; }
+  .resident-quest-scene { right: 3%; top: 18%; width: min(230px, 48%); }
+  .resident-quest-object { min-height: 75px; grid-template-columns: 40px 1fr; padding: 6px; border-width: 4px; }
+  .resident-quest-object > i { width: 39px; height: 39px; font-size: 12px; }
+  .resident-quest-object p { display: none; }
+  .quest-alert { left: -9px; top: -17px; width: 28px; height: 34px; border-width: 4px; font-size: 16px; }
+}
