@@ -3894,12 +3894,23 @@ export default function FarmGame() {
       return;
     }
     if (illness.method === "clinicOnly") {
-      setMessage(`${illness.name}属于必须使用诊所处方药的病种，白医生不会允许小禾自行处理。`);
+      setScene("town");
+      setActiveBuilding("clinic");
+      setMessage(`${illness.name}属于必须使用诊所处方药的病种，已经带小禾来到诊所，请找白医生开药。`);
       return;
     }
     if (illness.method === "baths") {
       const progress = game.treatmentBaths[game.illness] ?? 0;
-      setMessage(`${illness.name}要连续洗三次热水澡并睡觉恢复，目前完成 ${progress}/3 次。去农舍二楼卫生间继续。`);
+      if (!game.upgrades.secondFloor || !game.upgrades.upstairsBathroom) {
+        setMessage(`${illness.name}要连续洗三次热水澡，目前完成 ${progress}/3 次。家里还没有二楼卫生间，需要先请鲁师傅扩建，暂时也可以去诊所处理。`);
+        return;
+      }
+      setScene("farm");
+      setActiveBuilding("farmhouse");
+      setHouseFloor(2);
+      setUpstairsRoom("bathroom");
+      setIndoorPlayer({ x: 27, y: 71 });
+      setMessage(`${illness.name}要连续完成三次热浴并睡觉恢复，目前 ${progress}/3 次。已经来到卫生间，请使用浴缸与花洒。`);
       return;
     }
     const recipe = illness.recipe;
@@ -3919,6 +3930,20 @@ export default function FarmGame() {
     setCareHeldItem(null);
     setCareSession({ mode: "treatment", illness: game.illness, step: 0, progress: 0, selected: [], herbParts: 0, waterParts: 0 });
     setMessage(`开始处理${illness.name}。必须依次完成观察、备物、消毒、配制、护理和复查。`);
+  };
+
+  const openHealthTreatment = () => {
+    if (!game.sick) {
+      setMessage("小禾现在身体健康，不需要治疗。 ");
+      return;
+    }
+    if (!game.diagnosed || !game.illness) {
+      setScene("town");
+      setActiveBuilding("clinic");
+      setMessage("已经来到青禾诊所。请先点“接受免费检查”，确认具体病种后才能选择正确治疗方法。 ");
+      return;
+    }
+    beginSelfTreatment();
   };
 
   const takeTherapeuticBath = () => {
@@ -4029,6 +4054,60 @@ export default function FarmGame() {
     if (!keepHeld) setCareHeldItem(null);
   };
 
+  const handleCarePointerRelease = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!careSession) return;
+    const dropTarget = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-care-drop]");
+    if (!dropTarget) {
+      if (careHeldItem || medicalThermometerPicked) {
+        setCareHeldItem(null);
+        setMedicalThermometerPicked(false);
+        setMessage("物品没有放到操作区。要按住实物拖动，移动到发光的虚线位置以后再松手，单点不会完成。 ");
+        playTone(220);
+      }
+      return;
+    }
+    const dropKind = dropTarget.dataset.careDrop;
+    if (dropKind === "thermometer") {
+      placeMedicalThermometer();
+      return;
+    }
+    if (dropKind === "generic") {
+      const expected = dropTarget.dataset.careExpected;
+      const token = dropTarget.dataset.careToken;
+      if (expected && token) applyCareItem(expected, token, dropTarget.dataset.careKeep === "true");
+      return;
+    }
+    if (dropKind === "tray") {
+      const correctTools = ["干净毛巾", "温度计", "温水杯", "护理记录本"];
+      if (!careHeldItem) return;
+      if (!correctTools.includes(careHeldItem)) {
+        setMessage(`${careHeldItem}不干净或有破损，不能放进护理盘。请把它拖回柜子，再选择安全器具。`);
+        setCareHeldItem(null);
+        playTone(210);
+        return;
+      }
+      performCareAction(careHeldItem);
+      setCareHeldItem(null);
+      return;
+    }
+    if (dropKind === "treatment") {
+      const treatmentItems: Record<TreatmentMethod, string[]> = {
+        remedy: ["菠萝块", "松子一", "松子二", "药材", "温水"],
+        clinicOnly: ["患者腕带", "处方单", "密封药瓶", "量杯", "用药时间卡"],
+        baths: ["冷水阀", "热水阀", "浴温度计", "干毛巾", "洗浴记录卡"],
+        selfCare: ["药材", "温水一", "温水二", "干净毛巾", "搅拌勺"],
+      };
+      if (!careHeldItem || !treatmentItems[ILLNESSES[careSession.illness].method].includes(careHeldItem)) {
+        setMessage("要从当前病种的材料架上按住正确实物，再拖到中央容器里。 ");
+        setCareHeldItem(null);
+        playTone(220);
+        return;
+      }
+      performCareAction(careHeldItem);
+      setCareHeldItem(null);
+    }
+  };
+
   const renderDetailedCareStep = () => {
     if (!careSession || careSession.step === 0) return null;
     const illness = ILLNESSES[careSession.illness];
@@ -4040,7 +4119,7 @@ export default function FarmGame() {
         draggable
         className={`care-physical-tool ${className} ${careHeldItem === id ? "held" : ""} ${selected.includes(id) ? "used" : ""}`}
         onDragStart={() => pickCareItem(id)}
-        onClick={() => pickCareItem(id)}
+        onPointerDown={() => pickCareItem(id)}
         disabled={selected.includes(id)}
       >
         <i aria-hidden="true">{icon}</i><span>{label}</span>
@@ -4066,7 +4145,7 @@ export default function FarmGame() {
       };
       return <div className="care-preparation-room">
         <div className="care-cabinet"><strong>器械柜</strong><div>{tools.map(([id, label, icon]) => careTool(id, label, icon, correctTools.includes(id) ? "safe-tool" : "unsafe-tool"))}</div></div>
-        <button type="button" className={`care-steel-tray ${careHeldItem ? "ready" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); placeOnTray(); }} onClick={placeOnTray}>
+        <button type="button" data-care-drop="tray" className={`care-steel-tray ${careHeldItem ? "ready" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); placeOnTray(); }}>
           <i className="steel-tray-rim" /><strong>不锈钢护理盘</strong><span>{selected.length}/4</span>
           <div>{correctTools.filter((tool) => selected.includes(tool)).map((tool) => <b key={tool}>{tool}</b>)}</div>
           <small>把四样干净、完好的器具逐件拖到这里</small>
@@ -4083,7 +4162,7 @@ export default function FarmGame() {
         <div className="disinfection-supply">{careTool("消毒棉", "拿起消毒棉", "棉", "cotton-pad-tool")}<small>拿起后依次擦六处；触屏先点棉片，再点位置</small></div>
         <div className="disinfection-stage">
           <i className="disinfection-patient"><b /><em /></i><i className="disinfection-table" />
-          {targets.map(([token, label, kind]) => <button key={token} type="button" className={`disinfection-target target-${kind} ${selected.includes(token) ? "cleaned" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem("消毒棉", token, true); }} onClick={() => applyCareItem("消毒棉", token, true)}><i>{selected.includes(token) ? "✓" : ""}</i><span>{label}</span></button>)}
+          {targets.map(([token, label, kind]) => <button key={token} type="button" data-care-drop="generic" data-care-expected="消毒棉" data-care-token={token} data-care-keep="true" className={`disinfection-target target-${kind} ${selected.includes(token) ? "cleaned" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem("消毒棉", token, true); }}><i>{selected.includes(token) ? "✓" : ""}</i><span>{label}</span></button>)}
         </div>
         <strong className="disinfection-counter">已消毒 {selected.length}/6 处</strong>
       </div>;
@@ -4107,7 +4186,7 @@ export default function FarmGame() {
       return <div className={`care-treatment-lab method-${illness.method}`}>
         <div className="treatment-recipe-note"><i>配</i><div><strong>{illness.name}这一段怎么合到一起</strong><span>{illness.method === "remedy" ? "先点左边的一样材料把它拿起来，再点中间的大碗放进去。菠萝、两粒松子、药材和温水要逐个放完，碗里会真的一项项增加。" : illness.method === "baths" ? "逐个拿起浴室用品放到浴盆旁：先调冷热水，再测温、放毛巾并填写记录。" : illness.method === "clinicOnly" ? "腕带、处方、药瓶、量杯和时间卡要逐件放上护理车核对，不能把药随便混在一起。" : "逐个拿起药材、两杯温水、毛巾和搅拌勺，放到中间的温敷盆里。"}</span></div></div>
         <div className="treatment-material-rack"><strong>{illness.method === "baths" ? "浴室备品架" : illness.method === "clinicOnly" ? "处方核对台" : "病种材料架"}</strong>{items.map(([id, label, icon]) => careTool(id, label, icon))}</div>
-        <button type="button" className={`treatment-work-target ${careHeldItem ? "ready" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); placeTreatmentPart(); }} onClick={placeTreatmentPart}>
+        <button type="button" data-care-drop="treatment" className={`treatment-work-target ${careHeldItem ? "ready" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); placeTreatmentPart(); }}>
           <i className="treatment-vessel"><b /></i><strong>{illness.method === "remedy" ? "研磨调配碗" : illness.method === "baths" ? "恒温浴盆" : illness.method === "clinicOnly" ? "处方护理车" : "温敷调配盆"}</strong>
           <span>{selected.length}/5</span><div>{items.filter(([id]) => selected.includes(id)).map(([id, label]) => <b key={id}>{label}</b>)}</div>
           <small>必须把五件实物逐个放入并完成操作</small>
@@ -4123,7 +4202,7 @@ export default function FarmGame() {
       return <div className="care-bedside-room">
         <div className="bedside-tool-cart"><strong>床边护理车</strong>{procedures.map(([tool, , label, icon]) => careTool(tool, label, icon))}</div>
         <div className="care-bed-scene"><i className="care-bed-patient"><b className="bed-patient-head" /><b className="bed-patient-body" /></i><i className="care-real-bed" />
-          {procedures.map(([tool, token, label, , kind]) => <button key={token} type="button" className={`bedside-care-target target-${kind} ${selected.includes(token) ? "done" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem(tool, token); }} onClick={() => applyCareItem(tool, token)}><i>{selected.includes(token) ? "✓" : "＋"}</i><span>{label}</span></button>)}
+          {procedures.map(([tool, token, label, , kind]) => <button key={token} type="button" data-care-drop="generic" data-care-expected={tool} data-care-token={token} className={`bedside-care-target target-${kind} ${selected.includes(token) ? "done" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem(tool, token); }}><i>{selected.includes(token) ? "✓" : "＋"}</i><span>{label}</span></button>)}
         </div>
       </div>;
     }
@@ -4135,7 +4214,7 @@ export default function FarmGame() {
     return <div className="care-recheck-room">
       <div className="recheck-instruments"><strong>复查器械</strong>{checks.map(([tool, , label, icon]) => careTool(tool, label, icon))}</div>
       <div className="recheck-patient-stage"><i className="recheck-patient"><b /><em /></i><i className="recheck-chart"><b>复查记录</b>{selected.map((item) => <span key={item}>✓ {item}</span>)}</i>
-        {checks.map(([tool, token, label, , kind]) => <button key={token} type="button" className={`recheck-target target-${kind} ${selected.includes(token) ? "done" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem(tool, token); }} onClick={() => applyCareItem(tool, token)}><i>{selected.includes(token) ? "✓" : ""}</i><span>{label}</span></button>)}
+        {checks.map(([tool, token, label, , kind]) => <button key={token} type="button" data-care-drop="generic" data-care-expected={tool} data-care-token={token} className={`recheck-target target-${kind} ${selected.includes(token) ? "done" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem(tool, token); }}><i>{selected.includes(token) ? "✓" : ""}</i><span>{label}</span></button>)}
       </div>
     </div>;
   };
@@ -6662,6 +6741,9 @@ export default function FarmGame() {
             <div className="meter-label"><span>体力</span><b>{game.energy}/100</b></div>
             <div className="meter"><i style={{ width: `${game.energy}%` }} /></div>
           </div>
+          {game.sick && <button className={`health-treatment-card ${game.diagnosed ? "diagnosed" : "needs-check"}`} onClick={openHealthTreatment}>
+            <i>＋</i><div><span>{game.diagnosed && game.illness ? ILLNESSES[game.illness].name : "身体不舒服"}</span><strong>{!game.diagnosed ? "去诊所免费检查" : game.illness && game.learnedTreatments.includes(game.illness) ? ILLNESSES[game.illness].method === "clinicOnly" ? "去诊所使用处方药" : ILLNESSES[game.illness].method === "baths" ? "前往卫生间热浴" : "开始六段自我治疗" : "尚未学会这种治疗"}</strong><small>{game.diagnosed && game.illness ? game.learnedTreatments.includes(game.illness) ? "点击进入真正的治疗操作" : "需要在医疗节学习对应病种" : "必须先知道病种，不能乱用药"}</small></div><b>›</b>
+          </button>}
           <button className="sleep-button sleep-under-energy" onClick={endDayFromAnywhere} disabled={Boolean(bedtimePhase)}><span>☾</span><div><strong>结束今天</strong><small>自动走回家上床</small></div><b>›</b></button>
           <div className="harvest-log">
             <div className="section-title"><span>资源记录</span><button className="auto-sell-button" onClick={sellBackpack}>自动售卖</button></div>
@@ -6918,14 +7000,19 @@ export default function FarmGame() {
               const illness = ILLNESSES[careSession.illness];
               const stepTitles = ["观察三项症状", "准备四样干净器具", "依次完成六处消毒", "按病种执行专属处理", "完成五段护理", "复查四项记录"];
               return <div className="care-session-overlay" role="presentation">
-                <section className={`care-session-panel care-${illness.method}`} role="dialog" aria-modal="true" aria-label={`${illness.name}${careSession.mode === "training" ? "实习" : "自我治疗"}`}>
+                <section className={`care-session-panel care-${illness.method}`} role="dialog" aria-modal="true" aria-label={`${illness.name}${careSession.mode === "training" ? "实习" : "自我治疗"}`} onPointerUpCapture={handleCarePointerRelease} onPointerCancel={() => { setCareHeldItem(null); setMedicalThermometerPicked(false); }}>
                   <header><div><span>{careSession.mode === "training" ? "医疗节 · 病例实习" : "已确诊 · 复杂自我治疗"}</span><h2>{illness.name}</h2><small>第 {careSession.step + 1}/6 段 · 总治疗会消耗 35 点体力</small></div><button onClick={() => setCareSession(null)}>×</button></header>
                   <div className="care-case-file"><i>诊</i><div><strong>{stepTitles[careSession.step]}</strong><p>{careSession.step === 3 ? illness.advice : `${illness.cause}。当前这段必须把所有操作完成，不能直接跳到痊愈。`}</p></div></div>
                   {careSession.step === 0 ? <div className="medical-observation-room">
-                    <div className="medical-step-guide"><span className={careSession.selected.includes("观察喘气") ? "done" : "active"}><i>1</i>点病人，看胸口起伏</span><span className={careSession.selected.includes("测量体温") ? "done" : ""}><i>2</i>拿温度计，拖到脸旁黄色区</span><span className={careSession.selected.includes("记录呼吸频率") ? "done" : ""}><i>3</i>点记录卡写下结果</span></div>
-                    <div className="breathing-patient-row">{["一号病人", "二号病人", "三号病人"].map((patient, index) => <div key={patient} role="button" tabIndex={0} className={`breathing-patient patient-${index + 1} ${careSession.selected.includes("观察喘气") ? "observed" : ""}`} onClick={() => performCareAction("观察喘气")}><i className="patient-head"><b className="strained-mouth" /></i><i className="patient-chest" /><em className="breath-cloud breath-one" /><em className="breath-cloud breath-two" /><span>{patient}<small>{careSession.selected.includes("观察喘气") ? "已经看过呼吸动作" : "点这里观察呼吸"}</small></span>{index === 0 && <button className={`patient-face-target ${careSession.selected.includes("测量体温") ? "measured" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); placeMedicalThermometer(); }} onClick={(event) => { event.stopPropagation(); placeMedicalThermometer(); }}><i />{careSession.selected.includes("测量体温") ? "体温已读出并记录" : "第 2 步：温度计放这里"}</button>}</div>)}</div>
-                    <div className="medical-instrument-tray"><button draggable className={`real-medical-thermometer ${medicalThermometerPicked ? "picked" : ""}`} onDragStart={() => { setMedicalThermometerPicked(true); setMessage("温度计已经拿起。现在把它拖到一号病人脸旁闪光的黄色小区域；触屏再点那个区域。 "); }} onClick={() => { setMedicalThermometerPicked(true); setMessage("温度计已经拿起。触屏请再点一号病人脸旁写着‘温度计放这里’的黄色区域。 "); }}><i /><b /><span>{medicalThermometerPicked ? "手里正拿着温度计 → 放到脸旁" : "第 2 步：拿起温度计"}</span></button><button className={careSession.selected.includes("记录呼吸频率") ? "done" : ""} onClick={() => performCareAction("记录呼吸频率")}><i>记</i><span>第 3 步：打开记录卡<br />写下体温与呼吸</span></button></div>
-                    <small>量体温不是把东西合成：先拿起玻璃温度计，再把它放到病人脸旁的黄色区域，读出温度后才算完成。</small>
+                    <div className="medical-step-guide"><span className={careSession.selected.includes("观察喘气") ? "done" : "active"}><i>1</i>把观察镜拖到胸口</span><span className={careSession.selected.includes("测量体温") ? "done" : ""}><i>2</i>把温度计拖到脸旁</span><span className={careSession.selected.includes("记录呼吸频率") ? "done" : ""}><i>3</i>把记录笔拖到病历卡</span></div>
+                    <div className="breathing-patient-row">{["一号病人", "二号病人", "三号病人"].map((patient, index) => <div key={patient} className={`breathing-patient patient-${index + 1} ${careSession.selected.includes("观察喘气") ? "observed" : ""}`}><i className="patient-head"><b className="strained-mouth" /></i><i className="patient-chest" /><em className="breath-cloud breath-one" /><em className="breath-cloud breath-two" /><span>{patient}<small>{careSession.selected.includes("观察喘气") ? "已经观察胸口起伏" : "正在急促呼吸"}</small></span>{index === 0 && <><button type="button" data-care-drop="generic" data-care-expected="观察镜" data-care-token="观察喘气" className={`patient-chest-target ${careSession.selected.includes("观察喘气") ? "measured" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem("观察镜", "观察喘气"); }}>{careSession.selected.includes("观察喘气") ? "呼吸已观察" : "观察镜放这里"}</button><button type="button" data-care-drop="thermometer" className={`patient-face-target ${careSession.selected.includes("测量体温") ? "measured" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); placeMedicalThermometer(); }}><i />{careSession.selected.includes("测量体温") ? "体温已读出" : "温度计放这里"}</button></>}</div>)}</div>
+                    <div className="medical-instrument-tray">
+                      <button type="button" draggable className={`care-physical-tool observation-lens-tool ${careHeldItem === "观察镜" ? "held" : ""}`} onDragStart={() => pickCareItem("观察镜")} onPointerDown={() => pickCareItem("观察镜")}><i>镜</i><span>按住观察镜<br />拖到胸口</span></button>
+                      <button type="button" draggable className={`real-medical-thermometer ${medicalThermometerPicked ? "picked" : ""}`} onDragStart={() => { setMedicalThermometerPicked(true); setMessage("按住温度计，把它拖到一号病人脸旁闪光的黄色区域以后再松手。 "); }} onPointerDown={() => { setMedicalThermometerPicked(true); setMessage("按住温度计不要松手，拖到病人脸旁的黄色区再松开。 "); }}><i /><b /><span>按住温度计<br />拖到脸旁</span></button>
+                      <button type="button" draggable className={`care-physical-tool medical-record-pen ${careHeldItem === "记录笔" ? "held" : ""}`} onDragStart={() => pickCareItem("记录笔")} onPointerDown={() => pickCareItem("记录笔")}><i>笔</i><span>按住记录笔<br />拖到病历卡</span></button>
+                      <button type="button" data-care-drop="generic" data-care-expected="记录笔" data-care-token="记录呼吸频率" className={`medical-record-card ${careSession.selected.includes("记录呼吸频率") ? "done" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem("记录笔", "记录呼吸频率"); }}><i>卡</i><span>{careSession.selected.includes("记录呼吸频率") ? "体温和呼吸已写好" : "病历卡 · 把笔拖来书写"}</span></button>
+                    </div>
+                    <small>这里不接受连续单点：按住器具移动，看到目标发光后再松手。放错位置会被退回。</small>
                   </div> : renderDetailedCareStep()}
                   <div className="care-long-progress">{[0, 1, 2, 3, 4, 5].map((step) => <i key={step} className={step < careSession.step ? "done" : step === careSession.step ? "active" : ""}>{step < careSession.step ? "✓" : step + 1}</i>)}</div>
                   <footer><span>{message}</span><button onClick={() => setCareSession(null)}>暂停并离开</button></footer>
