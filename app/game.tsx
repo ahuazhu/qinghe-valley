@@ -29,6 +29,7 @@ type TreatmentMethod = "selfCare" | "clinicOnly" | "baths" | "remedy";
 type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft" | "springFestival" | "lantern" | "dragonBoat" | "midAutumn" | "medical" | "kite" | "flower" | "water" | "firefly" | "harvest" | "leafMusic" | "firstSnow" | "hotSoup";
 type WorkshopSeedId = "strawberry" | "watermelon" | "corn" | "pumpkin";
 type WorkshopSeason = "春" | "夏" | "秋" | "冬";
+type SnowBuildState = { playerX: number; bodyX: number; bodySize: number; bodyPlaced: boolean; headX: number; headSize: number; headRolled: boolean; headStacked: boolean };
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
 type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "table" | "floorLamp" | "television" | "sofa" | "bookshelf" | "dresser" | "nightstand" | "matches" | "blanket";
 type CraftRotation = 0 | 45 | 90;
@@ -660,7 +661,7 @@ const FESTIVAL_PROCESS_STEPS: Partial<Record<FestivalId, { title: string; intro:
   firefly: { title: "萤火虫夜间观察", intro: "不用手抓，安静记录林边的微光。", steps: [{ label: "装观察灯", detail: "装好柔和灯罩，避免惊扰萤火虫。", icon: "灯" }, { label: "寻找微光", detail: "沿三处草丛慢慢观察。", icon: "萤" }, { label: "完成记录", detail: "把出现时间和地点写进册子。", icon: "记" }] },
   harvest: { title: "金秋丰收接力", intro: "辨认成熟度、装筐并亲手称重。", steps: [{ label: "挑成熟作物", detail: "从幼苗中找出成熟作物。", icon: "熟" }, { label: "整齐装筐", detail: "按大小把作物装进筐里。", icon: "筐" }, { label: "称重接力", detail: "校准秤后把三筐送到终点。", icon: "秤" }] },
   leafMusic: { title: "枫叶音乐合奏", intro: "收集落叶、调音并完成合奏。", steps: [{ label: "挑选落叶", detail: "找到完整、干燥的不同叶片。", icon: "叶" }, { label: "调好乐器", detail: "逐根校准琴弦。", icon: "音" }, { label: "完成合奏", detail: "跟随六拍旋律合奏。", icon: "♪" }] },
-  firstSnow: { title: "初雪堆雪会", intro: "雪球要一点点滚大，不能一按就出现雪人。", steps: [{ label: "滚出雪球", detail: "分别滚好身体和头部。", icon: "雪" }, { label: "搭好雪人", detail: "把雪球稳稳叠在一起。", icon: "人" }, { label: "围上围巾", detail: "装上眼睛、树枝手和围巾。", icon: "巾" }] },
+  firstSnow: { title: "初雪堆雪会", intro: "小禾要在雪地里亲自奔跑推雪球，再把头部抬上去，不能用连续点击代替。", steps: [{ label: "跑着滚雪球", detail: "先推身体雪球，放稳后回到起点再推头部。", icon: "雪" }, { label: "抬起头部", detail: "把小雪球稳稳抬到大雪球正上方。", icon: "人" }, { label: "安装装饰", detail: "把眼睛、鼻子、树枝手和围巾放到各自位置。", icon: "巾" }] },
   hotSoup: { title: "冬日热汤厨房", intro: "挑食材、切配、控火，再和居民分享。", steps: [{ label: "挑选食材", detail: "选出新鲜蔬菜和香草。", icon: "菜" }, { label: "清洗切配", detail: "洗净后按纹理切好。", icon: "刀" }, { label: "控制火候", detail: "让温度保持在暖色区域。", icon: "火" }, { label: "盛汤分享", detail: "把热汤依次端给居民。", icon: "汤" }] },
   seeds: { title: "种子分享工坊", intro: "先清掉虫子和杂物，再辨认种子、按季节分类，最后用丝绸扎好礼包。", steps: [
     { label: "清理种子", detail: "用杀虫剂处理小虫，把混进种子里的杂物拖到废料盒。", icon: "净" },
@@ -1126,6 +1127,7 @@ export default function FarmGame() {
   const [riverLanternPosition, setRiverLanternPosition] = useState<{ x: number; y: number } | null>(null);
   const [festivalActionCount, setFestivalActionCount] = useState(0);
   const [festivalDragging, setFestivalDragging] = useState(false);
+  const [snowBuild, setSnowBuild] = useState<SnowBuildState>({ playerX: 5, bodyX: 14, bodySize: 24, bodyPlaced: false, headX: 14, headSize: 19, headRolled: false, headStacked: false });
   const [craftWoodChoice, setCraftWoodChoice] = useState<number | null>(null);
   const [craftCarveProgress, setCraftCarveProgress] = useState(0);
   const [craftWrongCarves, setCraftWrongCarves] = useState(0);
@@ -1217,11 +1219,18 @@ export default function FarmGame() {
   const craftCarveProgressRef = useRef(0);
   const craftWrongCarvesRef = useRef(0);
   const festivalDragReadyRef = useRef(false);
+  const festivalActionCountRef = useRef(0);
+  const festivalHoldTimerRef = useRef<number | null>(null);
+  const festivalSweepActiveRef = useRef(false);
+  const festivalSweepLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const festivalSweepDistanceRef = useRef(0);
   const coffeeGrindActiveRef = useRef(false);
   const coffeeGrindLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const coffeeGrindDistanceRef = useRef(0);
   const coffeeGrindTurnsRef = useRef(0);
   const coffeeWaterTimerRef = useRef<number | null>(null);
+  const snowPushTimerRef = useRef<number | null>(null);
+  const snowRollingFinishedRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
   const latestSaveRef = useRef<{ key: string; game: GameState } | null>(null);
   const beachRespawnTimersRef = useRef<number[]>([]);
@@ -1229,6 +1238,10 @@ export default function FarmGame() {
   const multiplayerStatusRef = useRef({ player, game });
   const splitLeftRef = useRef<HTMLIFrameElement | null>(null);
   const splitRightRef = useRef<HTMLIFrameElement | null>(null);
+
+  useEffect(() => {
+    festivalActionCountRef.current = festivalActionCount;
+  }, [festivalActionCount]);
 
   useEffect(() => {
     const splitVillage = new URLSearchParams(window.location.search).get("splitVillage");
@@ -5642,6 +5655,13 @@ export default function FarmGame() {
       setSeedWorkshopSorted([]);
       setSeedGiftTied(false);
     }
+    if (festivalId === "firstSnow") {
+      if (snowPushTimerRef.current !== null) window.clearInterval(snowPushTimerRef.current);
+      snowPushTimerRef.current = null;
+      snowRollingFinishedRef.current = false;
+      setSnowBuild({ playerX: 5, bodyX: 14, bodySize: 24, bodyPlaced: false, headX: 14, headSize: 19, headRolled: false, headStacked: false });
+    }
+    festivalActionCountRef.current = 0;
     setFestivalActionCount(0);
     setFestivalDragging(false);
     setFestivalProcess({ id: festivalId, step: 0 });
@@ -5820,17 +5840,28 @@ export default function FarmGame() {
     coffee: [["豆"], ["转", "转", "转", "转", "转", "转"], ["水"], ["壶"], ["闻", "尝", "点"]],
     craft: [["松", "橡", "枫"], ["磨", "磨", "磨", "磨", "磨", "磨"], ["刷"]],
     springFestival: [["绸"], ["咚", "咚", "锵", "咚", "锵", "咚", "咚", "锵"], ["↑", "→", "↓", "←", "↑", "→"]],
+    medical: [["镜", "温", "听", "卡"], ["巾", "计", "水", "本"], ["桌", "杯", "勺", "手", "罐", "巾"], ["药", "药", "水", "草", "杯"], ["敷", "水", "记", "息", "查"]],
+    kite: [["竹", "竹", "扣", "线"], ["刷", "刷", "压", "压"], ["跑", "跑", "跑", "放", "放", "放"]],
+    flower: [["红", "黄", "蓝", "白"], ["香", "香", "香"], ["木", "草", "管", "叶", "绳"]],
+    water: [["弯", "直", "接", "阀"], ["桶", "桶", "桶", "桶"], ["跑", "跑", "泼", "跑", "接", "泼"]],
+    firefly: [["罩", "灯", "扣", "绳"], ["草", "草", "草"], ["时", "地", "亮", "记"]],
+    harvest: [["瓜", "玉", "莓", "薯"], ["大", "中", "小", "叶", "筐"], ["推", "称", "跑", "交"]],
+    leafMusic: [["枫", "银", "橡", "桦"], ["弦", "弦", "弦", "弦", "弦"], ["♪", "♫", "♩", "♪", "♫", "♩"]],
+    firstSnow: [["雪", "雪", "雪", "雪", "雪", "雪"], ["抬", "稳", "放"], ["煤", "萝", "枝", "枝", "巾"]],
+    hotSoup: [["菇", "菜", "薯", "草"], ["洗", "切", "切", "切", "盘"], ["火", "火", "火", "火", "火", "火"], ["汤", "汤", "汤", "汤", "汤"]],
   };
   const performFestivalDetailAction = () => {
     if (!festivalProcess || festivalProcess.id === "midAutumn") return;
     const required = festivalActionRequirements[festivalProcess.id]?.[festivalProcess.step] ?? 1;
-    const next = festivalActionCount + 1;
+    const next = festivalActionCountRef.current + 1;
     if (next >= required) {
+      festivalActionCountRef.current = 0;
       setFestivalActionCount(0);
       setFestivalDragging(false);
       advanceFestivalProcess();
       return;
     }
+    festivalActionCountRef.current = next;
     setFestivalActionCount(next);
     setMessage(`“${FESTIVAL_PROCESS_STEPS[festivalProcess.id]?.steps[festivalProcess.step].label}”正在进行：${next}/${required}。`);
     playTone(440 + next * 45);
@@ -5876,6 +5907,14 @@ export default function FarmGame() {
       } else {
         dropFestivalObject(true);
       }
+      return;
+    }
+    if (dropKind === "snow-stack") {
+      stackSnowHead();
+      return;
+    }
+    if (dropKind === "snow-decoration") {
+      placeSnowDecoration();
       return;
     }
     if (!festivalDragReadyRef.current) return;
@@ -5955,8 +5994,125 @@ export default function FarmGame() {
     playTone(210);
   };
 
+  const stopSnowPushing = () => {
+    if (snowPushTimerRef.current !== null) window.clearInterval(snowPushTimerRef.current);
+    snowPushTimerRef.current = null;
+  };
+
+  const beginSnowPushing = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (festivalProcess?.id !== "firstSnow" || festivalProcess.step !== 0 || snowPushTimerRef.current !== null || snowBuild.headRolled) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setMessage(snowBuild.bodyPlaced ? "小禾正在弯腰推第二个雪球。一直按住前进，让它滚到大雪球旁边。 " : "小禾正在往前跑，身体顶着雪球向前滚。一直按住前进，不要一下一下点。 ");
+    snowPushTimerRef.current = window.setInterval(() => {
+      setSnowBuild((current) => {
+        if (!current.bodyPlaced) {
+          const bodyX = Math.min(72, current.bodyX + 1.25);
+          const bodySize = Math.min(66, current.bodySize + .72);
+          const playerX = Math.max(3, bodyX - 9);
+          if (bodyX < 72) return { ...current, bodyX, bodySize, playerX };
+          stopSnowPushing();
+          playTone(620);
+          setMessage("身体雪球已经滚大并停在雪地上。小禾回到起点，接着把较小的头部雪球推过去。 ");
+          return { ...current, bodyX, bodySize, playerX: 5, bodyPlaced: true, headX: 14 };
+        }
+        if (current.headRolled) return current;
+        const headX = Math.min(58, current.headX + 1.35);
+        const headSize = Math.min(43, current.headSize + .5);
+        const playerX = Math.max(3, headX - 9);
+        if (headX < 58) return { ...current, headX, headSize, playerX };
+        if (!snowRollingFinishedRef.current) {
+          snowRollingFinishedRef.current = true;
+          stopSnowPushing();
+          playTone(760);
+          const timer = window.setTimeout(() => {
+            setFestivalProcess({ id: "firstSnow", step: 1 });
+            setFestivalActionCount(0);
+            setMessage("两个雪球都从雪地里真实滚大了。现在按住小雪球，把它抬到大雪球上方的绿色位置。 ");
+          }, 460);
+          bedtimeTimersRef.current.push(timer);
+        }
+        return { ...current, headX, headSize, playerX, headRolled: true };
+      });
+    }, 55);
+  };
+
+  const stackSnowHead = () => {
+    if (!festivalDragReadyRef.current || festivalProcess?.id !== "firstSnow" || festivalProcess.step !== 1) return;
+    festivalDragReadyRef.current = false;
+    setFestivalDragging(false);
+    setSnowBuild((current) => ({ ...current, headStacked: true }));
+    setMessage("小雪球稳稳落在身体正上方，没有滚下来。接下来要亲手装五样装饰。 ");
+    playTone(880);
+    const timer = window.setTimeout(() => {
+      setFestivalProcess({ id: "firstSnow", step: 2 });
+      setFestivalActionCount(0);
+    }, 560);
+    bedtimeTimersRef.current.push(timer);
+  };
+
+  const placeSnowDecoration = () => {
+    if (!festivalDragReadyRef.current || festivalProcess?.id !== "firstSnow" || festivalProcess.step !== 2) return;
+    festivalDragReadyRef.current = false;
+    setFestivalDragging(false);
+    performFestivalDetailAction();
+  };
+
+  const stopFestivalHoldAction = () => {
+    if (festivalHoldTimerRef.current !== null) window.clearInterval(festivalHoldTimerRef.current);
+    festivalHoldTimerRef.current = null;
+  };
+
+  const beginFestivalHoldAction = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!festivalProcess || festivalHoldTimerRef.current !== null) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setMessage(`一直按住并观察“${FESTIVAL_PROCESS_STEPS[festivalProcess.id]?.steps[festivalProcess.step].label}”的场景变化，松手就会暂停。`);
+    festivalHoldTimerRef.current = window.setInterval(() => {
+      if (!festivalProcess) return;
+      const required = festivalActionRequirements[festivalProcess.id]?.[festivalProcess.step] ?? 1;
+      const finishing = festivalActionCountRef.current + 1 >= required;
+      performFestivalDetailAction();
+      if (finishing) stopFestivalHoldAction();
+    }, 520);
+  };
+
+  const beginFestivalSweep = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    festivalSweepActiveRef.current = true;
+    festivalSweepLastPointRef.current = { x: event.clientX, y: event.clientY };
+    festivalSweepDistanceRef.current = 0;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setMessage("按住实物沿着场景来回移动；移动距离不够、只点一下都不会完成。 ");
+  };
+
+  const moveFestivalSweep = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!festivalSweepActiveRef.current || !festivalSweepLastPointRef.current || !festivalProcess) return;
+    const previous = festivalSweepLastPointRef.current;
+    festivalSweepDistanceRef.current += Math.hypot(event.clientX - previous.x, event.clientY - previous.y);
+    festivalSweepLastPointRef.current = { x: event.clientX, y: event.clientY };
+    if (festivalSweepDistanceRef.current < 74) return;
+    festivalSweepDistanceRef.current -= 74;
+    const required = festivalActionRequirements[festivalProcess.id]?.[festivalProcess.step] ?? 1;
+    const finishing = festivalActionCountRef.current + 1 >= required;
+    performFestivalDetailAction();
+    if (finishing) {
+      festivalSweepActiveRef.current = false;
+      festivalSweepLastPointRef.current = null;
+    }
+  };
+
+  const endFestivalSweep = () => {
+    festivalSweepActiveRef.current = false;
+    festivalSweepLastPointRef.current = null;
+  };
+
   const renderFestivalHandsOn = (process: { title: string; intro: string; steps: { label: string; detail: string; icon: string }[] }, step: { label: string; detail: string; icon: string }) => {
     if (!festivalProcess) return null;
+    if (festivalProcess.id === "firstSnow") {
+      if (festivalProcess.step === 0) return <div className="snow-rolling-workshop"><strong>按住“前进”，让小禾真的跑起来推雪球</strong><div className="snow-rolling-field"><i className="snow-track" /><div className="snow-runner" style={{ left: `${snowBuild.playerX}%` }}><i /><b /><em /></div><i className={`rolling-snowball body-ball ${snowBuild.bodyPlaced ? "placed" : ""}`} style={{ left: `${snowBuild.bodyX}%`, width: `${snowBuild.bodySize}px`, height: `${snowBuild.bodySize}px` }} />{snowBuild.bodyPlaced && <i className={`rolling-snowball head-ball ${snowBuild.headRolled ? "ready" : ""}`} style={{ left: `${snowBuild.headX}%`, width: `${snowBuild.headSize}px`, height: `${snowBuild.headSize}px` }} />}<div className="snow-watching-villagers"><i /><i /><i /></div></div><button className="snow-hold-forward" disabled={snowBuild.headRolled} onPointerDown={beginSnowPushing} onPointerUp={stopSnowPushing} onPointerCancel={stopSnowPushing}><i>→</i><span>{snowBuild.headRolled ? "两个雪球都滚好了" : snowBuild.bodyPlaced ? "一直按住 · 跑着推头部雪球" : "一直按住 · 往前跑着推身体雪球"}</span></button><div className="snow-roll-status"><span className={snowBuild.bodyPlaced ? "done" : "active"}>① 推大身体雪球</span><span className={snowBuild.bodyPlaced && !snowBuild.headRolled ? "active" : snowBuild.headRolled ? "done" : ""}>② 回起点推头部雪球</span></div><small>松手就会停下；先把大雪球放稳，再回来推第二个雪球。</small></div>;
+      if (festivalProcess.step === 1) return <div className="snow-stacking-workshop"><strong>按住小雪球，抬到大雪球正上方再松手</strong><div className="snow-stack-field"><i className="stack-ground" /><div className="snow-base-ball"><i /></div><button data-festival-drop="snow-stack" className="snow-head-target" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); stackSnowHead(); }}><i>{snowBuild.headStacked ? "✓" : "放在这里"}</i></button>{!snowBuild.headStacked && <button draggable className={`snow-head-source ${festivalDragging ? "dragging" : ""}`} onDragStart={() => beginFestivalDrag("双手托住小雪球，把它拖到大雪球正上方的绿色圆圈。 ")} onPointerDown={() => beginFestivalDrag("按住小雪球不要松手，抬到大雪球正上方。 ")}><i /><span>按住小雪球</span></button>}<button data-festival-drop="wrong" className="snow-stack-wrong" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(false); }}>地面太偏<br />会滚下来</button><div className="snow-lifter"><i /><b /></div></div><small>落点偏到旁边，小雪球会滚回地面，必须重新抬。</small></div>;
+      const decorations = [{ icon: "煤", name: "两颗煤球眼睛", target: "眼睛位置" }, { icon: "萝", name: "胡萝卜鼻子", target: "鼻子位置" }, { icon: "枝", name: "左边树枝手", target: "左肩" }, { icon: "枝", name: "右边树枝手", target: "右肩" }, { icon: "巾", name: "红色围巾", target: "脖子" }];
+      const decoration = decorations[Math.min(festivalActionCount, decorations.length - 1)];
+      return <div className="snow-decorating-workshop"><strong>逐件拿起装饰，放到雪人身体的正确位置 · {festivalActionCount}/5</strong><div className="snow-decoration-field"><button draggable className={`snow-decoration-source part-${festivalActionCount} ${festivalDragging ? "dragging" : ""}`} onDragStart={() => beginFestivalDrag(`拿起${decoration.name}，拖到雪人的${decoration.target}。 `)} onPointerDown={() => beginFestivalDrag(`按住${decoration.name}不要松手，拖到${decoration.target}。 `)}><i>{decoration.icon}</i><span>{decoration.name}</span></button><div className={`detailed-snowman decorated-${festivalActionCount}`}><i className="snowman-head" /><i className="snowman-body" /><i className="coal-eye eye-one" /><i className="coal-eye eye-two" /><i className="carrot-nose" /><i className="branch-arm arm-left" /><i className="branch-arm arm-right" /><i className="snowman-scarf" /><button data-festival-drop="snow-decoration" className={`snow-part-target target-${festivalActionCount}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); placeSnowDecoration(); }}>{decoration.target}</button></div><button data-festival-drop="wrong" className="snow-decoration-wrong" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(false); }}>装饰篮<br />放回这里不算安装</button><div className="snow-cheering-crowd"><i /><i /><i /><i /></div></div><small>眼睛、鼻子、左右树枝手和围巾都有专属位置，放错不会计入完成。</small></div>;
+    }
     if (festivalProcess.id === "craft") {
       if (festivalProcess.step === 0) return <div className="wood-selection-workshop"><strong>检查四块木板 · 其中两块有不同位置的损坏</strong><div className="wood-board-row">{[0, 1, 2, 3].map((index) => { const damaged = damagedCraftBoards.includes(index); return <button key={`workshop-board-${index}`} className={`real-wood-board board-${index + 1} ${damaged ? `damaged damage-${index + 1}` : "sound"}`} onClick={() => chooseCraftWood(index)} aria-label={`第 ${index + 1} 块木板${damaged ? "，能看到裂痕" : "，木纹完整"}`}><i /><b /><em /><span>木板 {index + 1}</span></button>; })}</div><small>仔细看木板表面的深色裂纹。选中的木板会直接拿到雕刻台。</small></div>;
       if (festivalProcess.step === 1) return <div className="wood-carving-workshop"><strong>按住刻刀，顺着横向木纹左右刮 · {Math.round(craftCarveProgress)}%</strong><div className={`carving-board ${craftWoodChoice !== null && damagedCraftBoards.includes(craftWoodChoice) ? `damaged damage-${(craftWoodChoice ?? 0) + 1}` : "sound"}`}><i className="grain-line grain-one" /><i className="grain-line grain-two" /><i className="grain-line grain-three" /><span className="carved-bird-outline" style={{ opacity: Math.max(.08, craftCarveProgress / 100) }} /><button className={`carving-knife ${craftKnifeDragging ? "dragging" : ""}`} style={{ left: `${8 + craftCarveProgress * .68}%` }} onPointerDown={beginCraftCarving} onPointerMove={moveCraftKnife} onPointerUp={endCraftCarving} onPointerCancel={endCraftCarving} aria-label="按住并沿木纹左右拖动刻刀"><i /><b /></button></div><div className="wood-carve-meter"><i style={{ width: `${craftCarveProgress}%` }} /><span>顺纹进度 {Math.round(craftCarveProgress)}%　·　歪刀 {craftWrongCarves} 次</span></div><small>木纹是横向的。左右来回拖动会雕出轮廓，上下拖动会留下歪痕。</small></div>;
@@ -5990,7 +6146,23 @@ export default function FarmGame() {
     const required = festivalActionRequirements[festivalProcess.id]?.[festivalProcess.step] ?? 1;
     const icons = festivalActionIcons[festivalProcess.id]?.[festivalProcess.step] ?? [step.icon];
     const currentIcon = icons[Math.min(festivalActionCount, icons.length - 1)] ?? step.icon;
-    return <div className={`festival-hands-on festival-real-workshop action-${festivalProcess.id}-${festivalProcess.step}`}><div className="festival-action-backdrop"><i /><i /><i /></div><div className="festival-moving-crowd"><i /><i /><i /><i /></div><strong>{step.label}</strong><p>{step.detail}</p><div className="festival-real-action-field"><button draggable className={`festival-real-object ${festivalDragging ? "dragging" : ""}`} onDragStart={() => beginFestivalDrag(`按住“${currentIcon}”实物，观察场地后拖到正确的发光工作区。 `)} onPointerDown={() => beginFestivalDrag(`手不要松开，把“${currentIcon}”拖到正确的发光工作区。 `)}><i>{currentIcon}</i><span>按住实物拖动</span></button><button data-festival-drop="wrong" className="festival-wrong-target" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(false); }}><i>×</i><span>杂物区<br />放错会退回</span></button><button data-festival-drop="correct" className="festival-real-target" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(true); }}><i>✦</i><span>{step.label}<br />对准后松手</span></button><i className="festival-action-runner" style={{ left: `${10 + (festivalActionCount / Math.max(1, required)) * 72}%` }}><b /><em /></i></div><div className="festival-detail-meter"><i style={{ width: `${(festivalActionCount / Math.max(1, required)) * 100}%` }} /><span>实际完成 {festivalActionCount}/{required}</span></div><small>只点按钮无效 · 放错会失败 · 完整操作后才进入下一步</small></div>;
+    const interactionModes: Partial<Record<FestivalId, Array<"drag" | "sweep" | "hold">>> = {
+      medical: ["sweep", "drag", "sweep", "drag", "hold"], kite: ["drag", "sweep", "hold"], flower: ["sweep", "drag", "drag"], water: ["drag", "hold", "hold"],
+      firefly: ["drag", "sweep", "drag"], harvest: ["drag", "drag", "hold"], leafMusic: ["drag", "sweep", "hold"], hotSoup: ["drag", "sweep", "hold", "drag"],
+    };
+    const mode = interactionModes[festivalProcess.id]?.[festivalProcess.step] ?? "drag";
+    const physicalLabels: Partial<Record<FestivalId, string[]>> = {
+      medical: ["移动观察镜检查病人", "把干净器具放进护理盘", "拿消毒棉沿六处来回擦", "按病例卡逐份配药", "按住护理直到复查完成"],
+      kite: ["把竹条拖进交叉骨架", "按住刷子沿纸鸢边缘来回刷胶", "按住奔跑，让小禾迎风放线"],
+      flower: ["按住放大镜扫过不同花瓣", "把香气卡拖到对应花朵", "把木片、细草和竹管装进蜂屋"],
+      water: ["把不同弯管拖到水道接口", "按住水阀，把四只水桶接满", "按住奔跑，和队伍完成泼水接力"],
+      firefly: ["把柔光灯罩装到观察灯上", "按住观察镜慢慢扫过三处草丛", "把时间、地点和亮度卡拖进记录本"],
+      harvest: ["辨认成熟作物并拖进收获筐", "按大小把作物拖进不同木筐", "按住推车，称重后跑到交接终点"],
+      leafMusic: ["挑出完整干燥的叶片放入篮中", "按住调音拨片沿琴弦来回校准", "按住演奏，跟随乐队完成整段合奏"],
+      hotSoup: ["把新鲜食材逐样放进备菜盘", "按住刀具沿食材纹理清洗切配", "按住火力旋钮，把汤维持在暖色区", "把装好的热汤逐碗端给居民"],
+    };
+    const actionLabel = physicalLabels[festivalProcess.id]?.[festivalProcess.step] ?? step.label;
+    return <div className={`festival-hands-on festival-real-workshop detailed-${festivalProcess.id} action-${festivalProcess.id}-${festivalProcess.step} mode-${mode}`}><div className="festival-action-backdrop"><i /><i /><i /></div><div className="festival-moving-crowd"><i /><i /><i /><i /></div><div className="festival-theme-props"><i /><i /><i /><i /><i /></div><strong>{step.label}</strong><p>{actionLabel}</p><div className="festival-real-action-field">{mode === "drag" ? <><button draggable className={`festival-real-object ${festivalDragging ? "dragging" : ""}`} onDragStart={() => beginFestivalDrag(`按住“${currentIcon}”实物，观察场地后拖到正确的${step.label}位置。 `)} onPointerDown={() => beginFestivalDrag(`手不要松开，把“${currentIcon}”拖到正确的${step.label}位置。 `)}><i>{currentIcon}</i><span>按住真实物品拖动</span></button><button data-festival-drop="wrong" className="festival-wrong-target" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(false); }}><i>×</i><span>错误位置<br />放错会退回</span></button><button data-festival-drop="correct" className="festival-real-target" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(true); }}><i>✦</i><span>{step.label}<br />对准后松手</span></button></> : mode === "sweep" ? <><div className="festival-sweep-surface"><i /><i /><i /><i /><span>沿发光轨迹来回移动</span></div><button className="festival-sweep-tool" onPointerDown={beginFestivalSweep} onPointerMove={moveFestivalSweep} onPointerUp={endFestivalSweep} onPointerCancel={endFestivalSweep}><i>{currentIcon}</i><span>按住来回操作</span></button></> : <><div className="festival-hold-scene"><i /><i /><i /><i /><b style={{ width: `${(festivalActionCount / Math.max(1, required)) * 100}%` }} /></div><button className="festival-hold-control" onPointerDown={beginFestivalHoldAction} onPointerUp={stopFestivalHoldAction} onPointerCancel={stopFestivalHoldAction}><i>{currentIcon}</i><span>一直按住进行</span></button></>}<i className="festival-action-runner" style={{ left: `${10 + (festivalActionCount / Math.max(1, required)) * 72}%` }}><b /><em /></i></div><div className="festival-detail-meter"><i style={{ width: `${(festivalActionCount / Math.max(1, required)) * 100}%` }} /><span>实际完成 {festivalActionCount}/{required}</span></div><small>{mode === "drag" ? "必须拿起真实物品并对准，放错会退回" : mode === "sweep" ? "必须按住来回移动，单点不会产生进度" : "必须持续按住并观察场景，松手会暂停"}</small></div>;
   };
 
   const advanceFestivalProcess = () => {
@@ -6000,6 +6172,7 @@ export default function FarmGame() {
     if (festivalProcess.step < process.steps.length - 1) {
       const nextStep = festivalProcess.step + 1;
       setFestivalProcess({ ...festivalProcess, step: nextStep });
+      festivalActionCountRef.current = 0;
       setFestivalActionCount(0);
       setFestivalDragging(false);
       setMessage(`完成“${process.steps[festivalProcess.step].label}”，接下来：${process.steps[nextStep].label}。`);
