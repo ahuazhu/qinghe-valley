@@ -19,10 +19,14 @@ type CropQualityStock = Record<CropType, { silver: number; gold: number }>;
 type CookingFood = "crabs" | "shrimp";
 type CookingStep = "chop" | "heat" | "plate";
 type GuideTopicId = "start" | "farming" | "fishing" | "tools" | "town" | "friends" | "home" | "animals" | "weather" | "festival" | "multiplayer" | "save";
+type HiddenTripId = "hillsideTea" | "riverKitchen" | "oldBookCafe" | "forestPlayground";
+type ResidentSchedule = { key: string; label: string; scene: Scene; invite?: HiddenTripId };
 type MallItem = "redCoat" | "blueOutfit" | "umbrella" | "seedBox" | "animalRaincoat";
 type FarmAnimalType = "chicken" | "cow" | "sheep";
-type UrgentEventKind = "fire" | "theft" | "injury";
-type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft" | "springFestival" | "lantern" | "dragonBoat" | "midAutumn";
+type UrgentEventKind = "fire" | "theft" | "injury" | "assembly";
+type IllnessId = "valleyCold" | "rainFlu" | "windChill" | "pollenFever" | "caveChill" | "overwork" | "nightCough" | "riverDamp";
+type TreatmentMethod = "selfCare" | "clinicOnly" | "baths" | "remedy";
+type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft" | "springFestival" | "lantern" | "dragonBoat" | "midAutumn" | "medical" | "kite" | "flower" | "water" | "firefly" | "harvest" | "leafMusic" | "firstSnow" | "hotSoup";
 type WorkshopSeedId = "strawberry" | "watermelon" | "corn" | "pumpkin";
 type WorkshopSeason = "春" | "夏" | "秋" | "冬";
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
@@ -117,6 +121,10 @@ type GameState = {
   daily: { day: number; planted: number; watered: number; harvested: number; fish: number; chopped: number; sold: number; rewardClaimed: boolean };
   sick: boolean;
   diagnosed: boolean;
+  medicalTrained: boolean;
+  illness: IllnessId | null;
+  learnedTreatments: IllnessId[];
+  treatmentBaths: Partial<Record<IllnessId, number>>;
   lastIllnessDay: number;
   groundBooks: boolean[];
   bookBag: number[];
@@ -188,6 +196,9 @@ type GameState = {
   lastTalkedDays: Record<string, string>;
   forestQuestStage: number;
   forestQuestProgressDay: number;
+  forestQuestEpisode: number;
+  forestQuestNextAbsoluteDay: number;
+  residentTripDays: string[];
   cropQualityHarvests: CropQualityRecord;
   cropQualityStock: CropQualityStock;
   chestCropQualityStock: CropQualityStock;
@@ -459,11 +470,42 @@ const PERSON_DIALOGUES: Record<string, string> = {
   小树: "小树：农场知识课说，松果种下后要等几天才会长成大树。",
   安安: "安安：我住在农场西边，喜欢爬山、认路和在帐篷里看星星。有空一起去山洞探险吧！",
 };
+const SCHEDULED_RESIDENTS = ["林婶", "鲁师傅", "叶老师", "白医生", "阿麦", "周镇长", "沈馆长", "许老师"] as const;
 const PERSON_CLOTHES: Record<string, string> = {
   林婶: "#b85c55", 鲁师傅: "#8a6848", 叶老师: "#77618e", 白医生: "#e8eee7", 阿麦: "#d68a45", 周镇长: "#526f91", 沈馆长: "#39766f", 诊所助手: "#c74646", 红衣助手: "#c74646", 许老师: "#4f7d66",
   小玲: "#dc7081", 豆豆: "#5f83b5", 小满: "#e29b45", 阿禾: "#6e9d58", 小树: "#8169a0", 安安: "#4d9c9a",
   小桃: "#d9798b", 阿木: "#6f8d58", 小文: "#6d79a9", 小麦: "#d8a144", 小程: "#5e88a5", 小岚: "#499184", 小晴: "#9a6fa6",
 };
+const FOREST_STORY_TITLES = ["褪色的老松树", "迷路的萤火种", "雨后倒下的鸟屋", "沉睡的森林小溪"] as const;
+const ILLNESSES: Record<IllnessId, { name: string; cause: string; method: TreatmentMethod; lesson: string; advice: string; recipe?: { herbs: number; pineapple: number; pineNuts: number } }> = {
+  valleyCold: { name: "山谷感冒", cause: "换季受凉后出现的普通病症", method: "selfCare", lesson: "保暖观察与草药热敷", advice: "按顺序观察症状、消毒器具、调好温热草药并充分休息。" },
+  rainFlu: { name: "雨雾流感", cause: "在连绵雨雾中淋得太久", method: "clinicOnly", lesson: "雨雾流感的隔离与处方", advice: "这种病不能自行处理，完成检查后必须使用诊所的专用处方药。" },
+  windChill: { name: "风寒失温症", cause: "寒风和湿衣让身体长时间发冷", method: "baths", lesson: "安全复温与连续观察", advice: "连续三个晚上洗热水澡并好好睡觉；每次都要在卫生间完成。" },
+  pollenFever: { name: "田野花粉热", cause: "春季花粉和干草刺激", method: "selfCare", lesson: "清洁呼吸与花粉隔离", advice: "先清洁脸和手，再完成温热护理与安静休息。" },
+  caveChill: { name: "岩洞寒气症", cause: "在潮冷山洞里停留过久", method: "remedy", lesson: "岩洞寒气调和饮", advice: "医生只能告诉配方：菠萝 1 个、松子 2 颗、药材 2 份；材料要自己收集并亲手调制。", recipe: { herbs: 2, pineapple: 1, pineNuts: 2 } },
+  overwork: { name: "过劳虚脱", cause: "体力耗尽后仍然继续劳动", method: "clinicOnly", lesson: "过劳评估与处方补液", advice: "必须由诊所处理，不能靠自行配药硬撑过去。" },
+  nightCough: { name: "星夜咳嗽", cause: "夜深后在冷空气里停留过久", method: "remedy", lesson: "松香暖饮调制", advice: "医生只能告诉配方：菠萝 1 个、松子 2 颗、药材 1 份；回去后自己按步骤调制。", recipe: { herbs: 1, pineapple: 1, pineNuts: 2 } },
+  riverDamp: { name: "河湾湿寒症", cause: "在潮湿河岸和冷水里活动太久", method: "baths", lesson: "湿寒恢复与热浴记录", advice: "连续三个晚上洗热水澡，每次洗完都要休息到第二天。" },
+};
+const ILLNESS_IDS = Object.keys(ILLNESSES) as IllnessId[];
+const HIDDEN_TRIPS: Record<HiddenTripId, { name: string; description: string; action: string; reward: string }> = {
+  hillsideTea: { name: "山腰果茶亭", description: "藏在果园后山的小茶亭没有公路和路牌，只能跟着熟悉山路的居民步行到达。", action: "一起尝果茶和松饼", reward: "果茶很暖，恢复了 18 点体力" },
+  riverKitchen: { name: "河湾夜面摊", description: "面摊在河湾木桥的另一面，平时没有船接送，只有受邀时才能跟着居民乘小船过去。", action: "坐下来吃一碗热面", reward: "热面暖暖的，恢复了 22 点体力" },
+  oldBookCafe: { name: "旧书巷茶馆", description: "茶馆藏在文化街旧书库后面，入口每天都会换，只有叶老师知道今天从哪扇门进去。", action: "一起读书吃点心", reward: "安静休息了一会儿，恢复了 16 点体力" },
+  forestPlayground: { name: "林梢秘密游乐地", description: "这块林间空地没有画在地图上，需要跟着安安或鲁师傅穿过一段小树林。", action: "一起荡木秋千和追蝴蝶", reward: "开心玩耍，恢复了 20 点体力" },
+};
+const SCHOOL_LESSONS: Array<{ title: string; pages: [string, string, string, string] }> = [
+  { title: "作物品质为什么不同", pages: ["同一种种子也会长出不同品质，因为土壤、水分和连续照料都会留下影响。", "只在最后一天浇水不能补回前面缺少的照料；每天稳定照料更容易出现银星和金星。", "下雨会给作物补水，但雷雨可能伤到田里的幼苗，所以不能只看见雨水的好处。", "金星作物放进大号售卖箱会明显加价，日记的收藏页会永久记录收获过的品质。"] },
+  { title: "围栏、门与农田保护", pages: ["围栏不仅挡住小动物，也会挡住小禾，所以完整围栏中间必须留一扇门。", "点击围栏门可以打开或关闭；门关着时，小动物进不去，小禾也不能穿过去。", "一个稻草人会大幅减少乌鸦，两个稻草人能把乌鸦完全赶走。", "作物还是幼苗时最容易被偷吃，成熟以后就不会再被小动物当成嫩芽。"] },
+  { title: "天气与健康规则", pages: ["雨天在室外停留太久会积累淋雨时间，小禾和脚边宠物都可能因此生病。", "撑开彩色雨伞可以保护小禾；黄色宠物雨衣保护的是跟随宠物，不是鸡、牛和羊。", "生病以后先去诊所接受免费检查，医生确认后才会开出处方药。", "睡前洗澡会让第二天工作时体力消耗得更慢，不能代替每天正常休息。"] },
+  { title: "山谷时间和四季", pages: ["游戏里的半小时大约等于现实中的半分钟，浇水、播种本身不会让时间突然跳过一小时。", "每天早上七点醒来，傍晚开始慢慢变暗，路灯和已经打开的室内灯会逐渐显出光。", "每个季节有二十八天；第二十八天睡觉后进入下一个季节。", "作物、节日、春秋游和居民活动都会受到季节与星期影响。"] },
+  { title: "钓鱼不是立刻收获", pages: ["鱼竿放进鱼塘以后要先等浮标，问号出现时才代表有东西咬钩。", "提竿太早什么也没有，提竿太晚鱼会逃走；之后还要让游标停进绿色区域。", "幸运鱼竿会缩短等待时间，但仍然不能跳过观察和收线。", "鱼钩也可能带回石头、袜子、饮料甚至钻石，这些意外都会进入真实资源记录。"] },
+  { title: "居民为什么不总在家", pages: ["居民早上会吃饭，中午回店里工作，午饭时又会离开，下午和晚上还可能散步。", "日记里的居民好感页会写出他们现在正在做什么，可以按地点去找本人。", "好感足够时，居民可能邀请小禾去地图上没有的地方；只能当场跟上，不能自己开车前往。", "同一个居民每天第一次聊天和认真送礼都会增加好感，关系越好，邀请与帮助越多。"] },
+  { title: "自动售卖与存放", pages: ["收纳箱会一直保留东西；大号售卖箱里的物品会在睡觉后卖掉，两种箱子不能混淆。", "连续放入五个同类物品时，可以选择一次放入背包里的全部同类物品。", "基础锄头、水壶、收获工具和普通鱼竿不能卖掉，避免小禾失去基本玩法。", "银星和金星作物的加价会计入第二天早上的收入通知。"] },
+  { title: "山洞、钻石和火光", pages: ["山洞里太暗时需要先使用火柴点亮火把，钻石可能只从岩石后露出一点尖角。", "普通镐子和金铁镐子的收获量不同；高级工具有使用期限。", "钻石矿的位置会随日期变化，不能每天只点同一个地方。", "电视新闻提到矿脉变化时，新闻画面中的地点和山洞里真正发生的事情是一致的。"] },
+  { title: "宠物和牧场动物不同", pages: ["鸡、牛和羊住在围栏农场，分别产鸡蛋、牛奶和羊毛。", "猫、狗、小鸡、小鸭、兔子和仓鼠属于跟随宠物，需要每天准备宠物粮。", "跟随宠物可能生病、走失或带回小礼物；牧场动物不使用这一套生病规则。", "同种宠物一男一女共同生活很久以后可能生宝宝，宠物店也可以接回宠物。"] },
+  { title: "存档和两个村庄", pages: ["青禾村与枫叶村是两个独立账号，各自保存农田、背包、围栏和房屋进度。", "切换村庄前游戏会保存当前村庄，不会把青禾村的围栏复制到枫叶村。", "游戏正常游玩时会自动保存，睡觉和切换村庄也会保存。", "无痕浏览可能无法长期保留设备存档，换设备时要使用网页版转移功能。"] },
+];
 const GUIDE_TOPICS: Array<{ id: GuideTopicId; title: string; icon: string; summary: string; steps: string[]; tip: string }> = [
   { id: "start", title: "第一次进入游戏", icon: "走", summary: "用方向键、WASD 或点击地面移动小禾。走到场景最边缘，才会前往相邻地点。", steps: ["方向键或 WASD：一步一步走", "鼠标或手指点击地面：自动走过去", "左上角叶子菜单：打开说明、地图、制作和日记", "下方工具栏：选择当前要使用的工具"], tip: "游戏里半分钟约等于一小时；每天早上七点醒来。" },
   { id: "farming", title: "种地与作物品质", icon: "苗", summary: "锄地、播种、浇水、等待成长，成熟后再用手收获。", steps: ["先选锄头，走近土地后点击一格草地", "选择种子并点击松好的土", "每天走近作物，用洒水壶浇水", "长到第三阶段后选择收获", "连续照料会得到银星或金星品质，卖价更高"], tip: "下雨会自动浇水；保温室和手动浇水一起使用时成长更快。" },
@@ -486,18 +528,29 @@ const personClothesStyle = (name: string) => {
   return { "--npc-clothes": PERSON_CLOTHES[name] ?? "#6b8b68", "--npc-hair": NPC_HAIR_COLORS[nameCode % NPC_HAIR_COLORS.length], "--npc-skin": NPC_SKIN_COLORS[nameCode % NPC_SKIN_COLORS.length] } as CSSProperties;
 };
 
-const residentActivity = (name: string, hour: number, day: number, weather: Weather) => {
+const residentActivity = (name: string, hour: number, day: number, weather: Weather): ResidentSchedule => {
   const workday = (day - 1) % 7 < 5;
-  if (hour < 8) return { key: "breakfast", label: "在家吃早饭" };
+  const workplace: Scene = ["周镇长", "沈馆长", "许老师"].includes(name) ? "cultureDistrict" : "town";
+  const home: Scene = name === "林婶" ? "eastNeighbor" : name === "鲁师傅" ? "southNeighbor" : name === "叶老师" ? "northNeighbor" : "residentialDistrict";
+  const weekday = (day - 1) % 7;
+  if (hour < 8) return { key: "breakfast", label: "在自己的家里准备出门", scene: home };
+  if (hour < 10) return { key: "breakfast", label: name === "阿麦" ? "在麦香咖啡准备大家的早餐" : "在麦香咖啡吃早饭", scene: "town" };
   if (weather === "rain" || weather === "thunder") {
-    if (hour >= 18) return { key: "home", label: "回家擦干雨水" };
-    return { key: "rain", label: workday ? "撑伞去上班" : "在屋檐下听雨" };
+    if (hour >= 19) return { key: "home", label: "已经回家擦干雨水", scene: home };
+    if (hour >= 13 && hour < 15) return { key: "lunch", label: "在麦香咖啡吃热汤午饭", scene: "town" };
+    return { key: "rain", label: workday ? "撑伞在工作地点值班" : "在文化街屋檐下听雨", scene: workday ? workplace : "cultureDistrict" };
   }
-  if (workday && hour < 12) return { key: "work", label: name === "许老师" ? "在学校上课" : "正在工作" };
-  if (hour < 14) return { key: "lunch", label: "去中心街吃午饭" };
-  if (workday && hour < 18) return { key: "work", label: "下午继续工作" };
-  if (hour < 20) return { key: "walk", label: day % 2 ? "沿河散步" : "去超市买东西" };
-  return { key: "home", label: "已经回家休息" };
+  if (workday && hour < 13) return { key: "work", label: name === "许老师" ? "在学校给大家上课" : "在自己的店里工作", scene: workplace };
+  if (hour < 15) return { key: "lunch", label: weekday % 2 ? "在文化街小饭桌吃午饭" : "在麦香咖啡吃午饭", scene: weekday % 2 ? "cultureDistrict" : "town" };
+  if (workday && hour < 18) return { key: "work", label: "回到自己的店里继续工作", scene: workplace };
+  if (hour < 21) {
+    if (weekday === 1) return { key: "walk", label: "在东郊果园散步，可能邀请朋友去山腰茶亭", scene: "eastNeighbor", invite: name === "林婶" ? "hillsideTea" : undefined };
+    if (weekday === 3) return { key: "walk", label: "在农场河边玩，可能坐船去河湾吃饭", scene: "farm", invite: name === "阿麦" || name === "白医生" ? "riverKitchen" : undefined };
+    if (weekday === 5) return { key: "walk", label: "在文化街逛旧书摊", scene: "cultureDistrict", invite: name === "叶老师" ? "oldBookCafe" : name === "鲁师傅" ? "forestPlayground" : undefined };
+    if (weekday === 6) return { key: "walk", label: "去安安的小农场一起玩", scene: "westFriendFarm", invite: name === "鲁师傅" ? "forestPlayground" : undefined };
+    return { key: "walk", label: weekday === 2 ? "沿着青禾溪慢慢散步" : "在中心街买东西、和居民聊天", scene: weekday === 2 ? "farm" : "town" };
+  }
+  return { key: "home", label: "已经回家休息", scene: home };
 };
 
 const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description: string }> = {
@@ -507,12 +560,21 @@ const VILLAGE_INFO: Record<VillageId, { name: string; farm: string; description:
 
 const FESTIVAL_SCHEDULE: { season: number; day: number; id: FestivalId; name: string; place: string; description: string }[] = [
   { season: 0, day: 3, id: "seeds", name: "种子分享日", place: "青禾超市", description: "免费领取水果和蔬菜种子大礼包" },
+  { season: 0, day: 8, id: "kite", name: "春风纸鸢会", place: "中心广场", description: "亲手装好纸鸢，迎着春风把它放上天空" },
   { season: 0, day: 13, id: "spring", name: "春日集市", place: "中心广场", description: "果酱、木工作品和山谷音乐" },
   { season: 0, day: 15, id: "lantern", name: "元宵灯会", place: "中心广场", description: "看花灯、猜灯谜，免费品尝汤圆" },
+  { season: 0, day: 23, id: "flower", name: "百花观察节", place: "东郊果园", description: "辨认花朵、记录香气，为蜜蜂搭一座小花屋" },
   { season: 1, day: 5, id: "dragonBoat", name: "端午龙舟节", place: "中心广场", description: "看龙舟鼓阵，免费品尝粽子" },
   { season: 1, day: 12, id: "fishing", name: "钓鱼节", place: "农场钓鱼池", description: "带上鱼竿参加山谷钓鱼比赛" },
+  { season: 1, day: 18, id: "water", name: "清凉戏水日", place: "中心广场", description: "接水、搭水道并参加山谷接力泼水赛" },
+  { season: 1, day: 22, id: "medical", name: "青禾医疗节", place: "青禾诊所", description: "跟白医生完成诊断和照护训练，学会复杂的自我治疗" },
+  { season: 1, day: 25, id: "firefly", name: "萤火虫之夜", place: "安安的小农场", description: "制作观察灯、沿林边寻找萤火虫并做好记录" },
+  { season: 2, day: 7, id: "harvest", name: "金秋丰收赛", place: "青禾农场", description: "辨认成熟作物、装筐称重并完成丰收接力" },
   { season: 2, day: 15, id: "midAutumn", name: "中秋赏月会", place: "中心广场", description: "挂灯笼、赏圆月，大家一起吃月饼" },
   { season: 2, day: 20, id: "coffee", name: "咖啡日", place: "麦香咖啡", description: "品尝咖啡和刚出炉的点心" },
+  { season: 2, day: 25, id: "leafMusic", name: "枫叶音乐节", place: "清河文化街", description: "收集落叶、调试乐器并合奏一首秋日曲子" },
+  { season: 3, day: 6, id: "firstSnow", name: "初雪堆雪节", place: "中心广场", description: "滚雪球、搭雪人并给它围上温暖围巾" },
+  { season: 3, day: 16, id: "hotSoup", name: "冬日热汤会", place: "麦香咖啡", description: "挑选食材、控制火候并与居民分享热汤" },
   { season: 3, day: 27, id: "craft", name: "山谷手作日", place: "木匠工坊", description: "居民一起展示亲手制作的作品" },
   { season: 3, day: 28, id: "springFestival", name: "春节庆典", place: "中心广场", description: "贴春联、挂灯笼，一起吃年糕迎接新春" },
 ];
@@ -571,6 +633,7 @@ const dailyNewsForState = (state: GameState): DailyNews => {
   if (state.urgentEvent && !state.urgentEventResolved) {
     if (state.urgentEvent === "fire") return { kind: "fire", urgent: true, text: "中心街木匠工坊旁突然起火！请今天立刻赶到现场，点击水桶扑灭火苗。" };
     if (state.urgentEvent === "theft") return { kind: "theft", urgent: true, text: "青禾超市的种子货箱被偷，散落货物出现在中心街！请今天找到货箱并交还林婶。" };
+    if (state.urgentEvent === "assembly") return { kind: "assembly", urgent: true, text: "青禾谷发布重要集合通知：所有居民今天到青禾学校礼堂集合。请前往文化街学校，听完完整说明。" };
     return { kind: "injury", urgent: true, text: "中心街有居民摔倒受伤！请今天赶到诊所外，扶起伤者并送进健康诊所。" };
   }
   if (state.weather === "thunder") return { kind: "thunder", urgent: false, text: "今日有雷雨，农场可能落雷。避开空旷田地，农作物旁会真的出现闪电。" };
@@ -584,6 +647,21 @@ const dailyNewsForState = (state: GameState): DailyNews => {
 };
 
 const FESTIVAL_PROCESS_STEPS: Partial<Record<FestivalId, { title: string; intro: string; steps: { label: string; detail: string; icon: string }[] }>> = {
+  medical: { title: "青禾医疗节实习", intro: "这是青禾谷虚构的游戏医学训练。先取得基础资格，再到诊所逐种学习不同病症。", steps: [
+    { label: "分辨症状卡", detail: "逐张观察精神、体温、呼吸和淋雨记录，不靠猜测下结论。", icon: "诊" },
+    { label: "整理护理器具", detail: "选出干净毛巾、温度计、温水和记录本，排除脏器具。", icon: "具" },
+    { label: "完成六处消毒", detail: "按顺序把桌面、杯口、勺子、手、药罐和毛巾处理干净。", icon: "净" },
+    { label: "练习配比", detail: "按照病例卡加入正确份数，过量和漏放都不能继续。", icon: "配" },
+    { label: "护理与复查", detail: "完成热敷、补水、记录和休息，再重新检查症状。", icon: "护" },
+  ] },
+  kite: { title: "春风纸鸢工坊", intro: "从竹骨到放线都要亲手完成。", steps: [{ label: "接好竹骨", detail: "把四根竹条交叉固定。", icon: "骨" }, { label: "贴牢彩纸", detail: "沿边缘慢慢压紧彩纸。", icon: "纸" }, { label: "迎风放线", detail: "看准风向，分六次慢慢放线。", icon: "风" }] },
+  flower: { title: "百花观察实习", intro: "观察、记录，再给蜜蜂搭花屋。", steps: [{ label: "辨认花瓣", detail: "从颜色和花瓣形状辨认春花。", icon: "花" }, { label: "记录香气", detail: "完成三张气味观察卡。", icon: "记" }, { label: "搭好花屋", detail: "把木片和细草放进花屋。", icon: "蜂" }] },
+  water: { title: "清凉戏水接力", intro: "先搭水道，再亲自完成接力。", steps: [{ label: "连接水管", detail: "把弯管接到正确方向。", icon: "管" }, { label: "装满水桶", detail: "分四次接满清水。", icon: "桶" }, { label: "完成接力", detail: "跟着队伍跑完六段水路。", icon: "水" }] },
+  firefly: { title: "萤火虫夜间观察", intro: "不用手抓，安静记录林边的微光。", steps: [{ label: "装观察灯", detail: "装好柔和灯罩，避免惊扰萤火虫。", icon: "灯" }, { label: "寻找微光", detail: "沿三处草丛慢慢观察。", icon: "萤" }, { label: "完成记录", detail: "把出现时间和地点写进册子。", icon: "记" }] },
+  harvest: { title: "金秋丰收接力", intro: "辨认成熟度、装筐并亲手称重。", steps: [{ label: "挑成熟作物", detail: "从幼苗中找出成熟作物。", icon: "熟" }, { label: "整齐装筐", detail: "按大小把作物装进筐里。", icon: "筐" }, { label: "称重接力", detail: "校准秤后把三筐送到终点。", icon: "秤" }] },
+  leafMusic: { title: "枫叶音乐合奏", intro: "收集落叶、调音并完成合奏。", steps: [{ label: "挑选落叶", detail: "找到完整、干燥的不同叶片。", icon: "叶" }, { label: "调好乐器", detail: "逐根校准琴弦。", icon: "音" }, { label: "完成合奏", detail: "跟随六拍旋律合奏。", icon: "♪" }] },
+  firstSnow: { title: "初雪堆雪会", intro: "雪球要一点点滚大，不能一按就出现雪人。", steps: [{ label: "滚出雪球", detail: "分别滚好身体和头部。", icon: "雪" }, { label: "搭好雪人", detail: "把雪球稳稳叠在一起。", icon: "人" }, { label: "围上围巾", detail: "装上眼睛、树枝手和围巾。", icon: "巾" }] },
+  hotSoup: { title: "冬日热汤厨房", intro: "挑食材、切配、控火，再和居民分享。", steps: [{ label: "挑选食材", detail: "选出新鲜蔬菜和香草。", icon: "菜" }, { label: "清洗切配", detail: "洗净后按纹理切好。", icon: "刀" }, { label: "控制火候", detail: "让温度保持在暖色区域。", icon: "火" }, { label: "盛汤分享", detail: "把热汤依次端给居民。", icon: "汤" }] },
   seeds: { title: "种子分享工坊", intro: "先清掉虫子和杂物，再辨认种子、按季节分类，最后用丝绸扎好礼包。", steps: [
     { label: "清理种子", detail: "用杀虫剂处理小虫，把混进种子里的杂物拖到废料盒。", icon: "净" },
     { label: "按季节分类", detail: "拿起种子会显示名字，再拖进春夏秋冬对应的篮子。", icon: "篮" },
@@ -807,6 +885,10 @@ const makeNewGame = (): GameState => ({
   daily: { day: 1, planted: 0, watered: 0, harvested: 0, fish: 0, chopped: 0, sold: 0, rewardClaimed: false },
   sick: false,
   diagnosed: false,
+  medicalTrained: false,
+  illness: null,
+  learnedTreatments: [],
+  treatmentBaths: {},
   lastIllnessDay: 0,
   groundBooks: [true, false, false],
   bookBag: [],
@@ -878,6 +960,9 @@ const makeNewGame = (): GameState => ({
   lastTalkedDays: {},
   forestQuestStage: 0,
   forestQuestProgressDay: 0,
+  forestQuestEpisode: 0,
+  forestQuestNextAbsoluteDay: 0,
+  residentTripDays: [],
   cropQualityHarvests: makeCropQualityRecord(),
   cropQualityStock: makeCropQualityStock(),
   chestCropQualityStock: makeCropQualityStock(),
@@ -939,6 +1024,9 @@ const restoreVillageGame = (saved: string | null): GameState => {
       firstFloorNightstandPlaced: parsed.firstFloorNightstandPlaced ?? false,
       friendship: parsed.friendship ?? {},
       lastTalkedDays: parsed.lastTalkedDays ?? {},
+      forestQuestEpisode: parsed.forestQuestEpisode ?? 0,
+      forestQuestNextAbsoluteDay: parsed.forestQuestNextAbsoluteDay ?? 0,
+      residentTripDays: parsed.residentTripDays ?? [],
       cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
       cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
       chestCropQualityStock: mergeCropQualityStock(parsed.chestCropQualityStock),
@@ -994,6 +1082,10 @@ export default function FarmGame() {
   const [guideReplay, setGuideReplay] = useState(0);
   const [journalOpen, setJournalOpen] = useState(false);
   const [journalTab, setJournalTab] = useState<"today" | "friends" | "collection" | "recipes">("today");
+  const [residentInvitation, setResidentInvitation] = useState<{ person: string; trip: HiddenTripId } | null>(null);
+  const [residentOuting, setResidentOuting] = useState<{ person: string; trip: HiddenTripId } | null>(null);
+  const [careSession, setCareSession] = useState<{ mode: "training" | "treatment"; illness: IllnessId; step: number; progress: number; selected: string[]; herbParts: number; waterParts: number } | null>(null);
+  const [schoolLesson, setSchoolLesson] = useState<{ title: string; pages: string[]; step: number; assembly: boolean; attendanceKey: string } | null>(null);
   const [townhallCalendarOpen, setTownhallCalendarOpen] = useState(false);
   const [festivalPreview, setFestivalPreview] = useState<FestivalPreview | null>(null);
   const [raincoatDressing, setRaincoatDressing] = useState(false);
@@ -1192,6 +1284,10 @@ export default function FarmGame() {
             daily: parsed.daily?.day === parsed.day ? { ...defaults.daily, ...parsed.daily } : { ...defaults.daily, day: parsed.day ?? 1 },
             sick: parsed.sick ?? false,
             diagnosed: parsed.diagnosed ?? false,
+            medicalTrained: parsed.medicalTrained ?? false,
+            illness: parsed.illness ?? null,
+            learnedTreatments: parsed.learnedTreatments ?? [],
+            treatmentBaths: parsed.treatmentBaths ?? {},
             lastIllnessDay: parsed.lastIllnessDay ?? 0,
             npcHealedDays: parsed.npcHealedDays ?? {},
             lastSchoolAttendance: parsed.lastSchoolAttendance ?? "",
@@ -1204,6 +1300,9 @@ export default function FarmGame() {
             firstFloorNightstandPlaced: parsed.firstFloorNightstandPlaced ?? false,
             friendship: parsed.friendship ?? {},
             lastTalkedDays: parsed.lastTalkedDays ?? {},
+            forestQuestEpisode: parsed.forestQuestEpisode ?? 0,
+            forestQuestNextAbsoluteDay: parsed.forestQuestNextAbsoluteDay ?? 0,
+            residentTripDays: parsed.residentTripDays ?? [],
             cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
             cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
             chestCropQualityStock: mergeCropQualityStock(parsed.chestCropQualityStock),
@@ -1362,6 +1461,10 @@ export default function FarmGame() {
             pickaxe: data.save.toolUpgradeDays?.pickaxe ?? (data.save.toolUpgrades?.pickaxe ? 7 : 0),
           },
           diagnosed: data.save.diagnosed ?? false,
+          medicalTrained: data.save.medicalTrained ?? false,
+          illness: data.save.illness ?? null,
+          learnedTreatments: data.save.learnedTreatments ?? [],
+          treatmentBaths: data.save.treatmentBaths ?? {},
           daily: { ...defaults.daily, ...(data.save.daily ?? {}) },
           caveDiamondStates: defaults.caveDiamondStates.map((standing, index) => data.save.caveDiamondStates?.[index] ?? standing),
           caveDiamondSpots: data.save.caveDiamondSpots?.length === 3 ? data.save.caveDiamondSpots : defaults.caveDiamondSpots,
@@ -1376,6 +1479,9 @@ export default function FarmGame() {
           mallItems: { ...defaults.mallItems, ...(data.save.mallItems ?? {}) },
           friendship: data.save.friendship ?? {},
           lastTalkedDays: data.save.lastTalkedDays ?? {},
+          forestQuestEpisode: data.save.forestQuestEpisode ?? 0,
+          forestQuestNextAbsoluteDay: data.save.forestQuestNextAbsoluteDay ?? 0,
+          residentTripDays: data.save.residentTripDays ?? [],
           cropQualityHarvests: mergeCropQualityRecord(data.save.cropQualityHarvests),
           cropQualityStock: mergeCropQualityStock(data.save.cropQualityStock),
           chestCropQualityStock: mergeCropQualityStock(data.save.chestCropQualityStock),
@@ -1395,7 +1501,7 @@ export default function FarmGame() {
 
   useEffect(() => {
     if (!ready || game.energy > 0 || game.sick) return;
-    setGame((current) => ({ ...current, sick: true, diagnosed: false, lastIllnessDay: current.day }));
+    setGame((current) => ({ ...current, sick: true, diagnosed: false, illness: "overwork", lastIllnessDay: current.day }));
     setMessage("小禾累得没有精神，嘴角悄悄垂了下来。 ");
   }, [game.energy, game.sick, ready]);
 
@@ -1456,7 +1562,8 @@ export default function FarmGame() {
         if (rainExposure < 60 || current.sick) return { ...current, rainExposure };
         setMessage("小禾在雨里淋得太久，冷得发抖，嘴角也变成了伤心的样子。快去诊所检查或回家休息吧。");
         playTone(210);
-        return { ...current, rainExposure, sick: true, diagnosed: false, lastIllnessDay: current.day };
+        const rainIllness: IllnessId = ((current.year - 1) * 112 + current.season * 28 + current.day) % 2 ? "rainFlu" : "windChill";
+        return { ...current, rainExposure, sick: true, diagnosed: false, illness: rainIllness, lastIllnessDay: current.day };
       });
     }, 5_000);
     return () => window.clearInterval(rainTimer);
@@ -2964,8 +3071,131 @@ export default function FarmGame() {
 
   const currentAbsoluteDay = () => (game.year - 1) * 112 + game.season * 28 + game.day;
 
+  const meetScheduledResident = (person: string, schedule: ResidentSchedule) => {
+    const tripKey = `${game.year}-${game.season}-${game.day}-${person}-${schedule.invite ?? "none"}`;
+    if (schedule.invite && (game.friendship[person] ?? 0) >= 20 && !game.residentTripDays.includes(tripKey)) {
+      setResidentInvitation({ person, trip: schedule.invite });
+      setMessage(`${person}：我正准备去一个地图上没有的地方。那里不能自己开车过去，如果你愿意，现在就跟紧我。`);
+      playTone(780);
+      return;
+    }
+    interactWithPerson(person, `${person}：${schedule.label}。今天在这里碰见你真巧。`);
+  };
+
+  const followResidentToHiddenPlace = () => {
+    if (!residentInvitation) return;
+    const tripKey = `${game.year}-${game.season}-${game.day}-${residentInvitation.person}-${residentInvitation.trip}`;
+    setResidentOuting(residentInvitation);
+    setGame((current) => withFriendship({
+      ...current,
+      residentTripDays: current.residentTripDays.includes(tripKey) ? current.residentTripDays : [...current.residentTripDays, tripKey].slice(-80),
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：跟着${residentInvitation.person}走过地图上没有的小路，第一次看见了${HIDDEN_TRIPS[residentInvitation.trip].name}。`, ...current.journalEntries].slice(0, 40),
+    }, residentInvitation.person, 6));
+    setResidentInvitation(null);
+    setMessage(`小禾没有打开地图，也没有开车，只是一直跟着${residentInvitation.person}穿过小路，来到了${HIDDEN_TRIPS[residentInvitation.trip].name}。`);
+    playTone(900);
+  };
+
+  const enjoyResidentOuting = () => {
+    if (!residentOuting) return;
+    const trip = HIDDEN_TRIPS[residentOuting.trip];
+    setGame((current) => withFriendship({ ...current, energy: Math.min(100, current.energy + (residentOuting.trip === "riverKitchen" ? 22 : residentOuting.trip === "forestPlayground" ? 20 : residentOuting.trip === "hillsideTea" ? 18 : 16)) }, residentOuting.person, 4));
+    setMessage(`${residentOuting.person}和小禾${trip.action}。${trip.reward}，两个人也更熟悉了。`);
+    playTone(860);
+  };
+
   const progressForestStoryWithAnan = () => {
     const absoluteDay = currentAbsoluteDay();
+    if (game.forestQuestStage === 5) {
+      const daysLeft = Math.max(0, game.forestQuestNextAbsoluteDay - absoluteDay);
+      if (daysLeft > 0) {
+        setMessage(`安安正在继续观察森林。再过 ${daysLeft} 个游戏日，她才会带来下一条真正的新线索。`);
+        playTone(360);
+        return;
+      }
+      const nextEpisode = (game.forestQuestEpisode + 1) % FOREST_STORY_TITLES.length;
+      setGame((current) => ({
+        ...current,
+        forestQuestEpisode: nextEpisode,
+        forestQuestStage: 0,
+        forestQuestProgressDay: absoluteDay,
+        journalEntries: [`安安送来一张只画着几个小记号的新纸条。新的森林故事“${FOREST_STORY_TITLES[nextEpisode]}”已经出现，但要亲自去观察才能知道发生了什么。`, ...current.journalEntries].slice(0, 40),
+      }));
+      setMessage(`安安跑来敲门：森林里好像又有一点不对劲。她没有直接说答案，只邀请小禾去看看“${FOREST_STORY_TITLES[nextEpisode]}”。`);
+      playTone(840);
+      return;
+    }
+    if (game.forestQuestEpisode === 1) {
+      if (game.forestQuestStage === 0) {
+        setGame((current) => withFriendship({ ...current, forestQuestStage: 1, forestQuestProgressDay: absoluteDay, journalEntries: ["夜里有一小团萤火在安安的田边绕圈，却怎么也找不到能落下的地方。安安把几颗暗淡的小种子放进玻璃瓶继续观察。", ...current.journalEntries].slice(0, 40) }, "安安", 3));
+        setMessage("安安没有给出清单，只说萤火种闻到松子的香气时会发亮，药草的叶子也许能让光停得更久。可以慢慢试着带一些过去。 ");
+        playTone(720);
+        return;
+      }
+      if (game.forestQuestStage === 1) {
+        if (game.pineNuts < 3 || game.herbs < 1) {
+          setMessage(`玻璃瓶里的萤火种只亮了一下又暗了。背包里现在有松子 ${game.pineNuts}、药材 ${game.herbs}；安安说气味可能还不够。`);
+          playTone(280);
+          return;
+        }
+        setGame((current) => ({ ...current, pineNuts: current.pineNuts - 3, herbs: current.herbs - 1, forestQuestStage: 2, forestQuestProgressDay: absoluteDay, journalEntries: ["三颗松子和一片药草放在玻璃瓶旁，暗淡的种子开始一呼一吸地发光。现在只能等它自己选择落下的地方。", ...current.journalEntries].slice(0, 40) }));
+        setMessage("萤火种开始发出很弱的绿光。安安把灯全关掉，让它安静待一夜，明天再观察。 ");
+        playTone(820);
+        return;
+      }
+      if (absoluteDay <= game.forestQuestProgressDay) {
+        setMessage("玻璃瓶里的光还在轻轻移动，现在碰它可能会吓跑。睡到明天再来看。 ");
+        return;
+      }
+      setGame((current) => withFriendship({ ...current, forestQuestStage: 5, forestQuestNextAbsoluteDay: absoluteDay + 5, coins: current.coins + 220, cornSeeds: current.cornSeeds + 4, journalEntries: ["萤火种自己飞到林间湿润的苔藓上，长成了一圈会发微光的小芽。第二段森林故事完成，安安会继续留意新的变化。", ...current.journalEntries].slice(0, 40) }, "安安", 12));
+      setMessage("清晨，萤火种终于落进苔藓，长出一圈微光小芽！获得 220 金币和 4 颗玉米种子。下一段故事不会马上出现。 ");
+      playTone(940);
+      return;
+    }
+    if (game.forestQuestEpisode === 2) {
+      if (game.forestQuestStage === 0) {
+        setGame((current) => ({ ...current, forestQuestStage: 1, forestQuestProgressDay: absoluteDay, journalEntries: ["雨停以后，森林边缘传来细小的鸟叫。安安在草丛里发现了一块湿透的木板和几根散落的羽毛。", ...current.journalEntries].slice(0, 40) }));
+        setMessage("安安把湿木板翻过来，发现它原来是小鸟屋的一面。要重新做得结实，也许需要足够的木头和能防水的树脂。 ");
+        return;
+      }
+      if (game.forestQuestStage === 1) {
+        if (game.wood < 12 || game.resin < 2) {
+          setMessage(`鸟屋还缺结实材料。现在有木头 ${game.wood}/12、树脂 ${game.resin}/2；砍树时可以慢慢收集。`);
+          return;
+        }
+        setGame((current) => ({ ...current, wood: current.wood - 12, resin: current.resin - 2, forestQuestStage: 2, forestQuestProgressDay: absoluteDay, journalEntries: ["鲁师傅教安安顺着木纹钉好鸟屋，又用树脂封住缝隙。鸟屋挂回树上以后，需要等待小鸟自己判断是否安全。", ...current.journalEntries].slice(0, 40) }));
+        setMessage("鸟屋已经挂回树上，但不能把鸟强行放进去。安安决定离远一点，等到明天再看。 ");
+        playTone(780);
+        return;
+      }
+      if (absoluteDay <= game.forestQuestProgressDay) { setMessage("树梢很安静。现在靠太近，小鸟反而不会回来，明天再看。 "); return; }
+      setGame((current) => withFriendship({ ...current, forestQuestStage: 5, forestQuestNextAbsoluteDay: absoluteDay + 6, coins: current.coins + 260, pinecones: current.pinecones + 2, journalEntries: ["两只小鸟在新鸟屋门口探头，最后一起钻了进去。第三段森林故事完成，新的线索还要等森林慢慢发生变化。", ...current.journalEntries].slice(0, 40) }, "安安", 12));
+      setMessage("两只小鸟终于住进了修好的鸟屋！获得 260 金币和 2 颗松果。 ");
+      playTone(940);
+      return;
+    }
+    if (game.forestQuestEpisode === 3) {
+      if (game.forestQuestStage === 0) {
+        setGame((current) => ({ ...current, forestQuestStage: 1, forestQuestProgressDay: absoluteDay, journalEntries: ["安安发现森林深处的小溪只剩下湿湿的石痕。水没有凭空消失，而像是被什么东西堵在更深的泥土下面。", ...current.journalEntries].slice(0, 40) }));
+        setMessage("小溪底下传来很轻的水声。安安觉得普通石头可以固定河岸，亮晶晶的矿石也许能照出堵塞的位置。 ");
+        return;
+      }
+      if (game.forestQuestStage === 1) {
+        if (game.stone < 8 || game.diamonds < 1 || game.herbs < 2) {
+          setMessage(`小溪实验还缺材料。现在有石材 ${game.stone}/8、钻石 ${game.diamonds}/1、药材 ${game.herbs}/2。安安没有催促，可以慢慢找。`);
+          return;
+        }
+        setGame((current) => ({ ...current, stone: current.stone - 8, diamonds: current.diamonds - 1, herbs: current.herbs - 2, forestQuestStage: 2, forestQuestProgressDay: absoluteDay, journalEntries: ["钻石在湿石缝里映出一条很细的蓝线。大家沿着蓝线清开泥土，再用石材固定河岸，药草被铺在新土上防止冲刷。", ...current.journalEntries].slice(0, 40) }));
+        setMessage("蓝线已经出现，泥土也清开了，但地下的水需要一夜才能慢慢渗回来。 ");
+        playTone(860);
+        return;
+      }
+      if (absoluteDay <= game.forestQuestProgressDay) { setMessage("石缝正在一点点变湿，水还没有真正流动。明天再来观察。 "); return; }
+      setGame((current) => withFriendship({ ...current, forestQuestStage: 5, forestQuestNextAbsoluteDay: absoluteDay + 7, coins: current.coins + 420, watermelonSeeds: current.watermelonSeeds + 5, journalEntries: ["森林小溪重新流动，水没有突然喷出来，而是先浸湿石缝、汇成水珠，最后才连成一条细流。第四段森林故事完成。", ...current.journalEntries].slice(0, 40) }, "安安", 15));
+      setMessage("等了一夜，水珠终于连成小溪！获得 420 金币和 5 颗西瓜种子。以后森林故事会从新的变化重新开始。 ");
+      playTone(980);
+      return;
+    }
     if (game.forestQuestStage === 0) {
       setGame((current) => withFriendship({
         ...current,
@@ -3025,6 +3255,7 @@ export default function FarmGame() {
         ...current,
         forestQuestStage: 5,
         forestQuestProgressDay: absoluteDay,
+        forestQuestNextAbsoluteDay: absoluteDay + 5,
         coins: current.coins + 300,
         strawberrySeeds: current.strawberrySeeds + 5,
         journalEntries: ["彩虹森林的老松树恢复了颜色，还长出一圈金色新芽。安安和小禾完成了第一次森林故事。", ...current.journalEntries].slice(0, 40),
@@ -3039,7 +3270,7 @@ export default function FarmGame() {
 
   const inspectForestCaveClue = () => {
     const absoluteDay = currentAbsoluteDay();
-    if (game.forestQuestStage !== 2) return;
+    if (game.forestQuestEpisode !== 0 || game.forestQuestStage !== 2) return;
     if (absoluteDay <= game.forestQuestProgressDay) {
       setMessage("安安做的药水还没有沉淀好，要睡到明天，蓝晶水才会显出光。 ");
       playTone(260);
@@ -3339,11 +3570,13 @@ export default function FarmGame() {
     setGame((current) => ({
       ...current,
       urgentEventResolved: true,
-      coins: current.coins + (eventKind === "fire" ? 120 : eventKind === "injury" ? 90 : 60),
+      coins: current.coins + (eventKind === "fire" ? 120 : eventKind === "injury" ? 90 : eventKind === "assembly" ? 80 : 60),
       seeds: current.seeds + (eventKind === "theft" ? 5 : 0),
       energy: Math.max(0, current.energy - 4),
     }));
-    setMessage(eventKind === "fire"
+    setMessage(eventKind === "assembly"
+      ? "许老师讲完了重要集合内容，居民们确认了新的山谷安全规则。小禾认真听完，获得 80 金币学习奖励。"
+      : eventKind === "fire"
       ? "小禾提起现场水桶，把火苗一处处浇灭了！鲁师傅确认没有余火，感谢你并奖励 120 金币。"
       : eventKind === "theft"
         ? "小禾捡起散落的种子货箱，沿着脚印交还给林婶！获得 60 金币和 5 颗萝卜种子。"
@@ -3615,15 +3848,134 @@ export default function FarmGame() {
       playTone(420);
       return;
     }
+    if (!game.diagnosed || !game.illness) {
+      setMessage("药材不能乱用。先去青禾诊所接受免费检查，知道具体病种以后再决定治疗方法。 ");
+      playTone(260);
+      return;
+    }
+    setMessage(`${ILLNESSES[game.illness].name}不能靠单点药材立刻治好。请按照诊所教过的专属流程处理。`);
+    playTone(420);
+  };
+
+  const beginMedicalCourse = (illness: IllnessId) => {
+    if (currentFestival?.id !== "medical" || activeBuilding !== "clinic") {
+      setMessage("病种实习只在青禾医疗节当天的诊所开放，可以从镇公所公告栏进入体验。 ");
+      return;
+    }
+    setCareSession({ mode: "training", illness, step: 0, progress: 0, selected: [], herbParts: 0, waterParts: 0 });
+    setMessage(`白医生拿出“${ILLNESSES[illness].name}”病例册。先观察三项症状，不能跳步骤。`);
+    playTone(640);
+  };
+
+  const beginSelfTreatment = () => {
+    if (!game.sick || !game.diagnosed || !game.illness) {
+      setMessage("只有检查出具体病种以后，才会出现对应的自我治疗流程。 ");
+      return;
+    }
+    const illness = ILLNESSES[game.illness];
+    if (!game.learnedTreatments.includes(game.illness)) {
+      setMessage(`还没有在医疗节学过“${illness.name}”的处理方法，不能凭感觉治疗。`);
+      return;
+    }
+    if (illness.method === "clinicOnly") {
+      setMessage(`${illness.name}属于必须使用诊所处方药的病种，白医生不会允许小禾自行处理。`);
+      return;
+    }
+    if (illness.method === "baths") {
+      const progress = game.treatmentBaths[game.illness] ?? 0;
+      setMessage(`${illness.name}要连续洗三次热水澡并睡觉恢复，目前完成 ${progress}/3 次。去农舍二楼卫生间继续。`);
+      return;
+    }
+    const recipe = illness.recipe;
+    if (recipe && (game.herbs < recipe.herbs || game.inventory.pineapple < recipe.pineapple || game.pineNuts < recipe.pineNuts)) {
+      setMessage(`${illness.name}的游戏配方材料不足：需要菠萝 ${recipe.pineapple}、松子 ${recipe.pineNuts}、药材 ${recipe.herbs}。医生只能告诉方法，材料要自己收集。`);
+      return;
+    }
+    if (!recipe && game.herbs < 1) {
+      setMessage("这套护理需要 1 份药材，先去地上寻找或到超市购买。 ");
+      return;
+    }
+    if (game.energy < 36) {
+      setMessage("完整自我治疗会消耗 35 点体力。现在太虚弱，应该先去诊所，不要勉强。 ");
+      return;
+    }
+    setCareSession({ mode: "treatment", illness: game.illness, step: 0, progress: 0, selected: [], herbParts: 0, waterParts: 0 });
+    setMessage(`开始处理${illness.name}。必须依次完成观察、备物、消毒、配制、护理和复查。`);
+  };
+
+  const takeTherapeuticBath = () => {
+    if (game.sick && game.diagnosed && game.illness && ILLNESSES[game.illness].method === "baths") {
+      const illnessId = game.illness;
+      const nextCount = Math.min(3, (game.treatmentBaths[illnessId] ?? 0) + 1);
+      const cured = nextCount >= 3;
+      setGame((current) => ({
+        ...current,
+        energy: Math.min(100, current.energy + 10),
+        sick: cured ? false : current.sick,
+        diagnosed: cured ? false : current.diagnosed,
+        illness: cured ? null : current.illness,
+        treatmentBaths: { ...current.treatmentBaths, [illnessId]: nextCount },
+        rainExposure: 0,
+        showeredBeforeBed: true,
+      }));
+      setMessage(cured ? `第 3 次热水澡完成，${ILLNESSES[illnessId].name}终于恢复了。` : `${ILLNESSES[illnessId].name}的连续热浴完成 ${nextCount}/3 次。今晚睡一觉，下一次再继续。`);
+      playTone(cured ? 920 : 680);
+      return;
+    }
+    setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 15), rainExposure: 0, showeredBeforeBed: true }));
+    setMessage("洗了一个暖和的澡：恢复 15 点体力。睡觉后，明天农活体力消耗减少约三成。 ");
+    playTone(720);
+  };
+
+  const completeCareSession = (session: NonNullable<typeof careSession>) => {
+    if (session.mode === "training") {
+      setGame((current) => ({
+        ...current,
+        medicalTrained: true,
+        learnedTreatments: current.learnedTreatments.includes(session.illness) ? current.learnedTreatments : [...current.learnedTreatments, session.illness],
+        journalEntries: [`${SEASONS[current.season]}第${current.day}天：在医疗节学会了${ILLNESSES[session.illness].name}的专属处理流程。`, ...current.journalEntries].slice(0, 40),
+      }));
+      setMessage(`病例实习完成：学会了${ILLNESSES[session.illness].name}的专属流程。其他病种仍要逐种学习。`);
+      setCareSession(null);
+      playTone(940);
+      return;
+    }
+    const illness = ILLNESSES[session.illness];
+    const recipe = illness.recipe;
     setGame((current) => ({
       ...current,
-      herbs: current.herbs - 1,
+      herbs: Math.max(0, current.herbs - (recipe?.herbs ?? 1)),
+      pineNuts: Math.max(0, current.pineNuts - (recipe?.pineNuts ?? 0)),
+      inventory: { ...current.inventory, pineapple: Math.max(0, current.inventory.pineapple - (recipe?.pineapple ?? 0)) },
+      energy: Math.max(0, current.energy - 35),
       sick: false,
       diagnosed: false,
-      energy: Math.min(100, current.energy + 25),
+      illness: null,
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：完整完成${illness.name}的六段自我治疗，消耗了 35 点体力。`, ...current.journalEntries].slice(0, 40),
     }));
-    setMessage("使用了 1 份药材，小禾恢复了健康，体力也增加了 25 点！");
-    playTone(820);
+    setCareSession(null);
+    setMessage(`${illness.name}的六段流程全部完成。小禾恢复健康，但治疗很累，消耗了 35 点体力。`);
+    playTone(980);
+  };
+
+  const performCareAction = (token: string) => {
+    if (!careSession || careSession.selected.includes(token)) return;
+    const requiredByStep = [3, 4, 6, 5, 5, 4];
+    const nextSelected = [...careSession.selected, token];
+    const required = requiredByStep[careSession.step] ?? 1;
+    if (nextSelected.length < required) {
+      setCareSession({ ...careSession, progress: nextSelected.length, selected: nextSelected });
+      setMessage(`${ILLNESSES[careSession.illness].name} · 当前步骤 ${nextSelected.length}/${required}，还不能跳到下一步。`);
+      playTone(480 + nextSelected.length * 45);
+      return;
+    }
+    if (careSession.step >= 5) {
+      completeCareSession(careSession);
+      return;
+    }
+    setCareSession({ ...careSession, step: careSession.step + 1, progress: 0, selected: [], herbParts: 0, waterParts: 0 });
+    setMessage(`这一步完成，进入第 ${careSession.step + 2}/6 段。`);
+    playTone(720);
   };
 
   const clickHerb = () => {
@@ -4240,8 +4592,9 @@ export default function FarmGame() {
     if (building === "clinic") {
       const caregiver = NPC_SICK_DAYS["白医生"]?.includes(game.day) && game.npcHealedDays["白医生"] !== game.day ? "诊所助手" : "白医生";
       if (!game.diagnosed) {
-        setGame((current) => ({ ...current, diagnosed: true }));
-        setMessage(game.sick ? `${caregiver}完成检查：小禾确实生病了，我来开一份处方药。` : `${caregiver}完成检查：没有生病，不需要开药。 `);
+        const diagnosedIllness = game.illness ?? ILLNESS_IDS[absoluteGameDay % ILLNESS_IDS.length];
+        setGame((current) => ({ ...current, diagnosed: true, illness: current.sick ? diagnosedIllness : null }));
+        setMessage(game.sick ? `${caregiver}完成检查：诊断为“${ILLNESSES[diagnosedIllness].name}”。${ILLNESSES[diagnosedIllness].advice}` : `${caregiver}完成检查：没有生病，不需要开药。 `);
         playTone(680);
         return;
       }
@@ -4254,8 +4607,9 @@ export default function FarmGame() {
         playTone(220);
         return;
       }
-      setGame((current) => ({ ...current, coins: current.coins - 50, sick: false, diagnosed: false, energy: Math.max(80, current.energy) }));
-      setMessage(`${caregiver}开了处方药。支付 50 金币后服下药，小禾恢复健康了！`);
+      const illnessName = game.illness ? ILLNESSES[game.illness].name : "这次病症";
+      setGame((current) => ({ ...current, coins: current.coins - 50, sick: false, diagnosed: false, illness: null, energy: Math.max(80, current.energy) }));
+      setMessage(`${caregiver}为${illnessName}开了专用处方药。支付 50 金币后按处方使用，小禾恢复健康了！`);
       playTone(680);
     } else if (building === "cafe") {
       if (currentFestival?.id === "coffee") {
@@ -4281,6 +4635,23 @@ export default function FarmGame() {
       setMessage("免费参观鲁师傅的手工作品：鸟屋、小木马和山谷木雕都摆在展示台上。 ");
       playTone(440);
     } else if (building === "school") {
+      if (game.urgentEvent === "assembly" && !game.urgentEventResolved) {
+        setSchoolLesson({
+          title: "全谷紧急集合说明会",
+          pages: [
+            "周镇长：今天北林水位和山坡土壤同时出现变化，所有居民先到学校集合，不要单独进山。",
+            "白医生：如果有人淋雨、受伤或体力耗尽，要先到诊所检查；不要把游戏药材随便混在一起。",
+            "许老师在黑板画出安全路线：文化街向南回中心街，中心街向西回农场，只有通知解除后才能进北林。",
+            "居民逐一确认听清。集合结束后，今天的紧急新闻会标记为已经处理，大家再按各自作息离开学校。",
+          ],
+          step: 0,
+          assembly: true,
+          attendanceKey: `assembly-${game.year}-${game.season}-${game.day}`,
+        });
+        setMessage("所有居民已经坐进礼堂。必须听完四段重要说明，紧急集合才算完成。 ");
+        playTone(720);
+        return;
+      }
       if (isExcursionAvailable) {
         setBusTraveling(true);
         setAmusementOpen(false);
@@ -4308,16 +4679,10 @@ export default function FarmGame() {
         setMessage("今天的课已经听完，50 金币学习奖励也领过了，下一次上课日再来吧。 ");
         return;
       }
-      const lessons = [
-        "英语课：跟着许老师朗读 A、B、C，并学会了 FARM、SEED 和 WATER。",
-        "语文课：阅读《青禾谷的四季》，学习描写春夏秋冬的词语。",
-        "数学课：练习种子成本和收获收入的加减法，还用算盘算出了利润。",
-        "农场知识课：学习用稻草人防乌鸦、用围栏挡小动物，以及不同季节的照料方法。",
-      ];
-      const lesson = lessons[(game.day + game.season) % lessons.length];
-      setGame((current) => ({ ...current, coins: current.coins + 50, hour: Math.min(24, current.hour + 2), lastSchoolAttendance: attendanceKey }));
-      setMessage(`${lesson} 认真听完一天课程，获得 50 金币学习奖励！`);
-      playTone(860);
+      const lesson = SCHOOL_LESSONS[absoluteGameDay % SCHOOL_LESSONS.length];
+      setSchoolLesson({ title: lesson.title, pages: [...lesson.pages], step: 0, assembly: false, attendanceKey });
+      setMessage(`许老师开始讲“${lesson.title}”。要一页一页听完四段真实规则，才算完成今天的课。`);
+      playTone(700);
     } else if (building === "museum") {
       if (heldItem?.kind === "artifact") {
         giveHeldItem("沈馆长");
@@ -4329,6 +4694,33 @@ export default function FarmGame() {
       setMessage("农事图鉴：萝卜连续浇水三天即可成熟，晴天也不能偷懒哦。");
       playTone(600);
     }
+  };
+
+  const advanceSchoolLesson = () => {
+    if (!schoolLesson) return;
+    if (schoolLesson.step < schoolLesson.pages.length - 1) {
+      const nextStep = schoolLesson.step + 1;
+      setSchoolLesson({ ...schoolLesson, step: nextStep });
+      setMessage(`许老师翻到第 ${nextStep + 1} 页，同学们继续认真听。`);
+      playTone(610 + nextStep * 55);
+      return;
+    }
+    setGame((current) => schoolLesson.assembly ? ({
+      ...current,
+      urgentEventResolved: true,
+      coins: current.coins + 80,
+      hour: Math.min(24, current.hour + 1),
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：全谷居民在学校听完紧急集合说明。`, ...current.journalEntries].slice(0, 40),
+    }) : ({
+      ...current,
+      coins: current.coins + 50,
+      hour: Math.min(24, current.hour + 2),
+      lastSchoolAttendance: schoolLesson.attendanceKey,
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：在学校学完“${schoolLesson.title}”。`, ...current.journalEntries].slice(0, 40),
+    }));
+    setMessage(schoolLesson.assembly ? "四段重要说明全部听完，紧急集合完成，获得 80 金币帮助奖励。" : `“${schoolLesson.title}”四段课程全部听完，获得 50 金币学习奖励。`);
+    setSchoolLesson(null);
+    playTone(940);
   };
 
   const inspectBuildingItem = (item: string) => {
@@ -4378,6 +4770,11 @@ export default function FarmGame() {
       : (nextDayNumber - game.lastIllnessDay + 28) % 28;
     const becameSick = !game.sick && (game.energy <= 0 || (daysSinceIllness >= 6 && nextDayNumber % 6 === 0));
     const remainsSick = game.sick || becameSick;
+    const nextIllness: IllnessId | null = game.sick
+      ? game.illness ?? "valleyCold"
+      : becameSick
+        ? game.energy <= 0 ? "overwork" : ILLNESS_IDS[((nextYear - 1) * 112 + nextSeason * 28 + nextDayNumber) % ILLNESS_IDS.length]
+        : null;
     const plantedCropIndexes = game.tiles.map((tile, index) => tile.state === "crop" ? index : -1).filter((index) => index >= 0);
     const placedScarecrows = game.placedCrafts.filter((craft) => craft.type === "scarecrow").length;
     const placedFences = game.placedCrafts.filter((craft) => craft.type === "fence").length;
@@ -4403,7 +4800,9 @@ export default function FarmGame() {
     }) : [];
     const petBirthMessage = petBirthTypes.length ? ` 农舍旁传来小小的叫声：${petBirthTypes.map((pet) => pet.name).join("、")}家庭生活满五年，生下了一只小宝宝！` : "";
     const nextAbsoluteDay = (nextYear - 1) * 112 + nextSeason * 28 + nextDayNumber;
-    const nextUrgentEvent: UrgentEventKind | null = nextAbsoluteDay % 19 === 5
+    const nextUrgentEvent: UrgentEventKind | null = nextAbsoluteDay % 31 === 9
+      ? "assembly"
+      : nextAbsoluteDay % 19 === 5
       ? "fire"
       : nextAbsoluteDay % 23 === 7
         ? "theft"
@@ -4519,6 +4918,7 @@ export default function FarmGame() {
         energy: remainsSick ? 65 : 100,
         sick: remainsSick,
         diagnosed: false,
+        illness: nextIllness,
         rainExposure: 0,
         animalRainExposure: 0,
         showerBuff: current.showeredBeforeBed,
@@ -4907,13 +5307,25 @@ export default function FarmGame() {
   const currentGuideTopic = GUIDE_TOPICS.find((topic) => topic.id === guideTopic) ?? GUIDE_TOPICS[0];
   const relationshipPeople = Object.keys(PERSON_DIALOGUES).filter((name) => !name.includes("助手") || name === "诊所助手");
   const qualityTotals = CROP_TYPES.reduce((totals, crop) => ({ normal: totals.normal + game.cropQualityHarvests[crop].normal, silver: totals.silver + game.cropQualityHarvests[crop].silver, gold: totals.gold + game.cropQualityHarvests[crop].gold }), { normal: 0, silver: 0, gold: 0 });
+  const absoluteGameDay = (game.year - 1) * 112 + game.season * 28 + game.day;
+  const forestStoryTitle = FOREST_STORY_TITLES[game.forestQuestEpisode] ?? FOREST_STORY_TITLES[0];
+  const forestStoryDaysLeft = game.forestQuestStage === 5 ? Math.max(0, game.forestQuestNextAbsoluteDay - absoluteGameDay) : 0;
+  const residentBoardDaysLeft = 3 - (absoluteGameDay % 3);
+  const roamingResidents = SCHEDULED_RESIDENTS.map((name) => ({ name, schedule: residentActivity(name, game.hour, game.day, game.weather) }))
+    .filter(({ schedule }) => schedule.scene === scene && ["farm", "town", "cultureDistrict", "westFriendFarm"].includes(scene));
   const displaySeason = festivalPreview?.season ?? game.season;
   const displayDay = festivalPreview?.day ?? game.day;
   const festivalProcessAtVenue = Boolean(currentFestival && FESTIVAL_PROCESS_STEPS[currentFestival.id] && (
     (currentFestival.id === "seeds" && activeBuilding === "supermarket") ||
     (currentFestival.id === "coffee" && activeBuilding === "cafe") ||
     (currentFestival.id === "craft" && activeBuilding === "workshop") ||
-    (["spring", "midAutumn", "springFestival"].includes(currentFestival.id) && scene === "town" && !activeBuilding)
+    (currentFestival.id === "medical" && activeBuilding === "clinic") ||
+    (currentFestival.id === "hotSoup" && activeBuilding === "cafe") ||
+    (["spring", "midAutumn", "springFestival", "kite", "water", "firstSnow"].includes(currentFestival.id) && scene === "town" && !activeBuilding) ||
+    (currentFestival.id === "flower" && scene === "eastNeighbor" && !activeBuilding) ||
+    (currentFestival.id === "firefly" && scene === "westFriendFarm" && !activeBuilding) ||
+    (currentFestival.id === "harvest" && scene === "farm" && !activeBuilding) ||
+    (currentFestival.id === "leafMusic" && scene === "cultureDistrict" && !activeBuilding)
   ));
   const calendarPosition = game.season * 28 + game.day;
   const nextFestival = FESTIVAL_SCHEDULE.find((festival) => festival.season * 28 + festival.day >= calendarPosition) ?? FESTIVAL_SCHEDULE[0];
@@ -5153,6 +5565,7 @@ export default function FarmGame() {
 
   const festivalActionRequirements: Partial<Record<FestivalId, number[]>> = {
     seeds: [4, 4, 1], spring: [3, 3, 6], coffee: [1, 6, 1, 1, 3], craft: [3, 6, 1], springFestival: [1, 8, 6],
+    medical: [4, 4, 6, 5, 5], kite: [4, 4, 6], flower: [4, 3, 5], water: [4, 4, 6], firefly: [4, 3, 4], harvest: [4, 5, 4], leafMusic: [4, 5, 6], firstSnow: [6, 3, 5], hotSoup: [4, 5, 6, 5],
   };
   const festivalActionIcons: Partial<Record<FestivalId, string[][]>> = {
     seeds: [["莓", "瓜", "玉", "南"], ["春", "夏", "秋", "冬"], ["绳"]],
@@ -5262,12 +5675,13 @@ export default function FarmGame() {
       return {
         ...current,
         ...seedReward,
+        medicalTrained: festivalProcess.id === "medical" ? true : current.medicalTrained,
         coins: current.coins + 100,
         energy: Math.min(100, current.energy + 15),
         festivalActivitiesCompleted: [...current.festivalActivitiesCompleted, completionKey],
       };
     });
-    setMessage(alreadyCompleted ? `${process.title}的全部过程今天已经体验过了。` : `${process.title}全部完成！获得 100 金币和 15 点体力。`);
+    setMessage(alreadyCompleted ? `${process.title}的全部过程今天已经体验过了。` : festivalProcess.id === "medical" ? `${process.title}全部完成！取得基础医疗学习资格。现在可以在诊所逐种学习八种病症。` : `${process.title}全部完成！获得 100 金币和 15 点体力。`);
     setFestivalProcess(null);
     setFestivalActionCount(0);
     setFestivalDragging(false);
@@ -5357,6 +5771,18 @@ export default function FarmGame() {
       setScene("town"); setPlayer({ x: 10, y: 6 }); setActiveBuilding("cafe"); setMessage("咖啡日开始啦！阿麦准备了咖啡和新鲜点心。 ");
     } else if (festival.id === "craft") {
       setScene("town"); setPlayer({ x: 3, y: 6 }); setActiveBuilding("workshop"); setMessage("山谷手作日开始啦！居民们正在展示亲手制作的作品。 ");
+    } else if (festival.id === "medical") {
+      setScene("town"); setPlayer({ x: 9, y: 4 }); setActiveBuilding("clinic"); setMessage("青禾医疗节开始了！先完成基础实习，再在诊所逐种学习不同病症。 ");
+    } else if (festival.id === "hotSoup") {
+      setScene("town"); setPlayer({ x: 10, y: 6 }); setActiveBuilding("cafe"); setMessage("冬日热汤会开始了，阿麦正在等大家亲手煮汤。 ");
+    } else if (festival.id === "flower") {
+      setScene("eastNeighbor"); setPlayer({ x: 4, y: 5 }); setMessage("来到东郊果园参加百花观察节。 ");
+    } else if (festival.id === "firefly") {
+      setScene("westFriendFarm"); setPlayer({ x: 5, y: 5 }); setMessage("天色暗下来，安安带大家在林边寻找萤火虫。 ");
+    } else if (festival.id === "harvest") {
+      setScene("farm"); setPlayer({ x: 6, y: 5 }); setMessage("金秋丰收赛在青禾农场开始了。 ");
+    } else if (festival.id === "leafMusic") {
+      setScene("cultureDistrict"); setPlayer({ x: 5, y: 5 }); setMessage("枫叶音乐节在文化街开始了。 ");
     } else {
       setScene("town"); setPlayer({ x: 5, y: 5 }); setMessage(TRADITIONAL_FESTIVALS[festival.id]?.greeting ?? `${festival.name}开始啦！`);
     }
@@ -5921,6 +6347,10 @@ export default function FarmGame() {
 
       {shippingReport && <div className="shipping-report-toast" role="dialog" aria-modal="true" aria-label="昨晚售卖收入"><span>大号售卖箱通知</span><strong>昨晚卖出 {shippingReport.itemCount} 件东西</strong><b>+ {shippingReport.earnings.toLocaleString()} 金币</b><button onClick={() => setShippingReport(null)}>知道了</button></div>}
 
+      {residentInvitation && <div className="resident-invitation-card" role="dialog" aria-label={`${residentInvitation.person}邀请一起出门`}><button className="invitation-person" style={personClothesStyle(residentInvitation.person)} onClick={() => setMessage(`${residentInvitation.person}正在路边等小禾跟上。`)}><i /><b /></button><div><span>临时邀请 · 只在现在有效</span><strong>{residentInvitation.person}要去{HIDDEN_TRIPS[residentInvitation.trip].name}</strong><p>这个地方不在地图上，也不能自己开车到达。</p></div><button onClick={followResidentToHiddenPlace}>现在跟上</button><button className="decline-invitation" onClick={() => { setResidentInvitation(null); setMessage(`小禾这次没有跟去，${residentInvitation.person}挥挥手独自出发了。`); }}>这次不去</button></div>}
+
+      {residentOuting && <div className={`resident-outing-overlay outing-${residentOuting.trip}`} role="presentation"><section role="dialog" aria-modal="true" aria-label={HIDDEN_TRIPS[residentOuting.trip].name}><header><div><span>地图外的朋友地点</span><h2>{HIDDEN_TRIPS[residentOuting.trip].name}</h2><small>只有跟着{residentOuting.person}才能来到这里</small></div><button onClick={() => { setResidentOuting(null); setMessage(`小禾跟着${residentOuting.person}沿原路回到了${sceneLabel}。`); }}>×</button></header><div className="hidden-trip-scene"><div className="trip-sky"><i /><i /></div><div className="trip-land"><i /><i /><b /></div><div className="trip-building"><i /><b /></div><button className="trip-resident" style={personClothesStyle(residentOuting.person)} onClick={enjoyResidentOuting}><i /><b /><span>{residentOuting.person}</span></button><div className="trip-player"><PlayerSprite facing="right" sick={game.sick} /><span>{displayName}</span></div><p>{HIDDEN_TRIPS[residentOuting.trip].description}</p></div><footer><button onClick={enjoyResidentOuting}>{HIDDEN_TRIPS[residentOuting.trip].action}</button><button onClick={() => { setResidentOuting(null); setMessage(`小禾跟着${residentOuting.person}沿原路回来了。`); }}>跟着居民回去</button></footer></section></div>}
+
       {guideOpen && <div className="game-guide-overlay" role="presentation">
         <section className="game-guide-panel" role="dialog" aria-modal="true" aria-labelledby="game-guide-title">
           <header><div><span>青禾谷新手手册 · 动画教学</span><h2 id="game-guide-title">游戏说明</h2><small>从第一次走路到多人游戏，没玩过也能一步一步学会</small></div><button onClick={() => setGuideOpen(false)} aria-label="关闭游戏说明">×</button></header>
@@ -5951,7 +6381,7 @@ export default function FarmGame() {
           <header><div><span>小禾的生活记录</span><h2 id="valley-journal-title">山谷日记与收藏册</h2></div><button onClick={() => setJournalOpen(false)} aria-label="关闭山谷日记">×</button></header>
           <nav><button className={journalTab === "today" ? "active" : ""} onClick={() => setJournalTab("today")}>日记与任务</button><button className={journalTab === "friends" ? "active" : ""} onClick={() => setJournalTab("friends")}>居民好感</button><button className={journalTab === "collection" ? "active" : ""} onClick={() => setJournalTab("collection")}>收藏图鉴</button><button className={journalTab === "recipes" ? "active" : ""} onClick={() => setJournalTab("recipes")}>料理食谱</button></nav>
           <div className="journal-pages">
-            {journalTab === "today" && <><article className="forest-story-journal"><span>连续故事任务</span><h3>安安与褪色的老松树</h3><div className="forest-story-progress">{[0, 1, 2, 3, 4, 5].map((stage) => <i key={stage} className={game.forestQuestStage >= stage ? "done" : ""}>{stage === 5 ? "★" : stage + 1}</i>)}</div><p>{game.forestQuestStage === 0 ? "去安安的小农场，和她一起开始第一段森林故事。" : game.forestQuestStage === 1 ? "寻找 2 份药材，再交给安安。" : game.forestQuestStage === 2 ? "睡到第二天，带火柴进入青禾山洞寻找蓝晶水。" : game.forestQuestStage === 3 ? "带着 1 滴树脂和 1 颗松果回去找安安。" : game.forestQuestStage === 4 ? "睡到第二天，再去安安的小农场治疗老松树。" : "老松树已经恢复颜色，这段故事完成了！"}</p></article><div className="journal-entry-list">{game.journalEntries.length ? game.journalEntries.map((entry, index) => <p key={`${entry}-${index}`}><i>{index === 0 ? "今" : "记"}</i><span>{entry}</span></p>) : <p>今天还没有写下新的事情。</p>}</div></>}
+            {journalTab === "today" && <><div className="task-refresh-board"><article><i>日</i><div><strong>今日小目标</strong><span>{game.daily.rewardClaimed ? "今天已经完成" : `${completed}/3 已完成`}</span><small>还有 1 个游戏日 · 明天早上 7:00 刷新</small></div></article><article><i>委</i><div><strong>居民委托板</strong><span>{residentBoardDaysLeft} 个游戏日后更换一批新委托</span><small>旧委托不会一直占着公告栏</small></div></article><article className={game.forestQuestStage === 5 ? "waiting-story" : "active-story"}><i>林</i><div><strong>安安的连续森林故事</strong><span>{game.forestQuestStage === 5 ? forestStoryDaysLeft > 0 ? `还有 ${forestStoryDaysLeft} 个游戏日出现新任务` : "新线索已经出现，去找安安" : `正在进行：${forestStoryTitle}`}</span><small>故事完成后会休息几天，不会永远停在同一项</small></div></article></div><article className="forest-story-journal"><span>第 {game.forestQuestEpisode + 1} 段连续故事</span><h3>安安与{forestStoryTitle}</h3><div className="forest-story-progress">{[0, 1, 2, 3, 4, 5].map((stage) => <i key={stage} className={game.forestQuestStage >= stage ? "done" : ""}>{stage === 5 ? "★" : stage + 1}</i>)}</div><p>{game.forestQuestStage === 5 ? forestStoryDaysLeft > 0 ? `这段故事已经完成。安安还在观察森林，${forestStoryDaysLeft} 个游戏日后日记会出现新的动静。` : "纸页边缘出现了新记号，安安似乎已经发现下一件事。" : game.forestQuestEpisode === 0 ? game.forestQuestStage === 0 ? "老松树的颜色有些不对，先去安安的小农场亲自看看。" : "日记只记录已经观察到的现象；去现场、等待天气与材料慢慢发生变化。" : game.forestQuestEpisode === 1 ? "玻璃瓶里的小种子会对不同气味和夜晚光线产生反应。" : game.forestQuestEpisode === 2 ? "湿木板、羽毛和树脂留下的痕迹，正在慢慢指向一座旧鸟屋。" : "小溪石缝里仍有很轻的水声，答案可能藏在潮湿的泥土下面。"}</p></article><div className="journal-entry-list">{game.journalEntries.length ? game.journalEntries.map((entry, index) => <p key={`${entry}-${index}`}><i>{index === 0 ? "今" : "记"}</i><span>{entry}</span></p>) : <p>今天还没有写下新的事情。</p>}</div></>}
             {journalTab === "friends" && <div className="friendship-grid">{relationshipPeople.map((name) => { const points = game.friendship[name] ?? 0; const hearts = Math.min(5, Math.floor(points / 20)); const activity = residentActivity(name, game.hour, game.day, game.weather); return <article key={name} style={personClothesStyle(name)}><div className="friend-portrait"><i /><b /></div><div><strong>{name}</strong><span className="heart-row">{"♥".repeat(hearts)}<em>{"♡".repeat(5 - hearts)}</em></span><small>{points}/100 · {activity.label}</small></div></article>; })}</div>}
             {journalTab === "collection" && <div className="collection-grid"><article><b>★</b><strong>作物品质</strong><span>普通 {qualityTotals.normal}</span><span>银星 {qualityTotals.silver}</span><span>金星 {qualityTotals.gold}</span></article><article><b>书</b><strong>山谷图书</strong><span>{game.libraryBooks.length}/{LOST_BOOKS.length} 本归还</span></article><article><b>◆</b><strong>博物馆藏品</strong><span>{game.museumArtifacts.length}/{RARE_ARTIFACTS.length} 件捐赠</span></article><article><b>视</b><strong>动画收藏</strong><span>看过 {game.watchedTvEpisodes.length} 集不同动画</span></article><article><b>鱼</b><strong>钓鱼记录</strong><span>累计钓到 {game.fishCaught} 条鱼</span></article><article><b>梦</b><strong>梦境记录</strong><span>{game.lastDreamAbsoluteDay > 0 ? "已经遇见过神秘梦境" : "还没有做过特别的梦"}</span></article></div>}
             {journalTab === "recipes" && <div className="recipe-journal"><article className={game.recipesDiscovered.includes("香草烤螃蟹") ? "discovered" : "locked"}><i className="cooked-crab-icon" /><div><strong>香草烤螃蟹</strong><p>切开蟹壳、控制火候，最后放进深盘。熟食在餐桌吃恢复更多体力。</p></div><span>{game.recipesDiscovered.includes("香草烤螃蟹") ? "已学会" : "去二楼厨房发现"}</span></article><article className={game.recipesDiscovered.includes("清香炒小虾") ? "discovered" : "locked"}><i className="cooked-shrimp-icon" /><div><strong>清香炒小虾</strong><p>处理小虾、及时翻面，再装进白瓷盘，保持清亮颜色。</p></div><span>{game.recipesDiscovered.includes("清香炒小虾") ? "已学会" : "去二楼厨房发现"}</span></article></div>}
@@ -6118,6 +6548,7 @@ export default function FarmGame() {
             {twilightLevel > 0 && <div className="night-sky" aria-hidden="true"><span className="moon" /><i /><i /><i /><i /><i /><i /></div>}
             {twilightLevel > 0 && <div className="twilight-layer" aria-hidden="true" />}
             {scene !== "farm" && <div className={`outdoor-lamps outdoor-lamps-${scene}`} aria-hidden="true"><i /><i /><i /><i /></div>}
+            {!activeBuilding && !neighborInterior && !residentHome && !friendHomeOpen && roamingResidents.length > 0 && <div className={`roaming-residents roaming-${scene}`} aria-label="按照当天作息来到这里的居民">{roamingResidents.map(({ name, schedule }, index) => <button key={`roaming-${name}`} className={`roaming-resident npc-activity-${schedule.key}`} style={{ ...personClothesStyle(name), "--roam-index": index } as CSSProperties} onClick={(event) => { event.stopPropagation(); meetScheduledResident(name, schedule); }}><i /><b /><span>{name}<small>{schedule.label}</small>{schedule.invite && (game.friendship[name] ?? 0) >= 20 && <em>可能邀请小禾一起去玩</em>}</span></button>)}</div>}
             {selectedCraftItem && scene === "farm" && <div className="placement-controls" onClick={(event) => event.stopPropagation()}><strong>正在摆放：{CRAFT_RECIPES[selectedCraftItem].name}</strong>{(selectedCraftItem === "sign" || selectedCraftItem === "bench") && <div><button className={craftRotation === 0 ? "selected" : ""} onClick={() => setCraftRotation(0)}>横着</button><button className={craftRotation === 90 ? "selected" : ""} onClick={() => setCraftRotation(90)}>竖着</button><button className={craftRotation === 45 ? "selected" : ""} onClick={() => setCraftRotation(45)}>斜着</button></div>}<span>{selectedCraftItem === "fence" ? "点击农田四周的绿色位置，围栏会自动对齐" : "选好方向后，点击农场空地"}</span><button className="cancel-placement" onClick={() => setSelectedCraftItem(null)}>取消</button></div>}
 
             {scene === "farm" ? (
@@ -6184,7 +6615,7 @@ export default function FarmGame() {
                 <button className="friend-farm-shelter" onClick={(event) => { event.stopPropagation(); setFriendHomeOpen(true); setIndoorPlayer({ x: 34, y: 70 }); setMessage("走进安安的林边小屋，屋里摆着登山装备和野外收藏。 "); }} aria-label="进入安安的林边小屋"><i className="friend-shelter-roof" /><i className="friend-shelter-wall" /><i className="friend-shelter-door" /><strong>安安的林边小屋<small>点击进入拜访</small></strong></button>
                 {wildFriendVisit || wildFriendAtPlayerHome ? <button className="friend-away-note" onClick={() => setMessage(wildFriendAtPlayerHome ? `安安今天去${displayName}的农舍找你了，回自己家就能见到她。` : `安安今天去了${wildFriendVisit === "cave" ? "青禾山洞" : "溪边帐篷"}。`)}>安安出去玩了<small>今天在{wildFriendAtPlayerHome ? `${displayName}的农舍` : wildFriendVisit === "cave" ? "山洞" : "帐篷"}</small></button> : <button style={personClothesStyle("安安")} className="wild-friend-npc anan-character" onClick={() => interactWithPerson("安安", PERSON_DIALOGUES["安安"])} aria-label={heldItem ? `把${carriedItemName}送给安安` : "和朋友安安聊天"}><i /><em className="anan-pigtails" /><b /><span>安安<small>{heldItem ? `送出${carriedItemName}` : "你的野外朋友"}</small></span></button>}
                 <div className="friend-farm-trees"><i /><i /><i /></div>
-                <button className={`forest-story-tree forest-story-stage-${game.forestQuestStage}`} onClick={(event) => { event.stopPropagation(); progressForestStoryWithAnan(); }}><i /><b /><span>{game.forestQuestStage === 0 ? "老松树好像在褪色" : game.forestQuestStage === 1 ? "把两份药材交给安安" : game.forestQuestStage === 2 ? "药水等待蓝晶水" : game.forestQuestStage === 3 ? "还需要树脂和松果" : game.forestQuestStage === 4 ? "明天一起涂森林药膏" : "老松树恢复健康了"}<small>连续故事 · 点击查看下一步</small></span></button>
+                <button className={`forest-story-tree forest-story-stage-${game.forestQuestStage}`} onClick={(event) => { event.stopPropagation(); progressForestStoryWithAnan(); }}><i /><b /><span>{game.forestQuestStage === 5 ? forestStoryDaysLeft > 0 ? `${forestStoryDaysLeft} 天后有新动静` : "安安发现了新的线索" : forestStoryTitle}<small>{game.forestQuestStage === 5 ? "连续故事会按时间继续更新" : "点击观察现场，不会提前告诉全部答案"}</small></span></button>
                 <div className={`seasonal-road ${game.year === 1 && game.season === 0 ? "road-season-0" : "road-finished"}`} aria-label={game.year === 1 && game.season === 0 ? "最开始的道路修建区" : "已经永久通车的新公路"}><i className="road-surface" /><span>{game.year === 1 && game.season === 0 ? "最初修建中 · 完工后永久通车" : "远方新区公路 · 已永久通车"}</span>{game.year === 1 && game.season === 0 && <div className="road-workers"><b /><b /><b /><em /><em /></div>}</div>
                 <button className="driving-school-building" onClick={(event) => { event.stopPropagation(); setDrivingSchoolOpen(true); setDrivingQuizStep(game.driverLicense ? DRIVING_QUESTIONS.length : 0); setDrivingPracticeStep(game.driverLicense ? 3 : 0); setMessage(game.driverLicense ? "来到青禾驾校复习安全驾驶。 " : "进入青禾驾校，先参加汽车常识考试。 "); }}><i /><b>青禾驾驶学校</b><small>{game.driverLicense ? "已取得驾照 · 可以复习" : "理论考试 · 驾驶练习"}</small></button>
                 <button className={`road-car ${game.ownsCar ? "owned-car" : ""} ${game.year === 1 && game.season === 0 ? "road-closed" : ""}`} onClick={(event) => { event.stopPropagation(); buyOrDriveCar(); }}><i /><i /><b>{game.year === 1 && game.season === 0 ? "查看最初修建进度" : !game.driverLicense ? "先考驾照" : game.ownsCar ? "驾驶汽车去远方" : "购买汽车 · 3000金币"}</b></button>
@@ -6211,7 +6642,7 @@ export default function FarmGame() {
                 {currentFestival?.id === "midAutumn" && <div className="mid-autumn-ground" aria-label="中秋赏月台和河灯池"><i className="moon-view-platform" /><button onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 10) })); setMessage("小禾坐在赏月台上看圆月，安静休息了一会儿，恢复 10 点体力。 "); playTone(760); }}><i /><span>坐下赏月</span></button><button onClick={() => { setMessage("小禾把一盏河灯轻轻放到水面，河灯沿着岸边慢慢漂远。 "); playTone(700); }}><i /><span>在水面放河灯</span></button></div>}
                 {currentFestival?.id === "springFestival" && <div className="spring-festival-ground" aria-label="春节舞狮场和大鼓"><div className="physical-lion"><i /><b /><em /></div><button onClick={() => { setMessage("小禾跟着节拍敲响地面上的大鼓，舞狮队绕着广场热闹地走了一圈！"); playTone(380); }}><i /><b /><span>敲鼓看舞狮</span></button></div>}
                 <div className="street-lamp lamp-one" /><div className="street-lamp lamp-two" /><div className="street-lamp lamp-three" />
-                {game.urgentEvent && !game.urgentEventResolved && <button className={`urgent-town-incident incident-${game.urgentEvent}`} onClick={(event) => { event.stopPropagation(); resolveUrgentEvent(); }} aria-label={game.urgentEvent === "fire" ? "木匠工坊旁着火，点击提水灭火" : game.urgentEvent === "theft" ? "被偷的种子货箱，点击捡回并交还" : "摔倒受伤的居民，点击扶起送诊所"}><i /><b /><em /><u /><span><strong>{game.urgentEvent === "fire" ? "现场着火！" : game.urgentEvent === "theft" ? "被偷的货箱" : "居民受伤"}</strong><small>{game.urgentEvent === "fire" ? "点击提水灭火" : game.urgentEvent === "theft" ? "点击捡回交还" : "点击扶起送诊所"}</small></span></button>}
+                {game.urgentEvent && game.urgentEvent !== "assembly" && !game.urgentEventResolved && <button className={`urgent-town-incident incident-${game.urgentEvent}`} onClick={(event) => { event.stopPropagation(); resolveUrgentEvent(); }} aria-label={game.urgentEvent === "fire" ? "木匠工坊旁着火，点击提水灭火" : game.urgentEvent === "theft" ? "被偷的种子货箱，点击捡回并交还" : "摔倒受伤的居民，点击扶起送诊所"}><i /><b /><em /><u /><span><strong>{game.urgentEvent === "fire" ? "现场着火！" : game.urgentEvent === "theft" ? "被偷的货箱" : "居民受伤"}</strong><small>{game.urgentEvent === "fire" ? "点击提水灭火" : game.urgentEvent === "theft" ? "点击捡回交还" : "点击扶起送诊所"}</small></span></button>}
 
                 <button className="town-building supermarket" onClick={() => setActiveBuilding("supermarket")} aria-label="进入青禾超市">
                   <span className="building-roof" /><span className="building-body" /><span className="shop-awning" /><span className="building-door" /><span className="building-windows" /><strong>青禾超市</strong><small>种子 · 食品 · 日用品</small>
@@ -6245,7 +6676,7 @@ export default function FarmGame() {
               <>
                 <div className="residential-main-path" />
                 <div className="residential-plots" aria-label="青禾住宅坡的居民院地">
-                  {RESIDENT_HOMES.map((home, index) => { const activity = residentActivity(home.owner, game.hour, game.day, game.weather); return <article className={`resident-plot resident-plot-${index + 1}`} key={home.owner}><span className="plot-fence" /><i className="plot-tree" /><button className="resident-house" onClick={() => { setResidentHome(home.owner); setIndoorPlayer({ x: 33, y: 70 }); setMessage(`走进${home.home}，${home.owner}住在这里。`); }} aria-label={`进入${home.home}`}><span className="resident-roof" /><span className="resident-wall" /><span className="resident-door" /><span className="resident-window" /><strong>{home.home}<small>点击进入</small></strong></button><button style={personClothesStyle(home.owner)} className={`residential-resident npc-activity-${activity.key} ${isNpcSick(home.owner) ? "sick-npc" : ""} ${home.owner === "诊所助手" ? "red-uniform-resident" : ""}`} onClick={() => interactWithPerson(home.owner, `${home.owner}：${home.greeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${home.owner}` : `和${home.owner}交谈`}><i /><b /><span>{home.owner}<small>{activity.label}</small></span></button></article>; })}
+                  {RESIDENT_HOMES.map((home, index) => { const activity = residentActivity(home.owner, game.hour, game.day, game.weather); return <article className={`resident-plot resident-plot-${index + 1}`} key={home.owner}><span className="plot-fence" /><i className="plot-tree" /><button className="resident-house" onClick={() => { setResidentHome(home.owner); setIndoorPlayer({ x: 33, y: 70 }); setMessage(`走进${home.home}，${home.owner}住在这里。`); }} aria-label={`进入${home.home}`}><span className="resident-roof" /><span className="resident-wall" /><span className="resident-door" /><span className="resident-window" /><strong>{home.home}<small>点击进入</small></strong></button>{activity.scene === "residentialDistrict" ? <button style={personClothesStyle(home.owner)} className={`residential-resident npc-activity-${activity.key} ${isNpcSick(home.owner) ? "sick-npc" : ""} ${home.owner === "诊所助手" ? "red-uniform-resident" : ""}`} onClick={() => interactWithPerson(home.owner, `${home.owner}：${home.greeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${home.owner}` : `和${home.owner}交谈`}><i /><b /><span>{home.owner}<small>{activity.label}</small></span></button> : <button className="resident-away-note" onClick={() => setMessage(`${home.owner}现在${activity.label}，可以在山谷里找到本人。`)}><b>{home.owner}外出了</b><small>{activity.label}</small></button>}</article>; })}
                 </div>
                 <button className="edge-gate residential-return" onClick={() => { setScene("cultureDistrict"); setPlayer({ x: 11, y: 5 }); setMessage("从住宅坡回到清河文化街。 "); }}><b>←</b><span>返回文化街</span><small>沿着小路向左</small></button>
               </>
@@ -6253,7 +6684,7 @@ export default function FarmGame() {
               <>
                 <div className="neighbor-path" />
                 <button className={`neighbor-house ${scene}`} onClick={() => { setNeighborInterior(scene as NeighborScene); setIndoorPlayer({ x: 31, y: 70 }); setMessage(`进入${scene === "eastNeighbor" ? "林婶的果园小屋" : scene === "southNeighbor" ? "鲁师傅的山脚院子" : "叶老师的林间书屋"}。`); }}><span className="neighbor-roof" /><span className="neighbor-wall" /><span className="neighbor-door" /><span className="neighbor-window" /><strong>{scene === "eastNeighbor" ? "林婶的果园小屋" : scene === "southNeighbor" ? "鲁师傅的山脚院子" : "叶老师的林间书屋"}<small>点击进入</small></strong></button>
-                <button style={personClothesStyle(scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师")} className={`npc-villager npc-${scene} ${isNpcSick(scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师") ? "sick-npc" : ""}`} onClick={() => talkToNeighbor(scene as NeighborScene)} aria-label="和居民人机说话或送礼"><i className="npc-hair" /><i className="npc-head" /><i className="npc-body" /><span>{scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师"}<small>{heldItem ? `点击送出${carriedItemName}` : "点击交谈"}</small></span></button>
+                {(() => { const neighborName = scene === "eastNeighbor" ? "林婶" : scene === "southNeighbor" ? "鲁师傅" : "叶老师"; const schedule = residentActivity(neighborName, game.hour, game.day, game.weather); return schedule.scene === scene ? <button style={personClothesStyle(neighborName)} className={`npc-villager npc-${scene} ${isNpcSick(neighborName) ? "sick-npc" : ""}`} onClick={() => schedule.invite ? meetScheduledResident(neighborName, schedule) : talkToNeighbor(scene as NeighborScene)} aria-label="和居民人机说话或送礼"><i className="npc-hair" /><i className="npc-head" /><i className="npc-body" /><span>{neighborName}<small>{heldItem ? `点击送出${carriedItemName}` : schedule.label}</small></span></button> : <button className="neighbor-away-schedule" onClick={() => setMessage(`${neighborName}现在${schedule.label}，可以按照日记里的居民作息去${schedule.scene === "town" ? "中心街" : schedule.scene === "cultureDistrict" ? "文化街" : schedule.scene === "farm" ? "青禾农场" : "她现在所在的地方"}找她。`)}><b>{neighborName}出门了</b><small>{schedule.label}</small></button>; })()}
                 <div className="neighbor-decor"><i /><i /><i /></div>
                 <button className={`edge-gate neighbor-return return-${scene}`} onClick={() => { if (scene === "northNeighbor") { setScene("cultureDistrict"); setPlayer({ x: 6, y: 0 }); setMessage("从北林书屋回到清河文化街。 "); } else { setScene("town"); setPlayer(scene === "eastNeighbor" ? { x: 11, y: 5 } : { x: 6, y: 7 }); setMessage("回到青禾镇中心街。"); } }}><b>{scene === "eastNeighbor" ? "←" : scene === "southNeighbor" ? "↑" : "↓"}</b><span>{scene === "northNeighbor" ? "返回文化街" : "返回青禾镇"}</span><small>{scene === "northNeighbor" ? "北林在文化街后面" : "走到边缘也能返回"}</small></button>
                 {scene === "eastNeighbor" && activeVillage === "qinghe" && <button className="edge-gate village-crossing crossing-right" onClick={() => { const friend = partner?.online && partner.currentVillage === "maple" ? partner : null; switchVillage("maple"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x - 1)), y: friend.y } : { x: 0, y: 5 }); setMessage(friend ? `到了枫叶村，马上看见了${friend.playerName}！` : "沿着右边山路走到了枫叶村！"); }}><span>前往枫叶村</span><b>→</b><small>{partner?.online && partner.currentVillage === "maple" ? `去见${partner.playerName}` : "一直向右走"}</small></button>}
@@ -6281,6 +6712,7 @@ export default function FarmGame() {
 
             {!ananBeachOpen && !ananBeachTraveling && <div className={`player facing-${facing} ${isWalking ? "walking" : ""} ${scene === "farm" ? "farm-centered-player" : ""}`} style={{ left: scene === "farm" ? "50%" : `${4 + player.x * 7.7}%`, top: scene === "farm" ? "55%" : `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
               {renderCarriedItem()}{renderWearables()}{renderPetFollowers()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
+              {game.sick && game.diagnosed && game.illness && <button className={`self-treatment-button method-${ILLNESSES[game.illness].method}`} onClick={(event) => { event.stopPropagation(); beginSelfTreatment(); }}><i>＋</i><span>{game.learnedTreatments.includes(game.illness) ? "自己治疗" : "尚未学会"}<small>{ILLNESSES[game.illness].name}</small></span></button>}
             </div>}
             {partner?.online && partner.currentVillage === activeVillage && partner.scene === scene && <div className="online-partner" style={{ left: `${4 + partner.x * 7.7}%`, top: `${8 + partner.y * 10.5}%` }} aria-label={`${partner.playerName}也在这里`}><span>{partner.playerName}<small>朋友</small></span><i className="player-shadow" /><img src={partner.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="" draggable={false} /></div>}
             {partner?.online && partner.currentVillage === activeVillage && partner.scene !== scene && <button className="friend-locator" onClick={(event) => { event.stopPropagation(); setActiveBuilding(null); setNeighborInterior(null); setResidentHome(null); setScene(partner.scene); setPlayer({ x: Math.max(0, Math.min(11, partner.x + (partner.x < 11 ? 1 : -1))), y: partner.y }); setMessage(`找到${partner.playerName}了！现在你们在同一个地方。`); }}><span>● {partner.playerName}也在{activeVillageInfo.name}</span><strong>点击去找朋友</strong><small>{partner.scene === "farm" ? activeVillageInfo.farm : partner.scene === "westFriendFarm" ? "安安的小农场" : partner.scene === "town" ? "中心街" : partner.scene === "cultureDistrict" ? "清河文化街" : partner.scene === "residentialDistrict" ? "青禾住宅坡" : partner.scene === "eastNeighbor" ? "东郊" : partner.scene === "southNeighbor" ? "南坡" : "北林"}</small></button>}
@@ -6305,6 +6737,29 @@ export default function FarmGame() {
                 </section>
               </div>
             )}
+
+            {careSession && (() => {
+              const illness = ILLNESSES[careSession.illness];
+              const stepTitles = ["观察三项症状", "准备四样干净器具", "依次完成六处消毒", "按病种执行专属处理", "完成五段护理", "复查四项记录"];
+              const treatmentActions = illness.method === "clinicOnly"
+                ? ["核对患者", "核对处方", "检查封口", "记录剂量", "确认时间"]
+                : illness.method === "baths"
+                  ? ["测试水温", "洗净雨水", "浸泡保暖", "擦干换衣", "记录次数"]
+                  : illness.method === "remedy"
+                    ? ["称量菠萝", "数好松子", "研碎药材", "分次加温水", "搅匀静置"]
+                    : ["测量药材", "加入温水", "缓慢搅拌", "浸透毛巾", "检查温度"];
+              const actions = [
+                ["观察精神", "测量体温", "记录呼吸"],
+                ["干净毛巾", "温度计", "温水杯", "护理记录本"],
+                ["清洁双手", "擦净桌面", "消毒杯口", "消毒药勺", "清洁药罐", "更换毛巾"],
+                treatmentActions,
+                ["调整坐姿", "温热护理", "分次补水", "安静闭眼", "记录反应"],
+                ["复测体温", "复查呼吸", "确认精神", "写下结束时间"],
+              ][careSession.step] ?? [];
+              return <div className="care-session-overlay" role="presentation"><section className={`care-session-panel care-${illness.method}`} role="dialog" aria-modal="true" aria-label={`${illness.name}${careSession.mode === "training" ? "实习" : "自我治疗"}`}><header><div><span>{careSession.mode === "training" ? "医疗节 · 病例实习" : "已确诊 · 复杂自我治疗"}</span><h2>{illness.name}</h2><small>第 {careSession.step + 1}/6 段 · 总治疗会消耗 35 点体力</small></div><button onClick={() => setCareSession(null)}>×</button></header><div className="care-case-file"><i>诊</i><div><strong>{stepTitles[careSession.step]}</strong><p>{careSession.step === 3 ? illness.advice : `${illness.cause}。当前这段必须把所有操作完成，不能直接跳到痊愈。`}</p></div></div><div className={`care-workbench care-step-${careSession.step}`}>{actions.map((action, index) => <button key={action} className={careSession.selected.includes(action) ? "done" : ""} onClick={() => performCareAction(action)}><i>{careSession.selected.includes(action) ? "✓" : index + 1}</i><span>{action}</span></button>)}</div><div className="care-long-progress">{[0, 1, 2, 3, 4, 5].map((step) => <i key={step} className={step < careSession.step ? "done" : step === careSession.step ? "active" : ""}>{step < careSession.step ? "✓" : step + 1}</i>)}</div><footer><span>{message}</span><button onClick={() => setCareSession(null)}>暂停并离开</button></footer></section></div>;
+            })()}
+
+            {schoolLesson && <div className={`school-lesson-overlay ${schoolLesson.assembly ? "assembly-lesson" : ""}`} role="presentation"><section className="school-lesson-panel" role="dialog" aria-modal="true" aria-label={schoolLesson.title}><header><div><span>{schoolLesson.assembly ? "紧急新闻 · 全谷集合" : "青禾学校 · 真实课堂"}</span><h2>{schoolLesson.title}</h2><small>第 {schoolLesson.step + 1}/{schoolLesson.pages.length} 段 · 必须听完</small></div><button onClick={() => setSchoolLesson(null)}>×</button></header><div className="lesson-classroom"><div className="lesson-blackboard"><strong>{schoolLesson.title}</strong><p>{schoolLesson.pages[schoolLesson.step]}</p><i /></div><button className="lesson-teacher" style={personClothesStyle(schoolLesson.assembly ? (schoolLesson.step === 0 ? "周镇长" : schoolLesson.step === 1 ? "白医生" : "许老师") : "许老师")}><i /><b /><span>{schoolLesson.assembly ? schoolLesson.step === 0 ? "周镇长" : schoolLesson.step === 1 ? "白医生" : "许老师" : "许老师"}</span></button><div className="lesson-audience">{(schoolLesson.assembly ? [...SCHEDULED_RESIDENTS, ...SCHOOL_STUDENTS] : SCHOOL_STUDENTS).map((name, index) => <i key={`${name}-${index}`} style={personClothesStyle(name)}><b /><span>{name}</span></i>)}</div></div><div className="lesson-page-dots">{schoolLesson.pages.map((_, index) => <i key={index} className={index < schoolLesson.step ? "done" : index === schoolLesson.step ? "active" : ""}>{index < schoolLesson.step ? "✓" : index + 1}</i>)}</div><footer><span>{message}</span><button onClick={advanceSchoolLesson}>{schoolLesson.step === schoolLesson.pages.length - 1 ? "听完并记录" : "认真听下一段"}</button></footer></section></div>}
 
             {festivalProcess && FESTIVAL_PROCESS_STEPS[festivalProcess.id] && (() => {
               const process = FESTIVAL_PROCESS_STEPS[festivalProcess.id]!;
@@ -6519,7 +6974,7 @@ export default function FarmGame() {
                       <div className="upstairs-placed-furniture">{game.atticPlacedCrafts.map((craft) => { const slot = ATTIC_PLACEMENT_SLOTS[craft.x]; if (!slot) return null; return <button key={craft.id} className={`upstairs-furniture upstairs-furniture-${craft.type} ${craft.type === "floorLamp" && game.equipment.lampOn ? "floor-lamp-on" : ""}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => useUpstairsFurniture(craft)} aria-label={craft.type === "floorLamp" ? `室内落地灯，现在${game.equipment.lampOn ? "亮着" : "关闭"}，点击${game.equipment.lampOn ? "关灯" : "开灯"}` : CRAFT_RECIPES[craft.type].name}><i /><b /><span>{craft.type === "floorLamp" ? game.equipment.lampOn ? "落地灯 · 亮着" : "落地灯 · 点击开灯" : CRAFT_RECIPES[craft.type].name}</span></button>; })}</div>
                       {upstairsRoom && <div className={`upstairs-private-room private-${upstairsRoom}`}>
                         <button className="private-room-back" onClick={() => { setUpstairsRoom(null); setMessage("从小房间回到宽敞的二楼。 "); }}>← 回到二楼</button>
-                        {upstairsRoom === "kitchen" ? <><div className="private-room-title"><strong>二楼厨房</strong><small>每道料理都要切配、控制火候并亲手装盘</small></div><button className="functional-kitchen-stove" onClick={() => setMessage("灶台已经烧热了。选择下面的螃蟹或小虾，开始完整的做饭过程。 ")}><i /><b /><span>灶台 · 点火</span></button><button className="functional-kitchen-sink" onClick={() => { setMessage("用水槽把海鲜和蔬菜洗干净了，准备放到砧板上处理。 "); playTone(610); }}><i /><b /><span>水槽 · 清洗食材</span></button><button className="functional-kitchen-cabinet" onClick={() => setMessage(`料理柜里记录着：生螃蟹 ${game.crabs}、生小虾 ${game.shrimp}、熟螃蟹 ${game.cookedCrabs}、熟小虾 ${game.cookedShrimp}。已发现食谱 ${game.recipesDiscovered.length}/2。`)}><i /><b /><span>料理柜 · 查看食材</span></button><div className="private-kitchen-actions"><button disabled={game.crabs <= 0} onClick={() => startCookingSeafood("crabs")}>亲手做螃蟹 ×{game.crabs}</button><button disabled={game.shrimp <= 0} onClick={() => startCookingSeafood("shrimp")}>亲手做小虾 ×{game.shrimp}</button></div></> : <><div className="private-room-title"><strong>二楼卫生间</strong><small>洗澡会恢复健康，并让明天更有精神</small></div><button className="functional-bathtub" onClick={() => { setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 15), sick: false, diagnosed: false, rainExposure: 0, showeredBeforeBed: true })); setMessage("洗了一个暖和的澡：恢复 15 点体力，身体恢复健康。睡觉后，明天农活体力消耗减少约三成。 "); playTone(720); }}><i /><b /><span>浴缸与花洒 · 洗澡</span></button><button className="functional-bath-sink" onClick={() => { setGame((current) => ({ ...current, rainExposure: 0, energy: Math.min(100, current.energy + 3) })); setMessage("在洗手台洗净泥土和雨水，恢复 3 点体力。 "); }}><i /><b /><span>洗手台 · 清洁</span></button><button className="functional-bath-mirror" onClick={() => { const nextOutfit = game.mallItems.redCoat > 0 && game.equippedOutfit !== "redCoat" ? "redCoat" : game.mallItems.blueOutfit > 0 && game.equippedOutfit !== "blueOutfit" ? "blueOutfit" : "default"; setGame((current) => ({ ...current, equippedOutfit: nextOutfit })); setMessage(nextOutfit === "default" ? "照了照镜子，换回平常的农场衣服。" : `在镜子前整理衣服，换上了${nextOutfit === "redCoat" ? "红色外套" : "蓝色套装"}。`); }}><i /><b /><span>镜子 · 整理换装</span></button></>}
+                        {upstairsRoom === "kitchen" ? <><div className="private-room-title"><strong>二楼厨房</strong><small>每道料理都要切配、控制火候并亲手装盘</small></div><button className="functional-kitchen-stove" onClick={() => setMessage("灶台已经烧热了。选择下面的螃蟹或小虾，开始完整的做饭过程。 ")}><i /><b /><span>灶台 · 点火</span></button><button className="functional-kitchen-sink" onClick={() => { setMessage("用水槽把海鲜和蔬菜洗干净了，准备放到砧板上处理。 "); playTone(610); }}><i /><b /><span>水槽 · 清洗食材</span></button><button className="functional-kitchen-cabinet" onClick={() => setMessage(`料理柜里记录着：生螃蟹 ${game.crabs}、生小虾 ${game.shrimp}、熟螃蟹 ${game.cookedCrabs}、熟小虾 ${game.cookedShrimp}。已发现食谱 ${game.recipesDiscovered.length}/2。`)}><i /><b /><span>料理柜 · 查看食材</span></button><div className="private-kitchen-actions"><button disabled={game.crabs <= 0} onClick={() => startCookingSeafood("crabs")}>亲手做螃蟹 ×{game.crabs}</button><button disabled={game.shrimp <= 0} onClick={() => startCookingSeafood("shrimp")}>亲手做小虾 ×{game.shrimp}</button></div></> : <><div className="private-room-title"><strong>二楼卫生间</strong><small>洗澡会恢复健康，并让明天更有精神</small></div><button className="functional-bathtub" onClick={takeTherapeuticBath}><i /><b /><span>浴缸与花洒 · 洗澡</span></button><button className="functional-bath-sink" onClick={() => { setGame((current) => ({ ...current, rainExposure: 0, energy: Math.min(100, current.energy + 3) })); setMessage("在洗手台洗净泥土和雨水，恢复 3 点体力。 "); }}><i /><b /><span>洗手台 · 清洁</span></button><button className="functional-bath-mirror" onClick={() => { const nextOutfit = game.mallItems.redCoat > 0 && game.equippedOutfit !== "redCoat" ? "redCoat" : game.mallItems.blueOutfit > 0 && game.equippedOutfit !== "blueOutfit" ? "blueOutfit" : "default"; setGame((current) => ({ ...current, equippedOutfit: nextOutfit })); setMessage(nextOutfit === "default" ? "照了照镜子，换回平常的农场衣服。" : `在镜子前整理衣服，换上了${nextOutfit === "redCoat" ? "红色外套" : "蓝色套装"}。`); }}><i /><b /><span>镜子 · 整理换装</span></button></>}
                       </div>}
                       <div className={`player indoor-player upstairs-player facing-${facing} ${isWalking ? "walking" : ""} ${stairTravel ? `stair-traveler stair-${stairTravel}` : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }} aria-label="小禾站在农舍二楼">{renderCarriedItem()}{renderWearables()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     </div>}
@@ -6579,6 +7034,7 @@ export default function FarmGame() {
                     <button style={personClothesStyle(activeBuildingOwner)} className={`npc-character ${activeReliefWorker ? "clinic-relief-assistant relief-worker" : ""}`} onClick={() => interactWithPerson(activeBuildingOwner, `${activeBuildingOwner}：${activeBuildingGreeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${activeBuildingOwner}` : `和${activeBuildingOwner}交谈`}><span className="npc-hair" /><span className="npc-face" /><span className="npc-body" /></button>
                     {activeReliefWorker && <div className="clinic-relief-note"><strong>{activeReliefWorker.name}代班</strong><span>{originalBuildingOwner}在家休息 · 两人平时住在一起</span></div>}
                     {((activeBuilding === "cafe" && currentFestival?.id === "coffee") || (activeBuilding === "workshop" && currentFestival?.id === "craft")) && <div className={`festival-indoor-guests guests-${activeBuilding}`} aria-label={`参加${currentFestival.name}的居民`}>{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`indoor-guest guest-${index + 1} ${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：${currentFestival.name}真热闹，屋里坐满了村民！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div>}
+                    {activeBuilding === "clinic" && currentFestival?.id === "medical" && <div className="medical-festival-cases"><header><strong>八种病症 · 必须逐种学习</strong><small>{game.medicalTrained ? `已学会 ${game.learnedTreatments.length}/8` : "先完成上方的医疗节基础实习"}</small></header><div>{ILLNESS_IDS.map((illnessId) => <button key={illnessId} disabled={!game.medicalTrained} className={game.learnedTreatments.includes(illnessId) ? "learned" : ""} onClick={() => beginMedicalCourse(illnessId)}><i>{game.learnedTreatments.includes(illnessId) ? "✓" : "诊"}</i><span><strong>{ILLNESSES[illnessId].name}</strong><small>{ILLNESSES[illnessId].lesson} · {ILLNESSES[illnessId].method === "clinicOnly" ? "必须处方药" : ILLNESSES[illnessId].method === "baths" ? "连续热浴" : ILLNESSES[illnessId].method === "remedy" ? "材料配方" : "复杂自疗"}</small></span></button>)}</div></div>}
                     <div className="interior-counter" />
                     <div className="interior-sign">{activeBuilding === "townhall" ? "公告" : activeBuilding === "clinic" ? "健康" : activeBuilding === "cafe" ? "今日菜单" : activeBuilding === "workshop" ? "制作台" : activeBuilding === "museum" ? "山谷馆藏" : activeBuilding === "school" ? "今日课堂" : "农事图鉴"}</div>
                     <div className={`room-specials special-${activeBuilding}`}>
