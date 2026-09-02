@@ -1085,6 +1085,7 @@ export default function FarmGame() {
   const [residentInvitation, setResidentInvitation] = useState<{ person: string; trip: HiddenTripId } | null>(null);
   const [residentOuting, setResidentOuting] = useState<{ person: string; trip: HiddenTripId } | null>(null);
   const [careSession, setCareSession] = useState<{ mode: "training" | "treatment"; illness: IllnessId; step: number; progress: number; selected: string[]; herbParts: number; waterParts: number } | null>(null);
+  const [medicalThermometerPicked, setMedicalThermometerPicked] = useState(false);
   const [schoolLesson, setSchoolLesson] = useState<{ title: string; pages: string[]; step: number; assembly: boolean; attendanceKey: string } | null>(null);
   const [townhallCalendarOpen, setTownhallCalendarOpen] = useState(false);
   const [festivalPreview, setFestivalPreview] = useState<FestivalPreview | null>(null);
@@ -3862,6 +3863,7 @@ export default function FarmGame() {
       setMessage("病种实习只在青禾医疗节当天的诊所开放，可以从镇公所公告栏进入体验。 ");
       return;
     }
+    setMedicalThermometerPicked(false);
     setCareSession({ mode: "training", illness, step: 0, progress: 0, selected: [], herbParts: 0, waterParts: 0 });
     setMessage(`白医生拿出“${ILLNESSES[illness].name}”病例册。先观察三项症状，不能跳步骤。`);
     playTone(640);
@@ -3899,6 +3901,7 @@ export default function FarmGame() {
       setMessage("完整自我治疗会消耗 35 点体力。现在太虚弱，应该先去诊所，不要勉强。 ");
       return;
     }
+    setMedicalThermometerPicked(false);
     setCareSession({ mode: "treatment", illness: game.illness, step: 0, progress: 0, selected: [], herbParts: 0, waterParts: 0 });
     setMessage(`开始处理${illness.name}。必须依次完成观察、备物、消毒、配制、护理和复查。`);
   };
@@ -3976,6 +3979,19 @@ export default function FarmGame() {
     setCareSession({ ...careSession, step: careSession.step + 1, progress: 0, selected: [], herbParts: 0, waterParts: 0 });
     setMessage(`这一步完成，进入第 ${careSession.step + 2}/6 段。`);
     playTone(720);
+  };
+
+  const placeMedicalThermometer = () => {
+    if (!careSession || careSession.step !== 0) return;
+    if (!medicalThermometerPicked) {
+      setMessage("先从护理盘里拿起温度计，再把它拖到病人的脸旁。触屏可以先点温度计，再点病人的脸。 ");
+      return;
+    }
+    if (careSession.selected.includes("测量体温")) return;
+    setMedicalThermometerPicked(false);
+    performCareAction("测量体温");
+    setMessage("温度计已经放在病人的脸旁，停留片刻后读出了体温，并把结果写进病例卡。 ");
+    playTone(760);
   };
 
   const clickHerb = () => {
@@ -6756,7 +6772,7 @@ export default function FarmGame() {
                 ["调整坐姿", "温热护理", "分次补水", "安静闭眼", "记录反应"],
                 ["复测体温", "复查呼吸", "确认精神", "写下结束时间"],
               ][careSession.step] ?? [];
-              return <div className="care-session-overlay" role="presentation"><section className={`care-session-panel care-${illness.method}`} role="dialog" aria-modal="true" aria-label={`${illness.name}${careSession.mode === "training" ? "实习" : "自我治疗"}`}><header><div><span>{careSession.mode === "training" ? "医疗节 · 病例实习" : "已确诊 · 复杂自我治疗"}</span><h2>{illness.name}</h2><small>第 {careSession.step + 1}/6 段 · 总治疗会消耗 35 点体力</small></div><button onClick={() => setCareSession(null)}>×</button></header><div className="care-case-file"><i>诊</i><div><strong>{stepTitles[careSession.step]}</strong><p>{careSession.step === 3 ? illness.advice : `${illness.cause}。当前这段必须把所有操作完成，不能直接跳到痊愈。`}</p></div></div><div className={`care-workbench care-step-${careSession.step}`}>{actions.map((action, index) => <button key={action} className={careSession.selected.includes(action) ? "done" : ""} onClick={() => performCareAction(action)}><i>{careSession.selected.includes(action) ? "✓" : index + 1}</i><span>{action}</span></button>)}</div><div className="care-long-progress">{[0, 1, 2, 3, 4, 5].map((step) => <i key={step} className={step < careSession.step ? "done" : step === careSession.step ? "active" : ""}>{step < careSession.step ? "✓" : step + 1}</i>)}</div><footer><span>{message}</span><button onClick={() => setCareSession(null)}>暂停并离开</button></footer></section></div>;
+              return <div className="care-session-overlay" role="presentation"><section className={`care-session-panel care-${illness.method}`} role="dialog" aria-modal="true" aria-label={`${illness.name}${careSession.mode === "training" ? "实习" : "自我治疗"}`}><header><div><span>{careSession.mode === "training" ? "医疗节 · 病例实习" : "已确诊 · 复杂自我治疗"}</span><h2>{illness.name}</h2><small>第 {careSession.step + 1}/6 段 · 总治疗会消耗 35 点体力</small></div><button onClick={() => setCareSession(null)}>×</button></header><div className="care-case-file"><i>诊</i><div><strong>{stepTitles[careSession.step]}</strong><p>{careSession.step === 3 ? illness.advice : `${illness.cause}。当前这段必须把所有操作完成，不能直接跳到痊愈。`}</p></div></div>{careSession.step === 0 ? <div className="medical-observation-room"><div className="breathing-patient-row">{["一号病人", "二号病人", "三号病人"].map((patient, index) => <div key={patient} role="button" tabIndex={0} className={`breathing-patient patient-${index + 1} ${careSession.selected.includes("观察喘气") ? "observed" : ""}`} onClick={() => performCareAction("观察喘气")}><i className="patient-head"><b className="strained-mouth" /></i><i className="patient-chest" /><em className="breath-cloud breath-one" /><em className="breath-cloud breath-two" /><span>{patient}<small>肩膀起伏 · 呼吸急促</small></span>{index === 0 && <button className={`patient-face-target ${careSession.selected.includes("测量体温") ? "measured" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); placeMedicalThermometer(); }} onClick={(event) => { event.stopPropagation(); placeMedicalThermometer(); }}><i />{careSession.selected.includes("测量体温") ? "体温已记录" : "把温度计放到脸旁"}</button>}</div>)}</div><div className="medical-instrument-tray"><button draggable className={`real-medical-thermometer ${medicalThermometerPicked ? "picked" : ""}`} onDragStart={() => { setMedicalThermometerPicked(true); setMessage("拿起温度计，把它拖到一号病人的脸旁。 "); }} onClick={() => { setMedicalThermometerPicked(true); setMessage("温度计已经拿起，触屏请再点一号病人的脸。 "); }}><i /><b /><span>{medicalThermometerPicked ? "温度计已拿起" : "拿起温度计"}</span></button><button className={careSession.selected.includes("记录呼吸频率") ? "done" : ""} onClick={() => performCareAction("记录呼吸频率")}><i>记</i><span>数十次呼吸起伏<br />写进病例卡</span></button></div><small>先看病人的真实呼吸动作，再亲手拿温度计放到脸旁；三项观察完成后才会进入下一段。</small></div> : <div className={`care-workbench care-step-${careSession.step}`}>{actions.map((action, index) => <button key={action} className={careSession.selected.includes(action) ? "done" : ""} onClick={() => performCareAction(action)}><i>{careSession.selected.includes(action) ? "✓" : index + 1}</i><span>{action}</span></button>)}</div>}<div className="care-long-progress">{[0, 1, 2, 3, 4, 5].map((step) => <i key={step} className={step < careSession.step ? "done" : step === careSession.step ? "active" : ""}>{step < careSession.step ? "✓" : step + 1}</i>)}</div><footer><span>{message}</span><button onClick={() => setCareSession(null)}>暂停并离开</button></footer></section></div>;
             })()}
 
             {schoolLesson && <div className={`school-lesson-overlay ${schoolLesson.assembly ? "assembly-lesson" : ""}`} role="presentation"><section className="school-lesson-panel" role="dialog" aria-modal="true" aria-label={schoolLesson.title}><header><div><span>{schoolLesson.assembly ? "紧急新闻 · 全谷集合" : "青禾学校 · 真实课堂"}</span><h2>{schoolLesson.title}</h2><small>第 {schoolLesson.step + 1}/{schoolLesson.pages.length} 段 · 必须听完</small></div><button onClick={() => setSchoolLesson(null)}>×</button></header><div className="lesson-classroom"><div className="lesson-blackboard"><strong>{schoolLesson.title}</strong><p>{schoolLesson.pages[schoolLesson.step]}</p><i /></div><button className="lesson-teacher" style={personClothesStyle(schoolLesson.assembly ? (schoolLesson.step === 0 ? "周镇长" : schoolLesson.step === 1 ? "白医生" : "许老师") : "许老师")}><i /><b /><span>{schoolLesson.assembly ? schoolLesson.step === 0 ? "周镇长" : schoolLesson.step === 1 ? "白医生" : "许老师" : "许老师"}</span></button><div className="lesson-audience">{(schoolLesson.assembly ? [...SCHEDULED_RESIDENTS, ...SCHOOL_STUDENTS] : SCHOOL_STUDENTS).map((name, index) => <i key={`${name}-${index}`} style={personClothesStyle(name)}><b /><span>{name}</span></i>)}</div></div><div className="lesson-page-dots">{schoolLesson.pages.map((_, index) => <i key={index} className={index < schoolLesson.step ? "done" : index === schoolLesson.step ? "active" : ""}>{index < schoolLesson.step ? "✓" : index + 1}</i>)}</div><footer><span>{message}</span><button onClick={advanceSchoolLesson}>{schoolLesson.step === schoolLesson.pages.length - 1 ? "听完并记录" : "认真听下一段"}</button></footer></section></div>}
