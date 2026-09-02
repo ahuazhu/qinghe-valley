@@ -5975,7 +5975,21 @@ export default function FarmGame() {
   const exitFestivalPreview = () => {
     if (!festivalPreview) return;
     const returning = festivalPreview;
-    setGame(returning.returnGame);
+    setGame((previewGame) => {
+      const learnedTreatments = Array.from(new Set<IllnessId>([
+        ...returning.returnGame.learnedTreatments,
+        ...previewGame.learnedTreatments,
+      ]));
+      const medicalJournalEntries = previewGame.journalEntries.filter((entry) =>
+        entry.includes("医疗节学会了") && !returning.returnGame.journalEntries.includes(entry),
+      );
+      return {
+        ...returning.returnGame,
+        medicalTrained: returning.returnGame.medicalTrained || previewGame.medicalTrained,
+        learnedTreatments,
+        journalEntries: [...medicalJournalEntries, ...returning.returnGame.journalEntries].slice(0, 40),
+      };
+    });
     setScene(returning.returnScene);
     setPlayer(returning.returnPlayer);
     setActiveBuilding(returning.returnActiveBuilding);
@@ -5985,7 +5999,7 @@ export default function FarmGame() {
     setDragonBoatOpen(false);
     setDragonBoatTraveling(false);
     setLanternRiddle(null);
-    setMessage(`节日体验结束，已经回到第 ${returning.returnGame.year} 年${SEASONS[returning.returnGame.season]}第 ${returning.returnGame.day} 天和刚才所在的位置。`);
+    setMessage(`节日体验结束，已经回到第 ${returning.returnGame.year} 年${SEASONS[returning.returnGame.season]}第 ${returning.returnGame.day} 天。医疗节学到的资格和 ${Array.from(new Set([...returning.returnGame.learnedTreatments, ...game.learnedTreatments])).length} 种病症会永久保留。`);
     playTone(720);
   };
 
