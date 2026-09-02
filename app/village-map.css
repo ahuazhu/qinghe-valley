@@ -1,0 +1,245 @@
+/* Each village owns a separate illustrated map. Maple Village uses its own
+   mountain roads and red-maple landmarks instead of reusing Qinghe's map. */
+.village-map-maple {
+  border-color: #c48a58;
+  background: #fff1d8;
+}
+
+.village-map-maple > header {
+  background: linear-gradient(135deg, #9b493f, #6f3f3a 58%, #4d5141);
+  border-bottom-color: #e3a95c;
+}
+
+.village-map-maple > footer button {
+  background: #9b4d42;
+}
+
+.maple-map-canvas {
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 9% 18%, rgba(255, 233, 174, .42) 0 3px, transparent 4px),
+    radial-gradient(circle at 83% 72%, rgba(121, 70, 46, .18) 0 4px, transparent 5px),
+    linear-gradient(#d9bd79 0 18%, #bd9c5f 19% 30%, #9ba15d 31% 100%);
+  background-size: 31px 31px, 39px 39px, auto;
+}
+
+.maple-map-ridge {
+  position: absolute;
+  z-index: 0;
+  top: -20px;
+  width: 270px;
+  height: 125px;
+  border: 5px solid #615d4d;
+  background: linear-gradient(145deg, #7b765e 0 48%, #5f6c53 49% 100%);
+  clip-path: polygon(0 100%, 12% 61%, 25% 76%, 42% 27%, 58% 65%, 73% 14%, 100% 100%);
+  opacity: .78;
+}
+
+.maple-map-ridge.ridge-one { left: -25px; }
+.maple-map-ridge.ridge-two { right: -24px; transform: scaleX(-1); }
+
+.maple-map-stream {
+  position: absolute;
+  z-index: 0;
+  left: -5%;
+  right: -5%;
+  bottom: 8%;
+  height: 42px;
+  border: 6px solid #547f86;
+  border-left: 0;
+  border-right: 0;
+  background: repeating-linear-gradient(165deg, #6ba4ae 0 16px, #85b6b8 16px 31px);
+  transform: rotate(2deg);
+  opacity: .76;
+}
+
+.maple-map-road {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  height: 14px;
+  border: 3px solid #91633f;
+  border-radius: 12px;
+  background: #d6aa69;
+  box-shadow: inset 0 3px rgba(255, 225, 157, .62), 0 2px rgba(68, 48, 35, .18);
+}
+
+.maple-map-road::after {
+  position: absolute;
+  left: 50%;
+  top: -18px;
+  transform: translateX(-50%);
+  padding: 2px 5px;
+  border: 1px solid #b9824c;
+  border-radius: 5px;
+  color: #6b4432;
+  background: rgba(255, 238, 198, .94);
+  font-size: 6px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.maple-route-crossing-farm { left: 16%; top: 59%; width: 6%; }
+.maple-route-crossing-farm::after { content: "青禾山路"; }
+.maple-route-farm-town { left: 35%; top: 59%; width: 6%; }
+.maple-route-farm-town::after { content: "向右进村"; }
+.maple-route-town-east { left: 54%; top: 59%; width: 25%; }
+.maple-route-town-east::after { content: "沿山路向东"; }
+.maple-route-town-culture { left: 47%; top: 43%; width: 14px; height: 10%; }
+.maple-route-town-culture::after,
+.maple-route-culture-north::after,
+.maple-route-town-south::after {
+  left: 7px;
+  top: 50%;
+  transform: rotate(-90deg) translateY(-50%);
+  transform-origin: center;
+}
+.maple-route-town-culture::after { content: "上坡"; }
+.maple-route-culture-north { left: 47%; top: 20%; width: 14px; height: 8%; }
+.maple-route-culture-north::after { content: "北岭"; }
+.maple-route-culture-residential { left: 55%; top: 35%; width: 8%; }
+.maple-route-culture-residential::after { content: "住宅坡"; }
+.maple-route-town-south { left: 47%; top: 68%; width: 14px; height: 12%; }
+.maple-route-town-south::after { content: "南坡"; }
+
+.maple-leaf-grove {
+  position: absolute;
+  z-index: 1;
+  width: 28px;
+  height: 35px;
+  border: 4px solid #6e3f36;
+  border-radius: 56% 44% 50% 45%;
+  background: #b74e3f;
+  box-shadow: inset -7px -8px #8f4037, 34px 10px #ca6348, 65px -3px #9c493d;
+}
+.maple-leaf-grove::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 30px;
+  width: 7px;
+  height: 25px;
+  background: #694735;
+  box-shadow: 34px 10px #694735, 65px -3px #694735;
+}
+.maple-leaf-grove.grove-one { left: 7%; top: 14%; }
+.maple-leaf-grove.grove-two { right: 10%; top: 11%; transform: scale(.82); }
+.maple-leaf-grove.grove-three { right: 8%; bottom: 10%; transform: scale(.68); }
+
+.maple-map-crossing { left: 1%; top: 48%; }
+.maple-map-farm { left: 20%; top: 48%; }
+.maple-map-town { left: 39%; top: 48%; }
+.maple-map-east { right: 1%; top: 48%; }
+.maple-map-culture { left: 39%; top: 25%; }
+.maple-map-north { left: 39%; top: 2%; }
+.maple-map-residential { left: 61%; top: 25%; }
+.maple-map-south { left: 39%; bottom: 0; }
+
+.village-map-maple .map-place {
+  border-color: #855745;
+  color: #593f34;
+  background: #f8dca5;
+  box-shadow: inset 0 -5px #d5a966, 0 5px 0 rgba(78, 51, 37, .22);
+}
+.village-map-maple .map-place.you-are-here::after { background: #b44038; }
+
+.picture-maple-farm,
+.picture-maple-town,
+.picture-maple-culture,
+.picture-maple-grove,
+.picture-maple-south,
+.picture-maple-north,
+.picture-maple-residential,
+.picture-qinghe-crossing {
+  background: linear-gradient(#9cc3d0 0 29%, #a9a365 30% 100%);
+}
+
+.picture-maple-farm em:first-child,
+.picture-maple-town em,
+.picture-maple-culture em:first-child,
+.picture-maple-south em:first-child,
+.picture-maple-north em:first-child,
+.picture-maple-residential em {
+  bottom: 7px;
+  width: 37px;
+  height: 29px;
+  border: 3px solid #684638;
+  background: #dab57b;
+  box-shadow: inset 0 -5px #b77d52;
+}
+.picture-maple-farm em:first-child::before,
+.picture-maple-town em::before,
+.picture-maple-culture em:first-child::before,
+.picture-maple-south em:first-child::before,
+.picture-maple-north em:first-child::before,
+.picture-maple-residential em::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: -11px;
+  width: 41px;
+  height: 15px;
+  border: 3px solid #673a35;
+  background: #ad4a40;
+  clip-path: polygon(50% 0, 100% 77%, 90% 100%, 10% 100%, 0 77%);
+}
+.picture-maple-farm em:first-child { left: 9px; width: 48px; }
+.picture-maple-farm em:first-child::before { width: 52px; }
+.picture-maple-farm em:nth-child(2) { right: 8px; bottom: 7px; width: 50px; height: 24px; border: 2px solid #81593a; background: repeating-linear-gradient(90deg, #788d48 0 6px, #b87642 6px 10px); transform: skewY(-5deg); }
+.picture-maple-farm em:nth-child(3) { left: 59px; bottom: 5px; width: 25px; height: 15px; border: 3px solid #4e7e84; border-radius: 50%; background: #69a6ae; }
+.picture-maple-town em:first-child { left: 5px; }
+.picture-maple-town em:nth-child(2) { left: 50px; background: #e5c998; }
+.picture-maple-town em:nth-child(3) { right: 5px; }
+.picture-maple-culture em:first-child { left: 18px; width: 55px; }
+.picture-maple-culture em:first-child::before { width: 59px; }
+.picture-maple-culture em:nth-child(2) { right: 13px; bottom: 6px; width: 31px; height: 39px; border: 3px solid #704b3a; border-radius: 16px 16px 3px 3px; background: #d9c29a; }
+.picture-maple-culture em:nth-child(3) { left: 80px; bottom: 5px; width: 16px; height: 17px; border-radius: 50%; background: #d46b4e; box-shadow: 0 0 0 5px #79493a; }
+.picture-maple-grove em,
+.picture-qinghe-crossing em {
+  bottom: 6px;
+  width: 28px;
+  height: 34px;
+  border: 3px solid #6b4435;
+  border-radius: 52% 48% 44% 46%;
+  background: #b74f40;
+  box-shadow: inset -6px -7px #914036;
+}
+.picture-maple-grove em::after,
+.picture-qinghe-crossing em::after { content: ""; position: absolute; left: 10px; bottom: -9px; width: 6px; height: 13px; background: #654331; }
+.picture-maple-grove em:first-child,
+.picture-qinghe-crossing em:first-child { left: 7px; }
+.picture-maple-grove em:nth-child(2),
+.picture-qinghe-crossing em:nth-child(2) { left: 54px; bottom: 11px; }
+.picture-maple-grove em:nth-child(3),
+.picture-qinghe-crossing em:nth-child(3) { right: 7px; }
+.picture-qinghe-crossing { background: linear-gradient(#99c7d8 0 30%, #88b46d 30%); }
+.picture-qinghe-crossing em { background: #5d9450; box-shadow: inset -6px -7px #477941; }
+.picture-maple-south em:first-child { left: 9px; width: 51px; background: #b8875e; }
+.picture-maple-south em:first-child::before { width: 55px; background: #785341; }
+.picture-maple-south em:nth-child(2),
+.picture-maple-south em:nth-child(3) { right: 17px; bottom: 10px; width: 12px; height: 38px; border-radius: 5px; background: #76503a; transform: rotate(67deg); box-shadow: 0 0 0 3px #9e7148; }
+.picture-maple-south em:nth-child(3) { right: 50px; bottom: 5px; transform: rotate(92deg); }
+.picture-maple-north em:first-child { left: 36px; width: 62px; background: #d9c7a1; }
+.picture-maple-north em:first-child::before { width: 66px; background: #82463f; }
+.picture-maple-north em:nth-child(2),
+.picture-maple-north em:nth-child(3) { bottom: 5px; width: 24px; height: 34px; border: 3px solid #6c3e35; border-radius: 50%; background: #a94b3d; }
+.picture-maple-north em:nth-child(2) { left: 5px; }
+.picture-maple-north em:nth-child(3) { right: 5px; }
+.picture-maple-residential em:first-child { left: 5px; }
+.picture-maple-residential em:nth-child(2) { left: 50px; }
+.picture-maple-residential em:nth-child(3) { right: 5px; }
+
+.maple-map-legend { right: 10px; top: 9px; bottom: auto; border-color: #ad784d; background: rgba(255, 231, 184, .9); }
+
+@media (max-width: 760px) {
+  .maple-map-crossing { left: 1%; top: 48%; }
+  .maple-map-farm { left: 20%; top: 48%; }
+  .maple-map-town { left: 39%; top: 48%; }
+  .maple-map-east { right: 1%; top: 48%; }
+  .maple-map-culture { left: 39%; top: 25%; }
+  .maple-map-north { left: 39%; top: 2%; }
+  .maple-map-residential { left: 61%; top: 25%; }
+  .maple-map-south { left: 39%; bottom: 0; }
+  .maple-leaf-grove { display: none; }
+}

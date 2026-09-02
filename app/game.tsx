@@ -6994,9 +6994,9 @@ export default function FarmGame() {
       </div>}
 
       {mapOpen && <div className="map-overlay" role="presentation">
-        <section className="village-map-panel" role="dialog" aria-modal="true" aria-labelledby="village-map-title">
-          <header><div><span>按照游戏实际道路绘制</span><h2 id="village-map-title">青禾谷实际地图</h2></div><button onClick={() => setMapOpen(false)} aria-label="关闭地图">×</button></header>
-          <div className="village-map-canvas">
+        <section className={`village-map-panel village-map-${activeVillage}`} role="dialog" aria-modal="true" aria-labelledby="village-map-title">
+          <header><div><span>按照当前村庄的实际道路绘制</span><h2 id="village-map-title">{activeVillageInfo.name}实际地图</h2></div><button onClick={() => setMapOpen(false)} aria-label="关闭地图">×</button></header>
+          {activeVillage === "qinghe" ? <div className="village-map-canvas qinghe-map-canvas">
             <i className="map-river" /><i className="actual-route route-wild-farm" /><i className="actual-route route-farm-town" /><i className="actual-route route-town-east" /><i className="actual-route route-east-maple" /><i className="actual-route route-town-culture" /><i className="actual-route route-culture-north" /><i className="actual-route route-culture-residential" /><i className="actual-route route-town-south" /><i className="map-tree-cluster tree-cluster-one" /><i className="map-tree-cluster tree-cluster-two" />
             <button className={`map-place map-farm ${activeVillage === "qinghe" && scene === "farm" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("farm", { x: 8, y: 5 }, "青禾农场"); }}><i className="map-scene-picture picture-farm"><em /><em /><em /></i><b>青禾农场</b><span>农舍 · 农田 · 鱼塘</span></button>
             <button className={`map-place map-wild-farm ${activeVillage === "qinghe" && scene === "westFriendFarm" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("westFriendFarm", { x: 8, y: 5 }, "安安的小农场"); }}><i className="map-scene-picture picture-wild-farm"><em /><em /><em /></i><b>安安的小农场</b><span>青禾农场左边 · 野外朋友</span></button>
@@ -7008,8 +7008,19 @@ export default function FarmGame() {
             <button className={`map-place map-north ${activeVillage === "qinghe" && scene === "northNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("northNeighbor", { x: 6, y: 5 }, "叶老师的书屋"); }}><i className="map-scene-picture picture-library"><em /><em /><em /></i><b>北林书屋</b><span>叶老师家</span></button>
             <button className={`map-place map-residential ${activeVillage === "qinghe" && scene === "residentialDistrict" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("residentialDistrict", { x: 2, y: 5 }, "青禾住宅坡"); }}><i className="map-scene-picture picture-residential"><em /><em /><em /></i><b>青禾住宅坡</b><span>白医生 · 阿麦 · 周镇长 · 沈馆长 · 助手 · 许老师</span></button>
             <div className="map-legend"><span><i />你现在的位置</span><small>点击地图上的场景图可以直接前往</small></div>
-          </div>
-          <footer><span>青禾农场一直向左到安安的小农场；中心街向上到文化街，文化街向上去北林。</span><button onClick={() => setMapOpen(false)}>收起地图</button></footer>
+          </div> : <div className="village-map-canvas maple-map-canvas">
+            <i className="maple-map-ridge ridge-one" /><i className="maple-map-ridge ridge-two" /><i className="maple-map-stream" /><i className="maple-map-road maple-route-crossing-farm" /><i className="maple-map-road maple-route-farm-town" /><i className="maple-map-road maple-route-town-east" /><i className="maple-map-road maple-route-town-culture" /><i className="maple-map-road maple-route-culture-north" /><i className="maple-map-road maple-route-culture-residential" /><i className="maple-map-road maple-route-town-south" /><i className="maple-leaf-grove grove-one" /><i className="maple-leaf-grove grove-two" /><i className="maple-leaf-grove grove-three" />
+            <button className={`map-place maple-map-farm ${scene === "farm" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("farm", { x: 6, y: 5 }, "枫叶农场"); }}><i className="map-scene-picture picture-maple-farm"><em /><em /><em /></i><b>枫叶农场</b><span>红顶农舍 · 坡田 · 山泉池</span></button>
+            <button className={`map-place maple-map-town ${scene === "town" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("town", { x: 5, y: 5 }, "枫叶村中心街"); }}><i className="map-scene-picture picture-maple-town"><em /><em /><em /></i><b>枫叶中心街</b><span>枫木商店 · 山路广场</span></button>
+            <button className={`map-place maple-map-culture ${scene === "cultureDistrict" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("cultureDistrict", { x: 6, y: 7 }, "枫叶文化坡"); }}><i className="map-scene-picture picture-maple-culture"><em /><em /><em /></i><b>枫叶文化坡</b><span>村公所 · 山林学校 · 展览屋</span></button>
+            <button className={`map-place maple-map-east ${scene === "eastNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("eastNeighbor", { x: 3, y: 5 }, "东山红枫林"); }}><i className="map-scene-picture picture-maple-grove"><em /><em /><em /></i><b>东山红枫林</b><span>观景坡 · 村东山路</span></button>
+            <button className={`map-place maple-map-south ${scene === "southNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("southNeighbor", { x: 6, y: 3 }, "南坡木屋"); }}><i className="map-scene-picture picture-maple-south"><em /><em /><em /></i><b>南坡木屋</b><span>木料院 · 山脚小径</span></button>
+            <button className={`map-place maple-map-north ${scene === "northNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("northNeighbor", { x: 6, y: 5 }, "北岭书屋"); }}><i className="map-scene-picture picture-maple-north"><em /><em /><em /></i><b>北岭书屋</b><span>枫林书房 · 北山小路</span></button>
+            <button className={`map-place maple-map-residential ${scene === "residentialDistrict" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("residentialDistrict", { x: 2, y: 5 }, "枫叶住宅坡"); }}><i className="map-scene-picture picture-maple-residential"><em /><em /><em /></i><b>枫叶住宅坡</b><span>村民各自的红枫小院</span></button>
+            <button className="map-place maple-map-crossing" onClick={() => { switchVillage("qinghe"); travelFromMap("farm", { x: 11, y: 5 }, "青禾村西边山路"); }}><i className="map-scene-picture picture-qinghe-crossing"><em /><em /><em /></i><b>通往青禾村</b><span>沿农场左侧一直走</span></button>
+            <div className="map-legend maple-map-legend"><span><i />你现在的位置</span><small>这张图只画枫叶村与出村山路</small></div>
+          </div>}
+          <footer><span>{activeVillage === "qinghe" ? "青禾农场一直向左到安安的小农场；中心街向上到文化街，文化街向上去北林。" : "枫叶农场是这张地图的起点；向右进中心街，向上到文化坡，沿农场左侧山路可以回青禾村。"}</span><button onClick={() => setMapOpen(false)}>收起地图</button></footer>
         </section>
       </div>}
 

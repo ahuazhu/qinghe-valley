@@ -18,6 +18,7 @@
 @import "./tv-broadcast.css";
 @import "./tv-stories.css";
 @import "./living-world-expansion.css";
+@import "./village-map.css";
 
 :root {
   --ink: #263d31;
