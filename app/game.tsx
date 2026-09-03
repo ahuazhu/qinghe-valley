@@ -1083,6 +1083,7 @@ export default function FarmGame() {
   const [indoorPlayer, setIndoorPlayer] = useState({ x: 34, y: 69 });
   const [facing, setFacing] = useState<Facing>("down");
   const [isWalking, setIsWalking] = useState(false);
+  const [farmEdgeTraveling, setFarmEdgeTraveling] = useState(false);
   const [scene, setScene] = useState<Scene>("farm");
   const [activeBuilding, setActiveBuilding] = useState<BuildingId | null>(null);
   const [isFishing, setIsFishing] = useState(false);
@@ -1221,6 +1222,7 @@ export default function FarmGame() {
   const woolClickTimerRef = useRef<number | null>(null);
   const animalProductClickTimerRef = useRef<number | null>(null);
   const walkTimerRef = useRef<number | null>(null);
+  const farmEdgeTravelTimerRef = useRef<number | null>(null);
   const farmActionTimerRef = useRef<number | null>(null);
   const excursionTimerRef = useRef<number | null>(null);
   const lastMoveAtRef = useRef(0);
@@ -1705,6 +1707,7 @@ export default function FarmGame() {
   useEffect(() => () => {
     if (eatTimerRef.current) window.clearTimeout(eatTimerRef.current);
     if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
+    if (farmEdgeTravelTimerRef.current) window.clearTimeout(farmEdgeTravelTimerRef.current);
     if (matchesClickTimerRef.current) window.clearTimeout(matchesClickTimerRef.current);
     if (woolClickTimerRef.current) window.clearTimeout(woolClickTimerRef.current);
     if (animalProductClickTimerRef.current) window.clearTimeout(animalProductClickTimerRef.current);
@@ -1745,6 +1748,25 @@ export default function FarmGame() {
     if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
     walkTimerRef.current = window.setTimeout(() => setIsWalking(false), 520);
   }, []);
+
+  const walkToAnanFarmEdge = useCallback(() => {
+    if (farmEdgeTraveling || scene !== "farm" || worldVillage !== "qinghe") return;
+    if (farmEdgeTravelTimerRef.current) window.clearTimeout(farmEdgeTravelTimerRef.current);
+    if (walkTimerRef.current) window.clearTimeout(walkTimerRef.current);
+    setFacing("left");
+    setIsWalking(true);
+    setFarmEdgeTraveling(true);
+    setPlayer({ x: -5, y: 5 });
+    setMessage("小禾正沿着箭头继续向左走，走到农场真正的最边缘才会进入安安的小农场…… ");
+    farmEdgeTravelTimerRef.current = window.setTimeout(() => {
+      setScene("westFriendFarm");
+      setPlayer({ x: 11, y: 5 });
+      setFarmEdgeTraveling(false);
+      setIsWalking(false);
+      setMessage("小禾走完左边的草路，来到安安的小农场。 ");
+      farmEdgeTravelTimerRef.current = null;
+    }, 1_250);
+  }, [farmEdgeTraveling, scene, worldVillage]);
 
   const crossSceneBoundary = useCallback((destination: { x: number; y: number }, dx: number, dy: number) => {
     if (scene === "farm" && worldVillage === "maple" && dx < 0 && destination.x === -6) {
@@ -1903,6 +1925,7 @@ export default function FarmGame() {
   }, [dreamOddity, dreamOdditySteps, dreamPhase, dreamScene, dreamSurreal, scene]);
 
   const move = useCallback((dx: number, dy: number) => {
+    if (farmEdgeTraveling) return;
     if (bedtimePhase === "waking") {
       setBedtimePhase(null);
       setMessage("小禾掀开被子下床，可以继续走路了。 ");
@@ -1994,7 +2017,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, bulkShippingPrompt, carTraveling, chestOpen, shippingBinOpen, cookingGame, craftingOpen, crossSceneBoundary, divingAtSea, dragonBoatOpen, dragonBoatTraveling, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmGateOpen, farmInterior, festivalProcess, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, guideOpen, journalOpen, lanternRiddle, mallOpen, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, bulkShippingPrompt, carTraveling, chestOpen, shippingBinOpen, cookingGame, craftingOpen, crossSceneBoundary, divingAtSea, dragonBoatOpen, dragonBoatTraveling, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmEdgeTraveling, farmGateOpen, farmInterior, festivalProcess, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, guideOpen, journalOpen, lanternRiddle, mallOpen, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -6784,7 +6807,7 @@ export default function FarmGame() {
   };
 
   const walkToPointer = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || shippingBinOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || bulkShippingPrompt || ananBeachOpen || ananBeachTraveling || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || bedtimePhase) return;
+    if (activeBuilding || neighborInterior || residentHome || friendHomeOpen || craftingOpen || chestOpen || shippingBinOpen || multiplayerOpen || builderOpen || ranchOpen || farmInterior || festivalDisplay || bulkChestPrompt || bulkShippingPrompt || ananBeachOpen || ananBeachTraveling || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || bedtimePhase || farmEdgeTraveling) return;
     if ((event.target as HTMLElement).closest("button, input, .shop-overlay")) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const percentX = ((event.clientX - bounds.left) / bounds.width) * 100;
@@ -6857,7 +6880,12 @@ export default function FarmGame() {
       playTone(720);
       return;
     }
-    const destination = { x: Math.max(0, Math.min(11, Math.round((percentX - 4) / 7.7))), y: Math.max(0, Math.min(7, Math.round((percentY - 8) / 10.5))) };
+    const destination = scene === "farm"
+      ? {
+          x: Math.max(-6, Math.min(14, player.x + Math.round((percentX - 50) / 7.7))),
+          y: Math.max(1, Math.min(7, player.y + Math.round((percentY - 55) / 10.5))),
+        }
+      : { x: Math.max(0, Math.min(11, Math.round((percentX - 4) / 7.7))), y: Math.max(0, Math.min(7, Math.round((percentY - 8) / 10.5))) };
     if (advanceOrdinaryDream(destination.x, destination.y)) return;
     if (scene === "farm") {
       const fenceCount = game.placedCrafts.filter((craft) => craft.type === "fence").length;
@@ -7247,7 +7275,7 @@ export default function FarmGame() {
                 <button className="edge-gate farm-exit" onClick={() => { setScene("town"); setPlayer({ x: 0, y: 5 }); setMessage(`欢迎来到${activeVillageInfo.name}！超市在左上方。`); }} aria-label={`前往${activeVillageInfo.name}`}>
                   <span>{activeVillageInfo.name}</span><b>→</b><small>继续向右走</small>
                 </button>
-                {activeVillage === "qinghe" && <button className="edge-gate wild-farm-crossing" onClick={() => { setPlayer({ x: -5, y: 5 }); setMessage("已经走到农场最左边缘的入口前，再往左走一步才会进入安安的小农场。 "); }}><b>←</b><span>安安的小农场</span><small>走到最左边缘再进入</small></button>}
+                {activeVillage === "qinghe" && <button className="edge-gate wild-farm-crossing" onClick={walkToAnanFarmEdge}><b>←</b><span>安安的小农场</span><small>沿箭头走到最左边缘</small></button>}
                 {activeVillage === "maple" && <button className="edge-gate village-crossing crossing-left" onClick={() => { const friend = partner?.online && partner.currentVillage === "qinghe" ? partner : null; switchVillage("qinghe"); setScene(friend?.scene ?? "farm"); setPlayer(friend ? { x: Math.max(0, Math.min(11, friend.x + 1)), y: friend.y } : { x: 11, y: 5 }); setMessage(friend ? `到了青禾村，马上看见了${friend.playerName}！` : "沿着左边山路到了青禾村。 "); }}><b>←</b><span>前往青禾村</span><small>{partner?.online && partner.currentVillage === "qinghe" ? `去见${partner.playerName}` : "一直向左走"}</small></button>}
               </div>
             ) : scene === "westFriendFarm" ? (
@@ -7354,7 +7382,7 @@ export default function FarmGame() {
               return <button key={`ground-supply-${supplyId}`} className={`ground-supply supply-${supply.kind} ground-supply-${supplyId + 1}`} onClick={(event) => { event.stopPropagation(); setMessage(`地上掉着${supply.name}：${supply.description} 双击可以捡起来。`); playTone(540); }} onDoubleClick={(event) => { event.stopPropagation(); pickUpGroundSupply(supplyId); }} aria-label={`${supply.name}，双击捡起`}><i>{supply.short}</i><span>{supply.name}<small>双击捡起</small></span></button>;
             })}
 
-            {!ananBeachOpen && !ananBeachTraveling && <div className={`player facing-${facing} ${isWalking ? "walking" : ""} ${scene === "farm" ? "farm-centered-player" : ""}`} style={{ left: scene === "farm" ? "50%" : `${4 + player.x * 7.7}%`, top: scene === "farm" ? "55%" : `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
+            {!ananBeachOpen && !ananBeachTraveling && <div className={`player facing-${facing} ${isWalking ? "walking" : ""} ${scene === "farm" ? "farm-centered-player" : ""} ${farmEdgeTraveling ? "farm-edge-traveling-player" : ""}`} style={{ left: scene === "farm" ? farmEdgeTraveling ? "7%" : "50%" : `${4 + player.x * 7.7}%`, top: scene === "farm" ? "55%" : `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
               {renderCarriedItem()}{renderWearables()}{renderPetFollowers()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
               {game.sick && game.diagnosed && game.illness && <button className={`self-treatment-button method-${ILLNESSES[game.illness].method}`} onClick={(event) => { event.stopPropagation(); beginSelfTreatment(); }}><i>＋</i><span>{game.learnedTreatments.includes(game.illness) ? "自己治疗" : "尚未学会"}<small>{ILLNESSES[game.illness].name}</small></span></button>}
             </div>}
