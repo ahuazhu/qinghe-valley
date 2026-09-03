@@ -530,9 +530,10 @@ const GUIDE_TOPICS: Array<{ id: GuideTopicId; title: string; icon: string; summa
 const BIRTHDAY_GUESTS = Object.keys(PERSON_DIALOGUES);
 const NPC_HAIR_COLORS = ["#4a3328", "#6b432d", "#342f35", "#765230", "#3e4b46", "#6d3d46"];
 const NPC_SKIN_COLORS = ["#efbd95", "#e7ad82", "#d99b72", "#f2c7a1"];
+const NPC_OUTFIT_ACCENTS = ["#f0c768", "#d7e8ed", "#f0a4a0", "#b7d88b", "#d4b3e2", "#e9d39a", "#9fd0cf", "#e9a96f"];
 const personClothesStyle = (name: string) => {
   const nameCode = [...name].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), 0);
-  return { "--npc-clothes": PERSON_CLOTHES[name] ?? "#6b8b68", "--npc-hair": NPC_HAIR_COLORS[nameCode % NPC_HAIR_COLORS.length], "--npc-skin": NPC_SKIN_COLORS[nameCode % NPC_SKIN_COLORS.length] } as CSSProperties;
+  return { "--npc-clothes": PERSON_CLOTHES[name] ?? "#6b8b68", "--npc-accent": NPC_OUTFIT_ACCENTS[nameCode % NPC_OUTFIT_ACCENTS.length], "--npc-hair": NPC_HAIR_COLORS[nameCode % NPC_HAIR_COLORS.length], "--npc-skin": NPC_SKIN_COLORS[nameCode % NPC_SKIN_COLORS.length] } as CSSProperties;
 };
 
 const residentActivity = (name: string, hour: number, day: number, weather: Weather): ResidentSchedule => {
@@ -1106,6 +1107,7 @@ export default function FarmGame() {
   const [journalTab, setJournalTab] = useState<"today" | "friends" | "collection" | "recipes">("today");
   const [residentInvitation, setResidentInvitation] = useState<{ person: string; trip: HiddenTripId } | null>(null);
   const [residentOuting, setResidentOuting] = useState<{ person: string; trip: HiddenTripId } | null>(null);
+  const [residentSpeech, setResidentSpeech] = useState<{ person: string; text: string } | null>(null);
   const [careSession, setCareSession] = useState<{ mode: "training" | "treatment"; illness: IllnessId; step: number; progress: number; selected: string[]; herbParts: number; waterParts: number } | null>(null);
   const [medicalThermometerPicked, setMedicalThermometerPicked] = useState(false);
   const [careHeldItem, setCareHeldItem] = useState<string | null>(null);
@@ -3098,18 +3100,23 @@ export default function FarmGame() {
 
   const interactWithPerson = (person: string, fallback: string) => {
     if (giveHeldItem(person)) return;
+    const showSpeech = (text: string) => {
+      const prefix = `${person}：`;
+      setResidentSpeech({ person, text: text.startsWith(prefix) ? text.slice(prefix.length) : text });
+      setMessage(text);
+    };
     const talkKey = `${game.year}-${game.season}-${game.day}`;
     if (game.lastTalkedDays[person] !== talkKey) {
       setGame((current) => withFriendship({ ...current, lastTalkedDays: { ...current.lastTalkedDays, [person]: talkKey } }, person, 2, `${SEASONS[current.season]}第${current.day}天：小禾和${person}聊了一会儿。`));
     }
     if (NPC_SICK_DAYS[person]?.includes(game.day) && game.npcHealedDays[person] !== game.day) {
-      setMessage(`${person}今天有些不舒服，露出了伤心的表情：“我休息一天，明天应该就会好起来。”`);
+      showSpeech(`${person}今天有些不舒服，露出了伤心的表情：“我休息一天，明天应该就会好起来。”`);
       playTone(300);
       return;
     }
     const birthday = RESIDENT_BIRTHDAYS.find((entry) => entry.name === person);
     if (birthday && birthday.season === game.season && birthday.day === game.day) {
-      setMessage(`${person}今天过生日，开心地说：“谢谢你记得我的生日！公告栏上也画了一颗小星星，今天见到大家真高兴。”`);
+      showSpeech(`${person}今天过生日，开心地说：“谢谢你记得我的生日！公告栏上也画了一颗小星星，今天见到大家真高兴。”`);
       playTone(920);
       return;
     }
@@ -3119,19 +3126,19 @@ export default function FarmGame() {
     }
     if (person === "安安" && Math.random() < .3) {
       setGame((current) => ({ ...current, cookies: current.cookies + 1 }));
-      setMessage("安安从小布包里拿出一块星星饼干送给小禾：“这是我烤的，分给你一块！”饼干已经放进背包。 ");
+      showSpeech("安安从小布包里拿出一块星星饼干送给小禾：“这是我烤的，分给你一块！”饼干已经放进背包。 ");
       playTone(880);
       return;
     }
     if (person === "安安" && Math.random() < .58) {
       setPlayingWithAnan(true);
       setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) }));
-      setMessage("安安笑着拉住小禾，两个人追着跑、拍拍手，又绕着桌子嬉戏了一会儿！开心玩耍恢复了 5 点体力。 ");
+      showSpeech("安安笑着拉住小禾，两个人追着跑、拍拍手，又绕着桌子嬉戏了一会儿！开心玩耍恢复了 5 点体力。 ");
       playTone(820);
       window.setTimeout(() => setPlayingWithAnan(false), 1_600);
       return;
     }
-    setMessage(PERSON_DIALOGUES[person] ?? fallback);
+    showSpeech(PERSON_DIALOGUES[person] ?? fallback);
     playTone(520);
   };
 
@@ -7215,6 +7222,11 @@ export default function FarmGame() {
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
           <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "mysteryRoad" ? "mystery-road-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${displaySeason} weather-world-${game.weather} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome || friendHomeOpen || mallOpen ? "interior-open" : ""} ${playingWithAnan ? "playing-with-anan" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "mysteryRoad" ? "▤" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
+            {scene === "town" && residentSpeech && !activeBuilding && <div className="resident-speech-card" role="status" aria-live="polite" onClick={(event) => event.stopPropagation()}>
+              <span className="resident-speech-portrait" style={personClothesStyle(residentSpeech.person)} aria-hidden="true"><i /><b /></span>
+              <p><strong>{residentSpeech.person}</strong><span>{residentSpeech.text}</span></p>
+              <button onClick={() => setResidentSpeech(null)} aria-label="收起居民对话">×</button>
+            </div>}
             {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /><i className="dream-backward-birds" /><i className="dream-long-shadow" /><i className="dream-floating-light" /><i className="dream-pale-animal" /><i className="dream-cookie-rain" /><i className="dream-dancing-crops" /><i className="dream-bubble-fish" /><i className="dream-tiny-footprints" /><i className="dream-pond-stars" /><i className="dream-winking-window" /><i className="dream-walking-scarecrow" /><i className="dream-grass-train" /><i className="dream-floating-sheep" /><i className="dream-rainbow-rain" /><i className="dream-twin-moons" /></div>}
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
