@@ -47,6 +47,9 @@ type AtticResource = "wood" | "stone" | "diamonds" | "herbs" | "resin" | "pineco
 type ResidentQuestId = "orchardCrate" | "clinicParcel" | "roadSigns" | "workshopMeasure" | "springWater" | "museumRubbing" | "libraryPages" | "schoolSpecimen" | "ananTrail";
 type ResidentQuest = { id: ResidentQuestId; giver: string; title: string; location: string; village: VillageId; scene: Scene; detail: string; action: string; icon: string; reward: number };
 
+const QINGHE_WEST_PATH_END = -12;
+const QINGHE_WEST_EXIT = -13;
+
 type OnlinePlayer = {
   deviceId: string;
   playerName: string;
@@ -1756,14 +1759,12 @@ export default function FarmGame() {
     setFacing("left");
     setIsWalking(true);
     setFarmEdgeTraveling(true);
-    setPlayer({ x: -5, y: 5 });
-    setMessage("小禾正沿着箭头继续向左走，走到农场真正的最边缘才会进入安安的小农场…… ");
+    setPlayer({ x: QINGHE_WEST_PATH_END, y: 5 });
+    setMessage("小禾正穿过动物区，沿着箭头走向农场真正的最左边缘…… ");
     farmEdgeTravelTimerRef.current = window.setTimeout(() => {
-      setScene("westFriendFarm");
-      setPlayer({ x: 11, y: 5 });
       setFarmEdgeTraveling(false);
       setIsWalking(false);
-      setMessage("小禾走完左边的草路，来到安安的小农场。 ");
+      setMessage("已经走到箭头尖指着的路口。现在再向左走一步，才会进入安安的小农场。 ");
       farmEdgeTravelTimerRef.current = null;
     }, 1_250);
   }, [farmEdgeTraveling, scene, worldVillage]);
@@ -1777,11 +1778,11 @@ export default function FarmGame() {
       setMessage(friend ? `沿着左边山路到了青禾村，一进村就看见了${friend.playerName}！` : "沿着左边山路到了青禾村。朋友来到同一个场景后就会出现。 ");
       return true;
     }
-    if (scene === "farm" && worldVillage === "qinghe" && dx < 0 && destination.x === -6) {
+    if (scene === "farm" && worldVillage === "qinghe" && dx < 0 && destination.x === QINGHE_WEST_EXIT) {
       setScene("westFriendFarm"); setPlayer({ x: 11, y: 5 }); setMessage("沿着农场左边的草路，来到安安的小农场。 "); return true;
     }
     if (scene === "westFriendFarm" && dx > 0 && destination.x === 11) {
-      setScene("farm"); setPlayer({ x: -5, y: 5 }); setMessage("从安安的小农场回到青禾农场最左边缘。往右走可以回到农田。 "); return true;
+      setScene("farm"); setPlayer({ x: QINGHE_WEST_PATH_END, y: 5 }); setMessage("从安安的小农场回到青禾农场最左边缘。往右走可以回到农田。 "); return true;
     }
     if (scene === "farm" && dx > 0 && destination.x === 14) {
       setScene("town"); setPlayer({ x: 0, y: 5 }); setMessage(`欢迎来到${VILLAGE_INFO[worldVillage].name}！走到道路边缘就能继续前往其他地方。`); return true;
@@ -1978,8 +1979,9 @@ export default function FarmGame() {
     }
 
     const canUseNorthEdge = scene === "town" || scene === "cultureDistrict" || scene === "southNeighbor";
+    const farmWestLimit = worldVillage === "qinghe" ? QINGHE_WEST_EXIT : -6;
     const next = {
-      x: Math.max(scene === "farm" ? -6 : 0, Math.min(scene === "farm" ? 14 : 11, player.x + dx)),
+      x: Math.max(scene === "farm" ? farmWestLimit : 0, Math.min(scene === "farm" ? 14 : 11, player.x + dx)),
       y: Math.max(canUseNorthEdge ? 0 : 1, Math.min(7, player.y + dy)),
     };
     if (advanceOrdinaryDream(next.x, next.y)) return;
@@ -5657,6 +5659,8 @@ export default function FarmGame() {
   const isBirthday = !festivalPreview && game.season === 0 && game.day === 19;
   const calendarMonth = [2, 5, 8, 11][displaySeason];
   const sceneLabel = scene === "farm" ? activeVillageInfo.farm : scene === "westFriendFarm" ? "西边 · 安安的小农场" : scene === "mysteryRoad" ? "远方新区 · 青禾大商场" : scene === "town" ? `${activeVillageInfo.name} · 中心街` : scene === "cultureDistrict" ? `${activeVillageInfo.name} · 清河文化街` : scene === "residentialDistrict" ? `${activeVillageInfo.name} · 青禾住宅坡` : scene === "eastNeighbor" ? "东郊 · 林婶的果园小屋" : scene === "southNeighbor" ? "南坡 · 鲁师傅的院子" : "北林 · 叶老师的书屋";
+  const farmCameraX = Math.max(-8, Math.min(12, player.x));
+  const farmPlayerScreenLeft = player.x < -8 ? Math.max(4, 50 - (Math.abs(player.x) - 8) * 11.5) : player.x > 12 ? Math.min(92, 50 + (player.x - 12) * 21) : 50;
   const wildFriendVisit: "cave" | "camp" | null = game.day % 5 === 0 ? "cave" : game.day % 5 === 2 ? "camp" : null;
   const currentAnanTripKey = `${game.year}-${game.season}`;
   const wildFriendAtPlayerHome = game.day % 5 === 3 || (!game.ananBeachTrips.includes(currentAnanTripKey) && game.day >= 22);
@@ -6882,7 +6886,7 @@ export default function FarmGame() {
     }
     const destination = scene === "farm"
       ? {
-          x: Math.max(-6, Math.min(14, player.x + Math.round((percentX - 50) / 7.7))),
+          x: Math.max(worldVillage === "qinghe" ? QINGHE_WEST_EXIT : -6, Math.min(14, player.x + Math.round((percentX - 50) / 7.7))),
           y: Math.max(1, Math.min(7, player.y + Math.round((percentY - 55) / 10.5))),
         }
       : { x: Math.max(0, Math.min(11, Math.round((percentX - 4) / 7.7))), y: Math.max(0, Math.min(7, Math.round((percentY - 8) / 10.5))) };
@@ -7224,7 +7228,7 @@ export default function FarmGame() {
             {selectedCraftItem && scene === "farm" && <div className="placement-controls" onClick={(event) => event.stopPropagation()}><strong>正在摆放：{CRAFT_RECIPES[selectedCraftItem].name}</strong>{(selectedCraftItem === "sign" || selectedCraftItem === "bench") && <div><button className={craftRotation === 0 ? "selected" : ""} onClick={() => setCraftRotation(0)}>横着</button><button className={craftRotation === 90 ? "selected" : ""} onClick={() => setCraftRotation(90)}>竖着</button><button className={craftRotation === 45 ? "selected" : ""} onClick={() => setCraftRotation(45)}>斜着</button></div>}<span>{selectedCraftItem === "fence" ? "点击农田四周的绿色位置，围栏会自动对齐" : "选好方向后，点击农场空地"}</span><button className="cancel-placement" onClick={() => setSelectedCraftItem(null)}>取消</button></div>}
 
             {scene === "farm" ? (
-              <div className="farm-camera-layer" style={{ "--farm-camera-x": `${(6 - player.x) * 2.7}%`, "--farm-camera-y": `${(4 - player.y) * 1.8}%` } as CSSProperties}>
+              <div className="farm-camera-layer" style={{ "--farm-camera-x": `${(6 - farmCameraX) * 2.7}%`, "--farm-camera-y": `${(4 - player.y) * 1.8}%` } as CSSProperties}>
                 <div className="farm-southwest-extension" aria-hidden="true"><i /><i /><i /><b /></div>
                 <div className="outdoor-lamps outdoor-lamps-farm farm-fixed-lamps" aria-hidden="true"><i /><i /><i /><i /></div>
                 <div className="path path-one" /><div className="path path-two" />
@@ -7382,7 +7386,7 @@ export default function FarmGame() {
               return <button key={`ground-supply-${supplyId}`} className={`ground-supply supply-${supply.kind} ground-supply-${supplyId + 1}`} onClick={(event) => { event.stopPropagation(); setMessage(`地上掉着${supply.name}：${supply.description} 双击可以捡起来。`); playTone(540); }} onDoubleClick={(event) => { event.stopPropagation(); pickUpGroundSupply(supplyId); }} aria-label={`${supply.name}，双击捡起`}><i>{supply.short}</i><span>{supply.name}<small>双击捡起</small></span></button>;
             })}
 
-            {!ananBeachOpen && !ananBeachTraveling && <div className={`player facing-${facing} ${isWalking ? "walking" : ""} ${scene === "farm" ? "farm-centered-player" : ""} ${farmEdgeTraveling ? "farm-edge-traveling-player" : ""}`} style={{ left: scene === "farm" ? farmEdgeTraveling ? "7%" : "50%" : `${4 + player.x * 7.7}%`, top: scene === "farm" ? "55%" : `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
+            {!ananBeachOpen && !ananBeachTraveling && <div className={`player facing-${facing} ${isWalking ? "walking" : ""} ${scene === "farm" ? "farm-centered-player" : ""} ${farmEdgeTraveling ? "farm-edge-traveling-player" : ""}`} style={{ left: scene === "farm" ? `${farmPlayerScreenLeft}%` : `${4 + player.x * 7.7}%`, top: scene === "farm" ? "55%" : `${8 + player.y * 10.5}%` }} aria-label={`玩家角色，面朝${facing === "left" ? "左" : facing === "right" ? "右" : facing === "up" ? "上" : "前"}`}>
               {renderCarriedItem()}{renderWearables()}{renderPetFollowers()}<span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} />
               {game.sick && game.diagnosed && game.illness && <button className={`self-treatment-button method-${ILLNESSES[game.illness].method}`} onClick={(event) => { event.stopPropagation(); beginSelfTreatment(); }}><i>＋</i><span>{game.learnedTreatments.includes(game.illness) ? "自己治疗" : "尚未学会"}<small>{ILLNESSES[game.illness].name}</small></span></button>}
             </div>}
