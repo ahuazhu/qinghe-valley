@@ -1,0 +1,235 @@
+.age-growth-card {
+  display: grid;
+  grid-template-columns: 42px 1fr 18px;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px;
+  color: #4e513b;
+  border: 4px solid #7b9366;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff0ba, #cfe6a9);
+  box-shadow: inset 0 -5px rgba(79, 107, 62, .13), 0 5px rgba(48, 72, 46, .1);
+  text-align: left;
+}
+.age-growth-card > i {
+  display: grid;
+  place-items: center;
+  width: 39px;
+  height: 39px;
+  color: #fff;
+  border: 4px solid #536b4a;
+  border-radius: 50%;
+  background: #7eaa66;
+  box-shadow: inset 0 -6px rgba(53, 79, 48, .2);
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 1000;
+}
+.age-growth-card span > * { display: block; }
+.age-growth-card small { color: #748269; font-size: 6px; }
+.age-growth-card strong { margin: 2px 0; font-size: 10px; }
+.age-growth-card em { color: #695e49; font-size: 6px; font-style: normal; }
+.age-growth-card > b { color: #607b53; font-size: 20px; }
+
+.age-growth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 430;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: rgba(32, 41, 33, .76);
+}
+.age-growth-overlay > section {
+  width: min(920px, 98vw);
+  max-height: 94vh;
+  overflow: auto;
+  border: 7px solid #5a714d;
+  border-radius: 20px;
+  background: #f4e7bd;
+  box-shadow: 0 20px 70px rgba(24, 32, 24, .62);
+}
+.age-growth-overlay header {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 17px;
+  color: #fff8d1;
+  background: linear-gradient(135deg, #536d4d, #81985e);
+  box-shadow: 0 5px rgba(52, 73, 49, .2);
+}
+.age-growth-overlay header span { font-size: 7px; font-weight: 900; }
+.age-growth-overlay h2 { margin: 3px 0 0; font-size: 23px; }
+.age-growth-overlay header button {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  color: #4f664a;
+  border: 4px solid #3f573d;
+  border-radius: 50%;
+  background: #fff3c5;
+  font-size: 24px;
+  font-weight: 1000;
+}
+.age-book-intro {
+  display: grid;
+  grid-template-columns: 125px 1fr;
+  align-items: center;
+  gap: 18px;
+  margin: 14px;
+  padding: 14px;
+  border: 5px solid #876c49;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #f9edc8, #e7d297);
+}
+.age-portrait {
+  display: grid;
+  place-items: center;
+  height: 112px;
+  overflow: hidden;
+  border: 6px solid #6a7957;
+  border-radius: 16px;
+  background: linear-gradient(#a9d6d5 0 55%, #80ad65 56%);
+}
+.age-portrait img { width: 78px; image-rendering: pixelated; filter: drop-shadow(0 6px 3px rgba(37, 45, 34, .25)); }
+.age-portrait.age-1 img { scale: .82; transform-origin: bottom; }
+.age-portrait.age-2 img { scale: .87; transform-origin: bottom; }
+.age-portrait.age-3 img { scale: .92; transform-origin: bottom; }
+.age-portrait.age-4 img { scale: .96; transform-origin: bottom; }
+.age-book-intro strong { display: block; color: #4e4c36; font-size: 16px; }
+.age-book-intro p { margin: 7px 0; color: #6c624b; font-size: 9px; line-height: 1.65; }
+.age-book-intro small { color: #7c6d4e; font-size: 7px; font-weight: 900; }
+.age-skill-grid { display: grid; gap: 10px; padding: 0 14px 16px; }
+.age-skill-grid article {
+  display: grid;
+  grid-template-columns: 52px 1fr 145px;
+  align-items: center;
+  gap: 12px;
+  min-height: 112px;
+  padding: 11px;
+  border: 5px solid #7d6a4b;
+  border-radius: 14px;
+  background: #fff4d4;
+}
+.age-skill-grid article > i {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  color: #fff;
+  border: 5px solid #52684a;
+  border-radius: 50%;
+  background: #7ca064;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 1000;
+}
+.age-skill-grid article span > * { display: block; }
+.age-skill-grid article span small { color: #7b8565; font-size: 6px; }
+.age-skill-grid article span strong { margin: 3px 0; color: #4c4937; font-size: 12px; }
+.age-skill-grid article span p { margin: 2px 0; color: #665d49; font-size: 8px; }
+.age-skill-grid article span em { margin-top: 4px; color: #698054; font-size: 7px; font-style: normal; font-weight: 900; }
+.age-skill-grid article > button { padding: 10px 8px; color: #fff; border: 4px solid #4b6748; border-radius: 10px; background: #71965c; box-shadow: 0 5px #4d6847; font-size: 8px; font-weight: 1000; }
+.age-skill-grid article.locked { filter: saturate(.35); opacity: .68; }
+.age-skill-grid article.locked > button { color: #777; border-color: #888; background: #ccc4ad; box-shadow: none; }
+.age-skill-grid article.learned { border-color: #54905a; background: #e4f1c9; }
+.age-skill-grid article.learned > i { background: #55a663; }
+.age-skill-grid article.learned > button { color: #426447; background: #c7dfad; box-shadow: none; }
+
+.age-training-stage { min-height: 500px; padding: 15px; background: #ead59e; }
+.age-training-title { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 2px 10px; padding: 10px 13px; color: #fff3c8; border: 5px solid #4c6247; border-radius: 12px; background: #607c58; }
+.age-training-title span { font-size: 7px; }
+.age-training-title strong { grid-row: 2; font-size: 17px; }
+.age-training-title small { grid-column: 2; grid-row: 1 / span 2; font-size: 8px; }
+.age-training-stage > p { margin: 9px 4px 0; color: #5d533e; font-size: 8px; text-align: center; }
+.age-growth-overlay footer { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; padding: 9px 13px; color: #fff7d3; background: #536b4d; }
+.age-growth-overlay footer span { font-size: 8px; font-weight: 900; }
+.age-growth-overlay footer button { padding: 8px 13px; color: #4e6044; border: 3px solid #394f38; border-radius: 9px; background: #fff0b9; font-size: 8px; font-weight: 1000; }
+
+.age-trail-map,
+.age-shelter-yard,
+.age-seed-lab,
+.age-echo-cave { position: relative; height: 305px; margin-top: 10px; overflow: hidden; border: 6px solid #5b6f4d; border-radius: 15px; }
+.age-trail-map { background: linear-gradient(#93ccda 0 31%, #76ab61 32%); box-shadow: inset 0 -28px #5e914f; }
+.trail-river { position: absolute; left: 38%; top: 0; width: 21%; height: 100%; rotate: 9deg; background: repeating-linear-gradient(0deg, #65b5d3 0 19px, #8ed0e2 20px 26px); }
+.trail-bridge { position: absolute; z-index: 2; left: 31%; top: 52%; width: 36%; height: 39px; rotate: 8deg; border: 6px solid #684935; background: repeating-linear-gradient(90deg, #b87945 0 26px, #744d33 27px 31px); }
+.trail-footprints i { position: absolute; z-index: 4; width: 17px; height: 24px; opacity: .2; border-radius: 52% 42% 48% 35%; background: #594b3a; rotate: 21deg; }
+.trail-footprints i:nth-child(1) { left: 17%; bottom: 26%; }.trail-footprints i:nth-child(2) { left: 28%; bottom: 47%; }.trail-footprints i:nth-child(3) { left: 42%; bottom: 62%; }.trail-footprints i:nth-child(4) { left: 56%; bottom: 43%; }.trail-footprints i:nth-child(5) { left: 70%; bottom: 57%; }.trail-footprints i:nth-child(6) { left: 82%; bottom: 73%; }
+.trail-footprints i.found { opacity: .75; background: #4f7445; }.trail-footprints i.current { opacity: 1; background: #ffe05f; box-shadow: 0 0 16px #ffe05f; animation: festivalTargetBreathe 1s infinite; }
+.age-trail-player { position: absolute; z-index: 7; width: 38px; height: 72px; transition: left .35s, top .35s; }
+.age-trail-player i { position: absolute; left: 6px; width: 27px; height: 28px; border: 4px solid #563f34; border-radius: 50%; background: #e7ac83; box-shadow: inset 0 10px #5d4638; }
+.age-trail-player b { position: absolute; left: 3px; top: 26px; width: 34px; height: 38px; border: 4px solid #563f34; border-radius: 9px; background: #67a271; }
+.trail-treasure { position: absolute; right: 6%; top: 11%; width: 68px; height: 63px; border: 6px solid #6c4a32; border-radius: 9px; background: #b97843; }
+.trail-treasure::after { content: "药材\A 松果"; white-space: pre; position: absolute; inset: 0; display: grid; place-items: center; color: #fff1b0; font-size: 7px; font-weight: 900; }
+.age-direction-pad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-top: 9px; }
+.age-direction-pad button { min-height: 55px; color: #fff; border: 5px solid #41563e; border-radius: 10px; background: #6f9662; box-shadow: 0 5px #4b6746; font-size: 20px; font-weight: 1000; }
+.age-direction-pad small { display: block; font-size: 6px; }
+
+.age-shelter-yard { background: linear-gradient(#8dc8d5 0 45%, #6da258 46%); }
+.training-tent { position: absolute; left: 42%; top: 45px; width: 260px; height: 190px; transform: translateX(-50%); }
+.training-tent > i { position: absolute; inset: 20px 10px 8px; opacity: .16; border: 9px solid #644533; background: #d48251; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.training-tent > b { position: absolute; left: 49%; top: 9px; width: 9px; height: 179px; opacity: .16; background: #744c32; rotate: 24deg; transform-origin: top; }
+.training-tent > em { position: absolute; left: 49%; top: 9px; width: 9px; height: 179px; opacity: .16; background: #744c32; rotate: -24deg; transform-origin: top; }
+.training-tent > u { position: absolute; left: 24px; bottom: 7px; width: 206px; height: 13px; opacity: .16; background: #7a5538; }
+.training-tent > s { position: absolute; left: 49%; top: 2px; width: 20px; height: 20px; opacity: .16; border-radius: 50%; background: #6c4c35; }
+.training-tent > span { position: absolute; left: 107px; bottom: 12px; width: 46px; height: 91px; opacity: .16; background: #60423b; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.training-tent.built-1 i,.training-tent.built-2 i,.training-tent.built-3 i,.training-tent.built-4 i,.training-tent.built-5 i,.training-tent.built-6 i,.training-tent.built-2 b,.training-tent.built-3 b,.training-tent.built-4 b,.training-tent.built-5 b,.training-tent.built-6 b,.training-tent.built-3 em,.training-tent.built-4 em,.training-tent.built-5 em,.training-tent.built-6 em,.training-tent.built-4 u,.training-tent.built-5 u,.training-tent.built-6 u,.training-tent.built-5 s,.training-tent.built-6 s,.training-tent.built-6 span { opacity: 1; }
+.age-camp-target { position: absolute; z-index: 6; right: 3%; top: 69px; width: 150px; min-height: 107px; color: #456343; border: 6px dashed #59a058; border-radius: 12px; outline: 7px solid rgba(91, 190, 82, .3); background: #ddedb5; }
+.age-camp-target i { display: block; width: 59px; height: 35px; margin: auto; border: 4px dashed #579357; border-radius: 9px; }
+.age-camp-target strong,.age-camp-target small { display: block; margin-top: 4px; font-size: 7px; }
+.age-camp-parts { position: absolute; z-index: 8; left: 2%; right: 2%; bottom: 8px; display: flex; justify-content: center; gap: 5px; }
+.age-camp-parts button { width: 96px; padding: 5px; touch-action: none; color: #4f3d31; border: 4px solid #684833; border-radius: 9px; background: #e8bd72; box-shadow: 0 4px #795039; }
+.age-camp-parts button.held { animation: festivalHeld .55s infinite; outline: 5px solid #ffe16d; }
+.age-camp-parts button i { display: grid; place-items: center; width: 28px; height: 28px; margin: auto; color: #fff; border-radius: 7px; background: #976443; font-style: normal; }
+.age-camp-parts button span { display: block; margin-top: 3px; font-size: 6px; font-weight: 900; }
+
+.age-seed-lab { background: linear-gradient(#d9e4cf 0 62%, #a66e48 63%); }
+.weather-observation-card { position: absolute; left: 4%; top: 25px; width: 190px; min-height: 132px; padding: 13px; color: #4f4d39; border: 6px solid #6d785b; border-radius: 12px; background: #f8edc5; }
+.weather-observation-card i { display: block; width: 70px; height: 50px; margin: 0 auto 7px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ffe169 0 25%, transparent 26%), linear-gradient(#9bd1df, #c6e5e8); box-shadow: inset 0 -12px rgba(88, 146, 174, .23); }
+.weather-round-0 i { background: repeating-linear-gradient(110deg, transparent 0 13px, #65b4d3 14px 17px), #9fcbd6; }.weather-round-1 i { background: radial-gradient(circle, #ffe272 0 28%, #eea946 29% 43%, transparent 44%), #91cfdf; }.weather-round-2 i { background: linear-gradient(25deg, transparent 35%, #e3a84f 36% 46%, transparent 47%), #a7c4ce; }.weather-round-3 i { background: repeating-linear-gradient(120deg, transparent 0 15px, #dceaf0 16px 20px), #7fa0b4; }
+.weather-observation-card b,.weather-observation-card span { display: block; text-align: center; }.weather-observation-card b { font-size: 11px; }.weather-observation-card span { margin-top: 5px; font-size: 7px; }
+.seed-observation-pots { position: absolute; left: 29%; right: 5%; top: 41px; display: flex; justify-content: space-around; }
+.seed-observation-pots i { width: 104px; height: 80px; border: 8px solid #69503b; border-radius: 9px 9px 38px 38px; background: linear-gradient(#71472f 0 22%, #b87b4c 23%); box-shadow: 0 8px rgba(80, 52, 37, .2); }
+.age-seed-choices { position: absolute; left: 25%; right: 4%; bottom: 25px; display: flex; justify-content: space-around; gap: 8px; }
+.age-seed-choices button { flex: 1; padding: 8px; color: #4b4937; border: 5px solid #637750; border-radius: 11px; background: #e5d889; box-shadow: 0 5px #66704e; }
+.age-seed-choices button i { display: grid; place-items: center; width: 35px; height: 35px; margin: auto; color: #fff; border-radius: 50%; background: #6f9c59; font-style: normal; }.age-seed-choices button span { display: block; margin-top: 4px; font-size: 7px; font-weight: 900; }
+
+.age-echo-cave { background: radial-gradient(ellipse at 50% 17%, #52606a 0 10%, transparent 11%), linear-gradient(#222d38, #35444c 60%, #202c30 61%); }
+.echo-rocks { position: absolute; inset: 37px 6% 108px; display: flex; align-items: flex-end; justify-content: space-around; }
+.echo-rocks i { width: 116px; height: 95px; border: 8px solid #1d282c; border-radius: 55% 48% 22% 25%; background: linear-gradient(135deg, #67757c, #3e4b51); box-shadow: inset -19px -13px rgba(20, 29, 32, .23); }
+.echo-timing-bar { position: absolute; left: 12%; right: 12%; bottom: 72px; height: 28px; overflow: hidden; border: 6px solid #182427; border-radius: 14px; background: #8b6a54; }
+.echo-good-zone { position: absolute; left: 42%; width: 16%; height: 100%; background: #6fc772; box-shadow: 0 0 15px #8fe883; }
+.echo-timing-bar b { position: absolute; top: -2px; width: 13px; height: 26px; translate: -50% 0; border: 4px solid #4f3c2c; border-radius: 50%; background: #ffe261; box-shadow: 0 0 11px #ffe261; }
+.age-echo-cave > button { position: absolute; left: 50%; bottom: 11px; translate: -50% 0; min-width: 230px; padding: 8px 15px; color: #fff; border: 5px solid #493a2f; border-radius: 10px; background: #a97044; box-shadow: 0 5px #523e31; }
+.age-echo-cave > button i,.age-echo-cave > button span { display: inline-block; vertical-align: middle; }.age-echo-cave > button i { margin-right: 8px; font-style: normal; font-size: 14px; }.age-echo-cave > button span { font-size: 8px; font-weight: 900; }
+.echo-crystal-progress { position: absolute; left: 50%; top: 14px; display: flex; gap: 13px; translate: -50% 0; }.echo-crystal-progress i { width: 17px; height: 27px; opacity: .18; background: #65d9e4; clip-path: polygon(50% 0, 100% 35%, 80% 100%, 20% 100%, 0 35%); }.echo-crystal-progress.found-1 i:nth-child(-n+1),.echo-crystal-progress.found-2 i:nth-child(-n+2),.echo-crystal-progress.found-3 i:nth-child(-n+3),.echo-crystal-progress.found-4 i:nth-child(-n+4) { opacity: 1; filter: drop-shadow(0 0 8px #76eff1); }
+
+.cave-diamond-mine.echo-revealed-diamond > i { animation: ageEchoReveal 1.25s ease-in-out infinite; filter: drop-shadow(0 0 7px #89f4ff) drop-shadow(0 0 16px #ffe56a); }
+.cave-diamond-mine.echo-revealed-diamond > b { color: #473c27; background: #ffe790; box-shadow: 0 0 12px #ffe169; }
+@keyframes ageEchoReveal { 50% { translate: 0 -3px; filter: drop-shadow(0 0 12px #bbfaff) drop-shadow(0 0 23px #ffe56a); } }
+
+@media (max-width: 760px), (any-pointer: coarse) {
+  .age-growth-overlay { padding: 4px; }
+  .age-growth-overlay > section { max-height: 98vh; border-width: 4px; }
+  .age-growth-overlay h2 { font-size: 15px; }
+  .age-book-intro { grid-template-columns: 76px 1fr; margin: 7px; padding: 8px; }
+  .age-portrait { height: 82px; }.age-portrait img { width: 58px; }
+  .age-skill-grid { padding: 0 7px 10px; }
+  .age-skill-grid article { grid-template-columns: 38px 1fr 100px; gap: 6px; padding: 7px; }
+  .age-skill-grid article > i { width: 35px; height: 35px; border-width: 3px; }
+  .age-training-stage { min-height: 425px; padding: 7px; }
+  .age-trail-map,.age-shelter-yard,.age-seed-lab,.age-echo-cave { height: 265px; }
+  .training-tent { left: 36%; scale: .72; transform-origin: center top; }
+  .age-camp-target { width: 105px; }
+  .age-camp-parts { overflow-x: auto; justify-content: flex-start; }
+  .age-camp-parts button { flex: 0 0 75px; }
+  .weather-observation-card { width: 128px; scale: .82; transform-origin: left top; }
+  .seed-observation-pots { left: 31%; }.seed-observation-pots i { width: 67px; height: 61px; }
+  .age-seed-choices { left: 23%; gap: 3px; }.age-seed-choices button { padding: 5px; }
+  .echo-rocks i { width: 75px; height: 73px; }
+  .age-growth-overlay footer span { font-size: 6px; }
+}

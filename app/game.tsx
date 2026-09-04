@@ -31,6 +31,8 @@ type WorkshopSeedId = "strawberry" | "watermelon" | "corn" | "pumpkin";
 type WorkshopSeason = "春" | "夏" | "秋" | "冬";
 type SnowBuildState = { playerX: number; bodyX: number; bodySize: number; bodyPlaced: boolean; headX: number; headSize: number; headRolled: boolean; headStacked: boolean };
 type BirthdayCeremonyState = { person: string; own: boolean; step: 0 | 1 | 2; songTaps: number; blowTaps: number; cutProgress: number };
+type AgeSkillId = "trail" | "shelter" | "hybrid" | "echo";
+type AgeTrainingState = { skill: AgeSkillId; progress: number; mistakes: number };
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
 type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "table" | "floorLamp" | "television" | "sofa" | "bookshelf" | "dresser" | "nightstand" | "matches" | "blanket";
 type CraftRotation = 0 | 45 | 90;
@@ -102,6 +104,9 @@ type FarmTile = {
 
 type GameState = {
   year: number;
+  playerAge: number;
+  birthdayGrowthYear: number;
+  ageSkillsLearned: AgeSkillId[];
   day: number;
   season: number;
   hour: number;
@@ -806,6 +811,12 @@ const dailyNewsForState = (state: GameState): DailyNews => {
 };
 
 const FESTIVAL_PROCESS_STEPS: Partial<Record<FestivalId, { title: string; intro: string; steps: { label: string; detail: string; icon: string }[] }>> = {
+  lantern: { title: "元宵花灯工坊", intro: "从弯竹骨、糊彩纸到点灯猜谜，每一盏花灯都要亲手完成。", steps: [
+    { label: "装好灯笼骨架", detail: "把竹圈、撑杆、中心扣和提绳拖到正确接口。", icon: "架" },
+    { label: "糊纸挂上流苏", detail: "沿五条亮边来回刷胶，让彩纸和流苏牢牢贴住。", icon: "纸" },
+    { label: "逐盏点亮灯芯", detail: "按住火折子，依次点亮四盏真实花灯。", icon: "火" },
+    { label: "拖动谜底答题", detail: "读完每张谜面，从三个答案里挑出正确卡片拖到灯谜签。", icon: "谜" },
+  ] },
   medical: { title: "青禾医疗节实习", intro: "这是青禾谷虚构的游戏医学训练。先取得基础资格，再到诊所逐种学习不同病症。", steps: [
     { label: "分辨症状卡", detail: "逐张观察精神、体温、呼吸和淋雨记录，不靠猜测下结论。", icon: "诊" },
     { label: "整理护理器具", detail: "选出干净毛巾、温度计、温水和记录本，排除脏器具。", icon: "具" },
@@ -873,6 +884,21 @@ const LANTERN_RIDDLES = [
   { question: "一位小姑娘，生在水中央，身穿粉红衫，坐在绿船上。", answers: ["荷花", "萝卜", "月亮"], correct: 0 },
   { question: "千条线，万条线，落到水里看不见。", answers: ["树根", "雨", "鱼线"], correct: 1 },
   { question: "有面没有口，有脚没有手，虽有四只脚，自己不会走。", answers: ["桌子", "小牛", "山洞"], correct: 0 },
+] as const;
+
+const AGE_SKILLS: Array<{ id: AgeSkillId; age: number; name: string; kind: string; description: string; benefit: string; required: number }> = [
+  { id: "trail", age: 2, name: "林间循迹", kind: "生活本领", description: "观察地上的脚印，再亲自沿正确方向走过六段林路。", benefit: "学会后找到 3 份药材和 2 颗松果。", required: 6 },
+  { id: "shelter", age: 3, name: "独立搭营", kind: "野外本领", description: "辨认六件营地材料，把正确零件逐件拖进帐篷骨架。", benefit: "学会后得到结实的野营毯；需要 12 木头、6 石头、2 树脂。", required: 6 },
+  { id: "hybrid", age: 4, name: "四季育种观察", kind: "农场研究", description: "根据天气观察卡，从三种种子中完成四轮正确配对。", benefit: "学会后精心照料的作物更容易长成星级品质，并获得四季种子。", required: 4 },
+  { id: "echo", age: 5, name: "听石寻晶", kind: "稀奇能力", description: "听岩石回声，在光点进入绿色区域的一瞬间完成四次定位。", benefit: "学会后找到 1 颗真正的钻石，并能听出隐藏矿脉。", required: 4 },
+];
+const AGE_TRAIL_ROUTE = ["right", "up", "right", "down", "right", "up"] as const;
+const AGE_CAMP_PARTS = ["长木杆", "短木杆", "平整石块", "树脂接头", "防水布", "固定绳"] as const;
+const AGE_HYBRID_ROUNDS = [
+  { weather: "春日细雨", answers: ["草莓种子", "南瓜种子", "玉米种子"], correct: "草莓种子" },
+  { weather: "夏日烈阳", answers: ["西瓜种子", "土豆种子", "蓝莓种子"], correct: "西瓜种子" },
+  { weather: "秋日凉风", answers: ["胡萝卜种子", "玉米种子", "草莓种子"], correct: "玉米种子" },
+  { weather: "冬日温棚", answers: ["南瓜种子", "西瓜种子", "番茄种子"], correct: "南瓜种子" },
 ] as const;
 
 const CAVE_DIAMOND_SPOTS = [
@@ -1017,6 +1043,9 @@ const makeTiles = (count = 32): FarmTile[] =>
 
 const makeNewGame = (): GameState => ({
   year: 1,
+  playerAge: 1,
+  birthdayGrowthYear: 0,
+  ageSkillsLearned: [],
   day: 1,
   season: 0,
   hour: 7,
@@ -1167,6 +1196,9 @@ const restoreVillageGame = (saved: string | null): GameState => {
     return {
       ...defaults,
       ...parsed,
+      playerAge: parsed.playerAge ?? Math.max(1, (parsed.year ?? 1) + ((parsed.birthdayCakeYear ?? 0) === (parsed.year ?? 1) ? 1 : 0)),
+      birthdayGrowthYear: parsed.birthdayGrowthYear ?? parsed.birthdayCakeYear ?? 0,
+      ageSkillsLearned: parsed.ageSkillsLearned ?? [],
       inventory: { ...defaults.inventory, ...(parsed.inventory ?? {}) },
       chestStorage: { ...defaults.chestStorage, ...(parsed.chestStorage ?? {}) },
       shippingBin: { ...defaults.shippingBin, ...(parsed.shippingBin ?? {}) },
@@ -1276,6 +1308,10 @@ export default function FarmGame() {
   const [outingActivitiesDone, setOutingActivitiesDone] = useState<number[]>([]);
   const [residentSpeech, setResidentSpeech] = useState<{ person: string; text: string } | null>(null);
   const [birthdayCeremony, setBirthdayCeremony] = useState<BirthdayCeremonyState | null>(null);
+  const [ageBookOpen, setAgeBookOpen] = useState(false);
+  const [ageTraining, setAgeTraining] = useState<AgeTrainingState | null>(null);
+  const [ageTrainingHeldPart, setAgeTrainingHeldPart] = useState<string | null>(null);
+  const [ageEchoPulse, setAgeEchoPulse] = useState(6);
   const [cafePlayerSitting, setCafePlayerSitting] = useState(false);
   const [careSession, setCareSession] = useState<{ mode: "training" | "treatment"; illness: IllnessId; step: number; progress: number; selected: string[]; herbParts: number; waterParts: number } | null>(null);
   const [medicalThermometerPicked, setMedicalThermometerPicked] = useState(false);
@@ -1416,6 +1452,9 @@ export default function FarmGame() {
   const craftCarveProgressRef = useRef(0);
   const craftWrongCarvesRef = useRef(0);
   const festivalDragReadyRef = useRef(false);
+  const festivalRiddleCorrectRef = useRef<boolean | null>(null);
+  const ageEchoDirectionRef = useRef(1);
+  const ageCampDropLockRef = useRef(false);
   const festivalActionCountRef = useRef(0);
   const festivalHoldTimerRef = useRef<number | null>(null);
   const festivalSweepActiveRef = useRef(false);
@@ -1441,6 +1480,18 @@ export default function FarmGame() {
   }, [festivalActionCount]);
 
   useEffect(() => {
+    if (ageTraining?.skill !== "echo") return;
+    const timer = window.setInterval(() => {
+      setAgeEchoPulse((current) => {
+        if (current >= 94) ageEchoDirectionRef.current = -1;
+        if (current <= 6) ageEchoDirectionRef.current = 1;
+        return current + ageEchoDirectionRef.current * 4;
+      });
+    }, 65);
+    return () => window.clearInterval(timer);
+  }, [ageTraining?.skill]);
+
+  useEffect(() => {
     const splitVillage = new URLSearchParams(window.location.search).get("splitVillage");
     const isEmbedded = splitVillage === "qinghe" || splitVillage === "maple";
     const village = splitVillage === "maple" ? "maple" : "qinghe";
@@ -1457,6 +1508,9 @@ export default function FarmGame() {
           setGame({
             ...defaults,
             ...parsed,
+            playerAge: parsed.playerAge ?? Math.max(1, (parsed.year ?? 1) + ((parsed.birthdayCakeYear ?? 0) === (parsed.year ?? 1) ? 1 : 0)),
+            birthdayGrowthYear: parsed.birthdayGrowthYear ?? parsed.birthdayCakeYear ?? 0,
+            ageSkillsLearned: parsed.ageSkillsLearned ?? [],
             season: parsed.season ?? 0,
             strawberrySeeds: parsed.strawberrySeeds ?? 0,
             cornSeeds: parsed.cornSeeds ?? 0,
@@ -5222,7 +5276,8 @@ export default function FarmGame() {
         target.watered = false;
         const cropType = tile.cropType ?? "radish";
         const cropDetails = CROP_INFO[cropType];
-        const quality: CropQuality = (tile.care ?? 0) >= 3 ? "gold" : (tile.care ?? 0) >= 2 ? "silver" : "normal";
+        const effectiveCare = (tile.care ?? 0) + (current.ageSkillsLearned.includes("hybrid") ? 1 : 0);
+        const quality: CropQuality = effectiveCare >= 3 ? "gold" : effectiveCare >= 2 ? "silver" : "normal";
         target.cropType = undefined;
         target.care = 0;
         next[cropDetails.seedField] += 2;
@@ -5233,7 +5288,7 @@ export default function FarmGame() {
         next.cropQualityHarvests = mergeCropQualityRecord(current.cropQualityHarvests);
         next.cropQualityHarvests[cropType] = { ...next.cropQualityHarvests[cropType], [quality]: next.cropQualityHarvests[cropType][quality] + 1 };
         if (quality !== "normal") next.cropQualityStock = addCropQuality(current.cropQualityStock, cropType, { silver: quality === "silver" ? 1 : 0, gold: quality === "gold" ? 1 : 0 });
-        feedback = `收获 1 个${quality === "gold" ? "金星" : quality === "silver" ? "银星" : "普通"}${cropDetails.name}！${quality === "gold" ? "连续精心浇水，售价提高 80%。" : quality === "silver" ? "照料得很好，售价提高 35%。" : "继续每天浇水，就更容易得到星级品质。"}并获得 2 颗同类种子。`;
+        feedback = `收获 1 个${quality === "gold" ? "金星" : quality === "silver" ? "银星" : "普通"}${cropDetails.name}！${quality === "gold" ? "连续精心浇水，售价提高 80%。" : quality === "silver" ? "照料得很好，售价提高 35%。" : "继续每天浇水，就更容易得到星级品质。"}${current.ageSkillsLearned.includes("hybrid") ? "四季育种观察让品质额外提高了一档。" : ""}并获得 2 颗同类种子。`;
         tone = 760;
       } else {
         feedback = selected === "rod" ? "鱼竿要在左侧的钓鱼池使用。" : "斧头要对着农场里的树木使用。";
@@ -5997,6 +6052,144 @@ export default function FarmGame() {
     tuckIntoBed(routeStart + 1_850);
   };
 
+  const completeAgeTraining = (skillId: AgeSkillId) => {
+    const skill = AGE_SKILLS.find((item) => item.id === skillId);
+    if (!skill || game.ageSkillsLearned.includes(skillId)) {
+      setAgeTraining(null);
+      return;
+    }
+    setGame((current) => {
+      if (current.ageSkillsLearned.includes(skillId)) return current;
+      const next: GameState = {
+        ...current,
+        ageSkillsLearned: [...current.ageSkillsLearned, skillId],
+        journalEntries: [`${SEASONS[current.season]}第${current.day}天：${current.playerAge}岁的小禾经过完整练习，学会了“${skill.name}”。`, ...current.journalEntries].slice(0, 40),
+      };
+      if (skillId === "trail") {
+        next.herbs += 3;
+        next.pinecones += 2;
+      } else if (skillId === "shelter") {
+        next.wood = Math.max(0, next.wood - 12);
+        next.stone = Math.max(0, next.stone - 6);
+        next.resin = Math.max(0, next.resin - 2);
+        next.crafted = { ...next.crafted, blanket: next.crafted.blanket + 1 };
+      } else if (skillId === "hybrid") {
+        next.strawberrySeeds += 3;
+        next.watermelonSeeds += 3;
+        next.cornSeeds += 3;
+        next.pumpkinSeeds += 3;
+      } else {
+        next.diamonds += 1;
+      }
+      return next;
+    });
+    setAgeTraining(null);
+    setAgeTrainingHeldPart(null);
+    setMessage(`真正学会“${skill.name}”了！${skill.benefit}`);
+    playTone(980);
+  };
+
+  const beginAgeTraining = (skillId: AgeSkillId) => {
+    const skill = AGE_SKILLS.find((item) => item.id === skillId)!;
+    if (game.playerAge < skill.age) {
+      setMessage(`小禾现在 ${game.playerAge} 岁，还不能做 ${skill.age} 岁才学的“${skill.name}”。要等春天第十九日过完生日、真正长大以后。`);
+      playTone(220);
+      return;
+    }
+    if (game.ageSkillsLearned.includes(skillId)) {
+      setMessage(`小禾已经学会“${skill.name}”了，这项能力已经永久记录在成长手册里。`);
+      playTone(640);
+      return;
+    }
+    if (skillId === "shelter" && (game.wood < 12 || game.stone < 6 || game.resin < 2)) {
+      setMessage(`独立搭营需要 12 木头、6 石头和 2 树脂。现在有木头 ${game.wood}、石头 ${game.stone}、树脂 ${game.resin}，材料不足不能假装完成。`);
+      playTone(220);
+      return;
+    }
+    setAgeTraining({ skill: skillId, progress: 0, mistakes: 0 });
+    setAgeTrainingHeldPart(null);
+    setAgeEchoPulse(6);
+    ageEchoDirectionRef.current = 1;
+    setMessage(`开始练习“${skill.name}”。这不是一键领取，要亲手完成全部 ${skill.required} 段。`);
+    playTone(680);
+  };
+
+  const advanceAgeTraining = () => {
+    if (!ageTraining) return;
+    const skill = AGE_SKILLS.find((item) => item.id === ageTraining.skill)!;
+    const next = ageTraining.progress + 1;
+    if (next >= skill.required) {
+      completeAgeTraining(ageTraining.skill);
+      return;
+    }
+    setAgeTraining({ ...ageTraining, progress: next });
+    setMessage(`“${skill.name}”已经完成 ${next}/${skill.required} 段，继续观察下一段。`);
+    playTone(470 + next * 55);
+  };
+
+  const trainAgeTrail = (direction: "up" | "down" | "left" | "right") => {
+    if (ageTraining?.skill !== "trail") return;
+    const expected = AGE_TRAIL_ROUTE[ageTraining.progress];
+    if (direction !== expected) {
+      setAgeTraining({ ...ageTraining, mistakes: ageTraining.mistakes + 1, progress: Math.max(0, ageTraining.progress - 1) });
+      setMessage("走偏了，脚印在草地里变淡了一段。回到上一处脚印重新观察方向。 ");
+      playTone(210);
+      return;
+    }
+    advanceAgeTraining();
+  };
+
+  const dropAgeCampPart = () => {
+    if (ageCampDropLockRef.current) return;
+    if (ageTraining?.skill !== "shelter" || !ageTrainingHeldPart) {
+      setMessage("先按住一件营地零件，把它拖到帐篷骨架上再松手。 ");
+      return;
+    }
+    ageCampDropLockRef.current = true;
+    window.setTimeout(() => { ageCampDropLockRef.current = false; }, 0);
+    const expected = AGE_CAMP_PARTS[ageTraining.progress];
+    if (ageTrainingHeldPart !== expected) {
+      setAgeTraining({ ...ageTraining, mistakes: ageTraining.mistakes + 1 });
+      setAgeTrainingHeldPart(null);
+      setMessage(`这一步需要${expected}，刚才的零件接口对不上，已经放回材料堆。`);
+      playTone(210);
+      return;
+    }
+    setAgeTrainingHeldPart(null);
+    advanceAgeTraining();
+  };
+
+  const handleAgeTrainingPointerRelease = (event: ReactPointerEvent<HTMLElement>) => {
+    if (ageTraining?.skill !== "shelter" || !ageTrainingHeldPart) return;
+    const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    if (element?.closest("[data-age-camp-target]")) dropAgeCampPart();
+  };
+
+  const trainAgeHybrid = (answer: string) => {
+    if (ageTraining?.skill !== "hybrid") return;
+    const round = AGE_HYBRID_ROUNDS[ageTraining.progress];
+    if (answer !== round.correct) {
+      setAgeTraining({ ...ageTraining, mistakes: ageTraining.mistakes + 1 });
+      setMessage(`${answer}在“${round.weather}”观察皿里没有出现健康嫩芽。把它取出，再比较另外两种种子。`);
+      playTone(210);
+      return;
+    }
+    advanceAgeTraining();
+  };
+
+  const strikeAgeEcho = () => {
+    if (ageTraining?.skill !== "echo") return;
+    if (ageEchoPulse < 42 || ageEchoPulse > 58) {
+      setAgeTraining({ ...ageTraining, mistakes: ageTraining.mistakes + 1 });
+      setMessage("敲得太早或太晚，只听见普通石头的闷响。等光点进入中间绿色回声区再敲。 ");
+      playTone(190);
+      return;
+    }
+    setAgeEchoPulse(6);
+    ageEchoDirectionRef.current = 1;
+    advanceAgeTraining();
+  };
+
   const eatBirthdayCake = () => {
     if (game.birthdayCakeYear === game.year) {
       setMessage("今年的生日蛋糕已经和大家一起吃完了，明年春天第十九天还会再举办派对。 ");
@@ -6068,8 +6261,19 @@ export default function FarmGame() {
     const ceremony = birthdayCeremony;
     setBirthdayCeremony(null);
     if (ceremony.own) {
-      setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 40), birthdayCakeYear: current.year }));
-      setMessage("蛋糕真的切开了！小禾和大家每人分到一块草莓蛋糕，恢复了 40 点体力。大家一起说：生日快乐！ ");
+      const growsThisYear = game.birthdayGrowthYear !== game.year;
+      const nextAge = growsThisYear ? game.playerAge + 1 : game.playerAge;
+      const unlocked = AGE_SKILLS.filter((skill) => skill.age === nextAge).map((skill) => skill.name);
+      setGame((current) => ({
+        ...current,
+        energy: Math.min(100, current.energy + 40),
+        birthdayCakeYear: current.year,
+        birthdayGrowthYear: growsThisYear ? current.year : current.birthdayGrowthYear,
+        playerAge: growsThisYear ? current.playerAge + 1 : current.playerAge,
+        journalEntries: growsThisYear ? [`春天第十九日：小禾过完生日，从 ${current.playerAge} 岁长到了 ${current.playerAge + 1} 岁。${unlocked.length ? `新的本领“${unlocked.join("、")}”已经可以开始学习。` : "成长手册记录了这一岁。"}`, ...current.journalEntries].slice(0, 40) : current.journalEntries,
+      }));
+      setAgeBookOpen(growsThisYear);
+      setMessage(growsThisYear ? `蛋糕真的切开了！小禾长到 ${nextAge} 岁，恢复 40 点体力。${unlocked.length ? `成长手册出现了新本领“${unlocked.join("、")}”，还要完成真正的练习才能学会。` : "新的年龄已经写进成长手册。"}` : "蛋糕真的切开了！小禾和大家每人分到一块草莓蛋糕，恢复了 40 点体力。大家一起说：生日快乐！ ");
       playTone(980);
       return;
     }
@@ -6379,7 +6583,7 @@ export default function FarmGame() {
     (currentFestival.id === "craft" && activeBuilding === "workshop") ||
     (currentFestival.id === "medical" && activeBuilding === "clinic") ||
     (currentFestival.id === "hotSoup" && activeBuilding === "cafe") ||
-    (["spring", "midAutumn", "springFestival", "kite", "water", "firstSnow"].includes(currentFestival.id) && scene === "town" && !activeBuilding) ||
+    (["spring", "lantern", "midAutumn", "springFestival", "kite", "water", "firstSnow"].includes(currentFestival.id) && scene === "town" && !activeBuilding) ||
     (currentFestival.id === "flower" && scene === "eastNeighbor" && !activeBuilding) ||
     (currentFestival.id === "firefly" && scene === "westFriendFarm" && !activeBuilding) ||
     (currentFestival.id === "harvest" && scene === "farm" && !activeBuilding) ||
@@ -6463,6 +6667,7 @@ export default function FarmGame() {
       setSnowBuild({ playerX: 5, bodyX: 14, bodySize: 24, bodyPlaced: false, headX: 14, headSize: 19, headRolled: false, headStacked: false });
     }
     festivalActionCountRef.current = 0;
+    festivalRiddleCorrectRef.current = null;
     setFestivalActionCount(0);
     setFestivalDragging(false);
     setFestivalProcess({ id: festivalId, step: 0 });
@@ -6633,9 +6838,11 @@ export default function FarmGame() {
 
   const festivalActionRequirements: Partial<Record<FestivalId, number[]>> = {
     seeds: [4, 4, 1], spring: [3, 3, 6], coffee: [1, 6, 1, 1, 3], craft: [3, 6, 1], springFestival: [1, 8, 6],
+    lantern: [4, 5, 4, 3],
     medical: [4, 4, 6, 5, 5], kite: [4, 4, 6], flower: [4, 3, 5], water: [4, 4, 6], firefly: [4, 3, 4], harvest: [4, 5, 4], leafMusic: [4, 5, 6], firstSnow: [6, 3, 5], hotSoup: [4, 5, 6, 5],
   };
   const festivalActionIcons: Partial<Record<FestivalId, string[][]>> = {
+    lantern: [["圈", "撑", "扣", "绳"], ["纸", "胶", "边", "穗", "牌"], ["火", "火", "火", "火"], ["荷", "雨", "桌"]],
     seeds: [["莓", "瓜", "玉", "南"], ["春", "夏", "秋", "冬"], ["绳"]],
     spring: [["勺", "莓", "酱"], ["左", "中", "右"], ["♪", "♫", "♩", "♪", "♫", "♩"]],
     coffee: [["豆"], ["转", "转", "转", "转", "转", "转"], ["水"], ["壶"], ["闻", "尝", "点"]],
@@ -6693,6 +6900,13 @@ export default function FarmGame() {
     const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
     const target = element?.closest<HTMLElement>("[data-festival-drop]");
     const dropKind = target?.dataset.festivalDrop;
+    if (dropKind === "lantern-riddle") {
+      if (!festivalDragReadyRef.current) return;
+      const correct = festivalRiddleCorrectRef.current === true;
+      festivalRiddleCorrectRef.current = null;
+      dropFestivalObject(correct);
+      return;
+    }
     if (dropKind === "coffee-beans" && festivalDragReadyRef.current) {
       festivalDragReadyRef.current = false;
       setFestivalDragging(false);
@@ -6923,6 +7137,14 @@ export default function FarmGame() {
     const sweepTool = (label: string, className = "") => <button className={`bespoke-sweep-tool ${className}`} onPointerDown={beginFestivalSweep} onPointerMove={moveFestivalSweep} onPointerUp={endFestivalSweep} onPointerCancel={endFestivalSweep}><i>{bespokeIcon}</i><span>{label}</span></button>;
     const holdControl = (label: string, className = "") => <button className={`bespoke-hold-control ${className}`} onPointerDown={beginFestivalHoldAction} onPointerUp={stopFestivalHoldAction} onPointerCancel={stopFestivalHoldAction}><i>{bespokeIcon}</i><span>{label}</span></button>;
 
+    if (festivalProcess.id === "lantern") {
+      if (festivalProcess.step === 0) return <div className="festival-story-workshop lantern-frame-workshop"><strong>逐件拿起竹骨，把它装到发光接口上</strong><div className="lantern-frame-table">{dragSource(["圆形竹圈","十字撑杆","中心铜扣","红色提绳"][festivalActionCount] ?? "灯架零件","lantern-frame-source")}<div className={`real-lantern-frame built-${festivalActionCount}`}><i /><b /><em /><u /></div>{dropTarget("灯架接口","lantern-frame-target")}</div><div className="bespoke-meter"><i style={{ width: bespokeProgress }} /><span>骨架 {festivalActionCount}/4</span></div><small>触屏也要按住零件移动到右边接口再松手，直接点接口不会安装。</small></div>;
+      if (festivalProcess.step === 1) return <div className="festival-story-workshop lantern-paper-workshop"><strong>按住糊纸刷，沿当前发光的边缘来回移动</strong><div className="lantern-paper-table"><div className={`real-paper-lantern pasted-${festivalActionCount}`}><i /><b /><em /><u /><s /></div><div className="lantern-paper-edges">{[0,1,2,3,4].map((index)=><i key={index} className={index < festivalActionCount ? "done" : index === festivalActionCount ? "current" : ""} />)}</div>{sweepTool("按住刷子沿亮边来回糊纸","lantern-paper-brush")}</div><div className="bespoke-meter"><i style={{ width: bespokeProgress }} /><span>糊纸 {festivalActionCount}/5</span></div><small>刷子必须真的移动；彩纸、上下包边、流苏和谜签会一件件出现。</small></div>;
+      if (festivalProcess.step === 2) return <div className="festival-story-workshop lantern-light-workshop"><strong>一直按住火折子，依次等四盏灯芯稳定亮起</strong><div className="lantern-light-yard"><div className="festival-lantern-row">{[0,1,2,3].map((index)=><i key={index} className={index < festivalActionCount ? "lit" : index === festivalActionCount ? "lighting" : ""}><b /><em /><u /></i>)}</div>{holdControl("按住火折子点灯，松手就暂停","lantern-wick-lighter")}</div><div className="bespoke-meter"><i style={{ width: bespokeProgress }} /><span>已点亮 {festivalActionCount}/4</span></div><small>灯芯会从微火慢慢变亮，四盏花灯不会同时凭空亮起来。</small></div>;
+      const riddle = LANTERN_RIDDLES[Math.min(festivalActionCount, LANTERN_RIDDLES.length - 1)];
+      return <div className="festival-story-workshop lantern-riddle-workshop"><strong>第 {festivalActionCount + 1} 张灯谜 · 读谜面后亲手拖动答案</strong><div className="lantern-riddle-stage"><div className="hanging-riddle-lantern"><i /><b /><em /></div><div className="festival-riddle-scroll"><b>{riddle.question}</b><span>把正确答案卡拖到右边灯谜签</span></div><div className="festival-riddle-answers">{riddle.answers.map((answer,index)=><button key={answer} draggable className={festivalDragging ? "dragging" : ""} onDragStart={() => { festivalRiddleCorrectRef.current = index === riddle.correct; beginFestivalDrag(`拿起“${answer}”答案卡，把它拖到右边灯谜签。`); }} onPointerDown={() => { festivalRiddleCorrectRef.current = index === riddle.correct; beginFestivalDrag(`按住“${answer}”不要松手，拖到右边灯谜签。`); }}><i>{answer.slice(0,1)}</i><span>{answer}</span></button>)}</div><button data-festival-drop="lantern-riddle" className="festival-riddle-target" onDragOver={(event)=>event.preventDefault()} onDrop={(event)=>{ event.preventDefault(); const correct = festivalRiddleCorrectRef.current === true; festivalRiddleCorrectRef.current = null; dropFestivalObject(correct); }}><i /><span>灯谜答案签<br />拖到这里松手</span></button></div><div className="bespoke-meter"><i style={{ width: bespokeProgress }} /><span>答对 {festivalActionCount}/3</span></div><small>选错的卡片会回到桌上，不会直接替你跳到正确答案。</small></div>;
+    }
+
     if (festivalProcess.id === "medical") {
       if (festivalProcess.step === 0) return <div className="festival-story-workshop medical-exam-workshop"><strong>移动检查器，依次观察四项真实症状</strong><div className="medical-exam-room"><div className="medical-patient"><i /><b /><em /><u /></div><div className="medical-vital-cards"><i className={festivalActionCount > 0 ? "done" : ""}>精神</i><i className={festivalActionCount > 1 ? "done" : ""}>体温</i><i className={festivalActionCount > 2 ? "done" : ""}>呼吸</i><i className={festivalActionCount > 3 ? "done" : ""}>淋雨</i></div>{sweepTool("按住检查器在病人身边缓慢移动","medical-scanner")}</div><div className="bespoke-meter"><i style={{ width: bespokeProgress }} /><span>{festivalActionCount}/4 项</span></div><small>检查器要真的来回移动；只碰一下病人不会得到记录。</small></div>;
       if (festivalProcess.step === 1) return <div className="festival-story-workshop medical-tray-workshop"><strong>逐件把干净护理器具放进绿色护理盘</strong><div className="medical-tray-room">{dragSource(["干净毛巾","温度计","温水杯","记录本"][festivalActionCount] ?? "护理器具","medical-tool-source")}<div className="dirty-medical-tools"><i>脏</i><span>用过的器具<br />不能放进去</span></div>{dropTarget("干净护理盘","medical-clean-tray")}</div><div className="placed-medical-tools">{["巾","计","水","本"].map((item,index)=><i key={item} className={index < festivalActionCount ? "done" : ""}>{item}</i>)}</div><small>触屏：按住左边器具，手指移到护理盘再松开；脏器具会被排除。</small></div>;
@@ -7007,11 +7229,13 @@ export default function FarmGame() {
     const icons = festivalActionIcons[festivalProcess.id]?.[festivalProcess.step] ?? [step.icon];
     const currentIcon = icons[Math.min(festivalActionCount, icons.length - 1)] ?? step.icon;
     const interactionModes: Partial<Record<FestivalId, Array<"drag" | "sweep" | "hold">>> = {
+      lantern: ["drag", "sweep", "hold", "drag"],
       medical: ["sweep", "drag", "sweep", "drag", "hold"], kite: ["drag", "sweep", "hold"], flower: ["sweep", "drag", "drag"], water: ["drag", "hold", "hold"],
       firefly: ["drag", "sweep", "drag"], harvest: ["drag", "drag", "hold"], leafMusic: ["drag", "sweep", "hold"], hotSoup: ["drag", "sweep", "hold", "drag"],
     };
     const mode = interactionModes[festivalProcess.id]?.[festivalProcess.step] ?? "drag";
     const physicalLabels: Partial<Record<FestivalId, string[]>> = {
+      lantern: ["把竹骨逐件装到灯架接口", "沿五条亮边刷胶糊纸", "按住火折子逐盏点灯", "挑选正确答案拖到灯谜签"],
       medical: ["移动观察镜检查病人", "把干净器具放进护理盘", "拿消毒棉沿六处来回擦", "按病例卡逐份配药", "按住护理直到复查完成"],
       kite: ["把竹条拖进交叉骨架", "按住刷子沿纸鸢边缘来回刷胶", "按住奔跑，让小禾迎风放线"],
       flower: ["按住放大镜扫过不同花瓣", "把香气卡拖到对应花朵", "把木片、细草和竹管装进蜂屋"],
@@ -7750,6 +7974,8 @@ export default function FarmGame() {
         {birthdayCeremony.step === 2 && <div className="birthday-cut-game"><strong>按住蛋糕刀，从左边慢慢拖到右边</strong><div className="cake-cut-board" onPointerDown={dragBirthdayKnife} onPointerMove={(event) => { if (event.buttons > 0 || event.pressure > 0) dragBirthdayKnife(event); }}><div className="cuttable-cake"><i /><i /><b className="cake-cut-line" style={{ width: `${birthdayCeremony.cutProgress}%` }} /></div><span className="birthday-knife" style={{ left: `${Math.max(4, birthdayCeremony.cutProgress)}%` }}><i /><b /></span></div><div className="birthday-cut-progress"><i style={{ width: `${birthdayCeremony.cutProgress}%` }} /><span>已经切开 {Math.round(birthdayCeremony.cutProgress)}%</span></div><button onClick={() => updateBirthdayCut(Math.min(100, birthdayCeremony.cutProgress + 25))}>平板不好拖动时，点这里切一段</button></div>}
       </div><footer><span>{birthdayCeremony.step === 0 ? "唱完四句，才可以吹蜡烛" : birthdayCeremony.step === 1 ? "三根火焰全部熄灭，才能拿蛋糕刀" : "把刀拖到最右边，蛋糕才会真正切开并发放奖励"}</span></footer></section></div>}
 
+      {ageBookOpen && <div className="age-growth-overlay" role="presentation" onPointerUpCapture={handleAgeTrainingPointerRelease}><section role="dialog" aria-modal="true" aria-label="小禾的年龄成长手册"><header><div><span>每年春天第十九日过完生日才会长大</span><h2>小禾的成长手册 · {game.playerAge} 岁</h2></div><button onClick={() => { setAgeBookOpen(false); setAgeTraining(null); setAgeTrainingHeldPart(null); }} aria-label="关闭成长手册">×</button></header>{!ageTraining ? <><div className="age-book-intro"><div className={`age-portrait age-${Math.min(5, game.playerAge)}`}><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="小禾" /></div><div><strong>{displayName}现在 {game.playerAge} 岁</strong><p>一岁不能提前做两岁的事情。达到年龄只代表可以开始学习，仍要亲手完成完整训练，能力才会永久生效。</p><small>下次长大：第 {game.year + (game.birthdayGrowthYear === game.year ? 1 : 0)} 年春天第十九日生日派对结束后</small></div></div><div className="age-skill-grid">{AGE_SKILLS.map((skill) => { const locked = game.playerAge < skill.age; const learned = game.ageSkillsLearned.includes(skill.id); return <article key={skill.id} className={`${locked ? "locked" : ""} ${learned ? "learned" : ""}`}><i>{learned ? "✓" : skill.age}</i><span><small>{skill.age} 岁解锁 · {skill.kind}</small><strong>{skill.name}</strong><p>{skill.description}</p><em>{skill.benefit}</em></span><button disabled={locked} onClick={() => beginAgeTraining(skill.id)}>{learned ? "已经学会" : locked ? `还要长到 ${skill.age} 岁` : "进入实际训练"}</button></article>; })}</div></> : (() => { const skill = AGE_SKILLS.find((item) => item.id === ageTraining.skill)!; if (ageTraining.skill === "trail") return <div className="age-training-stage trail-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>已经走过 {ageTraining.progress}/{skill.required} 段 · 走错 {ageTraining.mistakes} 次</small></div><div className="age-trail-map"><i className="trail-river" /><i className="trail-bridge" /><div className="trail-footprints">{AGE_TRAIL_ROUTE.map((direction,index)=><i key={`foot-${index}`} style={{ rotate: direction === "up" ? "0deg" : direction === "right" ? "90deg" : direction === "down" ? "180deg" : "270deg" }} className={index < ageTraining.progress ? "found" : index === ageTraining.progress ? "current" : ""} />)}</div><div className="age-trail-player" style={{ left: `${12 + ageTraining.progress * 12}%`, top: `${68 - (ageTraining.progress % 3) * 16}%` }}><i /><b /></div><div className="trail-treasure"><i /><b /></div></div><div className="age-direction-pad"><button onClick={() => trainAgeTrail("up")}>↑<small>向上</small></button><button onClick={() => trainAgeTrail("left")}>←<small>向左</small></button><button onClick={() => trainAgeTrail("down")}>↓<small>向下</small></button><button onClick={() => trainAgeTrail("right")}>→<small>向右</small></button></div><p>观察当前发亮脚印的朝向，再用方向键走。走错会退回上一处，不能连续乱按。</p></div>; if (ageTraining.skill === "shelter") { const expected = AGE_CAMP_PARTS[ageTraining.progress]; return <div className="age-training-stage shelter-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>骨架 {ageTraining.progress}/{skill.required} · 接错 {ageTraining.mistakes} 次</small></div><div className="age-shelter-yard"><div className={`training-tent built-${ageTraining.progress}`}><i /><b /><em /><u /><s /><span /></div><button data-age-camp-target className="age-camp-target" onDragOver={(event)=>event.preventDefault()} onDrop={(event)=>{event.preventDefault();dropAgeCampPart();}}><i /><strong>本轮接口</strong><small>需要：{expected}</small></button><div className="age-camp-parts">{AGE_CAMP_PARTS.map((part)=><button key={part} draggable className={ageTrainingHeldPart === part ? "held" : ""} onDragStart={() => { setAgeTrainingHeldPart(part); setMessage(`拿起${part}，拖到帐篷骨架右边的接口。`); }} onPointerDown={() => { setAgeTrainingHeldPart(part); setMessage(`按住${part}不要松手，拖到右边发光接口。`); }}><i>{part.slice(0,1)}</i><span>{part}</span></button>)}</div></div><p>材料会逐件装到实体骨架上；必须拖动正确零件，接口不合的零件会退回。</p></div>; } if (ageTraining.skill === "hybrid") { const round = AGE_HYBRID_ROUNDS[ageTraining.progress]; return <div className="age-training-stage hybrid-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>观察实验 {ageTraining.progress + 1}/{skill.required} · 配错 {ageTraining.mistakes} 次</small></div><div className="age-seed-lab"><div className={`weather-observation-card weather-round-${ageTraining.progress}`}><i /><b>{round.weather}</b><span>观察叶片、温度和土壤后选择种子</span></div><div className="seed-observation-pots"><i /><i /><i /></div><div className="age-seed-choices">{round.answers.map((answer)=><button key={answer} onClick={() => trainAgeHybrid(answer)}><i>{answer.slice(0,1)}</i><span>{answer}</span></button>)}</div></div><p>错误种子会在观察皿里停止发芽，必须根据四季和天气重新比较，不会自动告诉答案。</p></div>; } return <div className="age-training-stage echo-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>找到 {ageTraining.progress}/{skill.required} 处回声 · 敲空 {ageTraining.mistakes} 次</small></div><div className="age-echo-cave"><div className="echo-rocks"><i /><i /><i /><i /></div><div className="echo-timing-bar"><i className="echo-good-zone" /><b style={{ left: `${ageEchoPulse}%` }} /></div><button onClick={strikeAgeEcho}><i>⚒</i><span>光点进入绿色区域时敲击</span></button><div className={`echo-crystal-progress found-${ageTraining.progress}`}><i /><i /><i /><i /></div></div><p>光点会不断来回移动。太早或太晚都只会敲到普通石头，连续四次听准才能找到矿脉。</p></div>; })()}<footer><span>{message}</span>{ageTraining && <button onClick={() => { setAgeTraining(null); setAgeTrainingHeldPart(null); setMessage("暂时退出训练，已经学会的能力不会消失。 "); }}>返回成长手册</button>}</footer></section></div>}
+
       {residentInvitation && <div className={`resident-invitation-card ${residentInvitation.travelMode === "car" ? "car-invitation" : ""}`} role="dialog" aria-label={`${residentInvitation.person}邀请一起出门`}><button className="invitation-person" style={personClothesStyle(residentInvitation.person)} onClick={() => setMessage(`${residentInvitation.person}${residentInvitation.travelMode === "car" ? "已经把车开到咖啡店门口" : "正在路边等小禾跟上"}。`)}><i /><b /></button><div><span>临时邀请 · 只在现在有效</span><strong>{residentInvitation.person}要去{HIDDEN_TRIPS[residentInvitation.trip].name}</strong><p>{residentInvitation.travelMode === "car" ? "居民的车已经停在门口，小禾不能独自前往，但可以坐在副驾驶一起去。" : "这个地方不在地图上，也不能自己开车到达。"}</p></div>{residentInvitation.travelMode === "car" && <i className="resident-trip-car" aria-hidden="true"><b /><em /></i>}<button onClick={followResidentToHiddenPlace}>{residentInvitation.travelMode === "car" ? "跟着上车" : "现在跟上"}</button><button className="decline-invitation" onClick={() => { setResidentInvitation(null); setMessage(`小禾这次没有跟去，${residentInvitation.person}挥挥手独自出发了。`); }}>这次不去</button></div>}
 
       {residentOuting && <div className={`resident-outing-overlay outing-${residentOuting.trip}`} role="presentation"><section role="dialog" aria-modal="true" aria-label={HIDDEN_TRIPS[residentOuting.trip].name}><header><div><span>朋友专属旅行 · 比节日更自由</span><h2>{HIDDEN_TRIPS[residentOuting.trip].name}</h2><small>{residentOuting.travelMode === "car" ? `坐着${residentOuting.person}的车来到这里` : `只有跟着${residentOuting.person}才能来到这里`} · 已体验 {outingActivitiesDone.length}/3</small></div><button onClick={() => { setResidentOuting(null); setOutingActivitiesDone([]); setMessage(`小禾跟着${residentOuting.person}沿原路回到了${sceneLabel}。`); }}>×</button></header><div className="hidden-trip-scene" onClick={(event) => { if (event.target !== event.currentTarget) return; const bounds = event.currentTarget.getBoundingClientRect(); setOutingPlayer({ x: Math.max(8, Math.min(92, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(28, Math.min(76, ((event.clientY - bounds.top) / bounds.height) * 100)) }); }}><div className="trip-sky"><i /><i /></div><div className="trip-land"><i /><i /><b /></div><div className="trip-building"><i /><b /></div>{residentOuting.travelMode === "car" && <div className="outing-parked-car"><i /><b /><em /></div>}{HIDDEN_TRIP_ACTIVITIES[residentOuting.trip].map((activity, index) => <button key={`${residentOuting.trip}-${activity.name}`} className={`trip-activity ${outingActivitiesDone.includes(index) ? "done" : ""}`} style={{ left: `${activity.x}%`, top: `${activity.y}%` }} onClick={() => playOutingActivity(index)}><i>{outingActivitiesDone.includes(index) ? "✓" : activity.icon}</i><span><strong>{activity.name}</strong><small>{outingActivitiesDone.includes(index) ? "已经亲手完成" : "走近后再点一次"}</small></span></button>)}<button className="trip-resident" style={personClothesStyle(residentOuting.person)} onClick={() => setMessage(`${residentOuting.person}：先在这里自由走一走，靠近三个有名字的玩法，再点一次就能和我一起动手。`)}><i /><b /><span>{residentOuting.person}</span></button><div className="trip-player" style={{ left: `${outingPlayer.x}%`, top: `${outingPlayer.y}%` }}><PlayerSprite facing="right" sick={game.sick} /><span>{displayName}</span></div><p>{HIDDEN_TRIPS[residentOuting.trip].description}</p></div><footer><span>点空地自由走动 · 靠近玩法再亲手完成</span><button disabled={outingActivitiesDone.length < 3} onClick={enjoyResidentOuting}>{outingActivitiesDone.length < 3 ? `还差 ${3 - outingActivitiesDone.length} 项` : `完成旅行 · ${HIDDEN_TRIPS[residentOuting.trip].action}`}</button><button onClick={() => { setResidentOuting(null); setOutingActivitiesDone([]); setMessage(`小禾跟着${residentOuting.person}沿原路回来了。`); }}>{residentOuting.travelMode === "car" ? "坐居民的车回去" : "跟着居民回去"}</button></footer></section></div>}
@@ -7919,8 +8145,9 @@ export default function FarmGame() {
         <aside className="side-panel">
           <div className="portrait-card">
             <div className="portrait"><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="小禾" draggable={false} /></div>
-            <div><span>新手农夫</span><strong>{displayName}</strong></div>
+            <div><span>{game.playerAge} 岁 · 新手农夫</span><strong>{displayName}</strong></div>
           </div>
+          <button className="age-growth-card" onClick={() => { setAgeBookOpen(true); setAgeTraining(null); setMessage(`打开成长手册：小禾现在 ${game.playerAge} 岁，已经学会 ${game.ageSkillsLearned.length} 项年龄本领。`); }}><i>{game.playerAge}</i><span><small>年龄与新本领</small><strong>{game.playerAge} 岁成长手册</strong><em>{game.ageSkillsLearned.length ? `已学会 ${game.ageSkillsLearned.length} 项` : AGE_SKILLS.some((skill) => skill.age <= game.playerAge) ? "有可以开始的实际训练" : `长到 ${AGE_SKILLS[0].age} 岁解锁第一项本领`}</em></span><b>›</b></button>
           {multiplayerSession && <div className="multiplayer-status-card"><div><span>双人村庄</span><button onClick={() => setMultiplayerOpen(true)}>查看</button></div><strong>{activeVillageInfo.name} · {multiplayerSession.roomCode}</strong><small>{partner ? `${partner.online ? "● 在线" : "○ 离线"} ${partner.playerName}住在${VILLAGE_INFO[partner.village].name}` : "等待另一位玩家加入"}</small></div>}
           {isBirthday && <button className="birthday-card" onClick={() => { setScene("farm"); setActiveBuilding("farmhouse"); setIndoorPlayer({ x: 34, y: 70 }); setMessage(`今天是${displayName}的生日！大家已经来到农舍，点击生日蛋糕可以一起分享。`); }}><span>二月十九日 · 今日活动</span><strong>{displayName}的生日派对</strong><small>大家都在农舍 · 点击回家庆祝</small></button>}
           <button className={`festival-card ${currentFestival ? "festival-open" : ""}`} onClick={() => { if (currentFestival) goToFestival(); else setMessage(`下一场是${nextFestival.name}，${SEASONS[nextFestival.season]}第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]}在${nextFestival.place}举行，还有 ${daysUntilFestival} 天。`); }}><span>{currentFestival ? "今日活动" : "下一场活动"}</span><strong>{(currentFestival ?? nextFestival).name}</strong><small>{currentFestival ? `正在${currentFestival.place}举行 · 点击前往` : `${SEASONS[nextFestival.season]}第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]} · 还有 ${daysUntilFestival} 天`}</small></button>
@@ -8336,7 +8563,7 @@ export default function FarmGame() {
                 <section className={`farm-special-panel ${farmInterior}-interior-panel ${interiorFireLit ? "interior-fire-lit" : ""}`} role="dialog" aria-modal="true" aria-labelledby="farm-special-title">
                   <header><div><span>{farmInterior === "cave" ? "青禾农场西侧" : "溪边露营地"}</span><h2 id="farm-special-title">{farmInterior === "cave" ? "青禾山洞内部" : "双顶帐篷内部"}</h2></div><button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); }} aria-label="离开这里">×</button></header>
                   <div className="farm-special-scene" onClick={walkInsidePointer}>
-                    {farmInterior === "cave" ? <><i className="cave-rock cave-rock-one" /><i className="cave-rock cave-rock-two" />{game.caveDiamondSpots.map((spotIndex, index) => { const diamond = CAVE_DIAMOND_SPOTS[spotIndex]; return <button key={`cave-diamond-${index}-${spotIndex}`} className={`cave-diamond-mine cave-diamond-${index + 1} ${diamond.hidden ? "diamond-partly-hidden" : ""} ${game.caveDiamondStates[index] ? "" : "mined"}`} style={{ left: `${diamond.x}%`, top: `${diamond.y}%` }} onClick={(event) => { event.stopPropagation(); mineCaveDiamond(index); }} aria-label={game.caveDiamondStates[index] ? `${diamond.hidden ? "岩石后露出尖角的" : "地面上的"}钻石矿，使用镐子挖掘` : `第 ${index + 1} 处钻石矿已经挖完`}><i /><b>{game.caveDiamondStates[index] ? diamond.hidden ? "露出的晶尖" : "钻石矿" : "碎矿"}</b></button>; })}<span className="cave-path" /><b className="cave-fire" />{currentCaveWorkers.map((order, index) => <button key={`cave-worker-${order.person}`} className={`resident-cave-worker cave-worker-${index + 1}`} style={personClothesStyle(order.person)} onClick={(event) => { event.stopPropagation(); interactWithPerson(order.person, `${order.person}：${order.result}，钻石和石材已经放进你的资源记录。`, true); }}><i /><b /><em>⚒</em><span>{order.person}<small>{order.result}</small></span></button>)}</> : <><button className="camp-bed" onClick={(event) => { event.stopPropagation(); nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进帐篷睡铺住了一晚。早上七点，在帐篷里醒来了。 "); }} aria-label="点击帐篷睡铺住到第二天" /><i className="camp-bag" /><i className="camp-table" /><span className="camp-lantern" /><b className="camp-window" />{wildFriendVisit === "camp" && <button style={personClothesStyle("安安")} className="camp-resident anan-character" onClick={() => interactWithPerson("安安", "安安：今晚我们可以住在帐篷里，听着溪水声睡觉。 ")}><i /><em className="anan-pigtails" /><b /><span>安安住在帐篷里</span></button>}</>}
+                    {farmInterior === "cave" ? <><i className="cave-rock cave-rock-one" /><i className="cave-rock cave-rock-two" />{game.caveDiamondSpots.map((spotIndex, index) => { const diamond = CAVE_DIAMOND_SPOTS[spotIndex]; const echoRevealed = diamond.hidden && game.ageSkillsLearned.includes("echo") && game.caveDiamondStates[index]; return <button key={`cave-diamond-${index}-${spotIndex}`} className={`cave-diamond-mine cave-diamond-${index + 1} ${diamond.hidden ? "diamond-partly-hidden" : ""} ${echoRevealed ? "echo-revealed-diamond" : ""} ${game.caveDiamondStates[index] ? "" : "mined"}`} style={{ left: `${diamond.x}%`, top: `${diamond.y}%` }} onClick={(event) => { event.stopPropagation(); mineCaveDiamond(index); }} aria-label={game.caveDiamondStates[index] ? `${diamond.hidden ? "岩石后露出尖角的" : "地面上的"}钻石矿，使用镐子挖掘` : `第 ${index + 1} 处钻石矿已经挖完`}><i /><b>{game.caveDiamondStates[index] ? echoRevealed ? "回声定位 · 晶尖" : diamond.hidden ? "露出的晶尖" : "钻石矿" : "碎矿"}</b></button>; })}<span className="cave-path" /><b className="cave-fire" />{currentCaveWorkers.map((order, index) => <button key={`cave-worker-${order.person}`} className={`resident-cave-worker cave-worker-${index + 1}`} style={personClothesStyle(order.person)} onClick={(event) => { event.stopPropagation(); interactWithPerson(order.person, `${order.person}：${order.result}，钻石和石材已经放进你的资源记录。`, true); }}><i /><b /><em>⚒</em><span>{order.person}<small>{order.result}</small></span></button>)}</> : <><button className="camp-bed" onClick={(event) => { event.stopPropagation(); nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进帐篷睡铺住了一晚。早上七点，在帐篷里醒来了。 "); }} aria-label="点击帐篷睡铺住到第二天" /><i className="camp-bag" /><i className="camp-table" /><span className="camp-lantern" /><b className="camp-window" />{wildFriendVisit === "camp" && <button style={personClothesStyle("安安")} className="camp-resident anan-character" onClick={() => interactWithPerson("安安", "安安：今晚风很轻，我们可以住在帐篷里听着溪水声睡觉。 ")}><i /><em className="anan-pigtails" /><b /><span>安安住在帐篷里</span></button>}</>}
                     {wildFriendVisit === farmInterior && <button style={personClothesStyle("安安")} className="wild-friend-visitor anan-character" onClick={() => interactWithPerson("安安", farmInterior === "cave" ? "安安：这里的水晶真漂亮！我们点亮火柴，再一起找找通往深处的小路吧。" : "安安：今晚风很轻，我们可以在帐篷里讲山谷探险的故事。") }><i /><em className="anan-pigtails" /><b /><span>安安<small>来陪你玩</small></span></button>}
                     {farmInterior === "cave" && game.missingPetId && (() => { const lostPet = game.pets.find((pet) => pet.id === game.missingPetId); if (!lostPet) return null; const petName = PET_CATALOG.find((pet) => pet.id === lostPet.type)?.name; return <button className={`lost-pet-in-cave pet-${lostPet.type}`} onClick={() => { setGame((current) => ({ ...current, missingPetId: null })); setMessage(`在岩石后面找到了${petName}，小禾把它轻轻抱起来带回家，它又会跟着你了！`); playTone(900); }}><i /><b /><span>{petName}躲在洞里<small>点击抱回家</small></span></button>; })()}
                     {farmInterior === "cave" && dailyNews.kind === "cave" && <button className="cave-prospector" style={personClothesStyle("阿木")} onClick={(event) => { event.stopPropagation(); setMessage("山洞勘探员阿木：新闻是真的。今天三处矿脉的位置已经重新标记，留意岩石后露出的小尖角。"); playTone(680); }}><i /><b /><em className="prospector-helmet" /><span>勘探员阿木<small>点击询问矿脉</small></span></button>}
