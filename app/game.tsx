@@ -47,8 +47,23 @@ type ShippingCatalogItem = { id: string; name: string; short: string; price: num
 type AtticResource = "wood" | "stone" | "diamonds" | "herbs" | "resin" | "pinecones" | "pineNuts" | "eggs" | "milk" | "wool";
 type ResidentQuestId = "orchardCrate" | "clinicParcel" | "roadSigns" | "workshopMeasure" | "springWater" | "museumRubbing" | "libraryPages" | "schoolSpecimen" | "ananTrail";
 type ResidentQuest = { id: ResidentQuestId; giver: string; title: string; location: string; village: VillageId; scene: Scene; detail: string; action: string; icon: string; reward: number };
+type WishMaterial = "wood" | "stone" | "resin" | "herbs" | "pinecones" | "pineNuts" | "diamonds";
 type ResidentWishProgress = { startedDay: number; firstBaseline: number; secondBaseline: number; completed: boolean };
-type ResidentWishDefinition = { title: string; story: string; firstLabel: string; firstNeed: number; firstMetric: (state: GameState) => number; secondLabel: string; secondNeed: number; secondMetric: (state: GameState) => number; finalPlace: string };
+type ResidentWishDefinition = {
+  title: string;
+  story: string;
+  firstLabel: string;
+  firstNeed: number;
+  firstMetric: (state: GameState) => number;
+  firstAbsolute?: boolean;
+  secondLabel: string;
+  secondNeed: number;
+  secondMetric: (state: GameState) => number;
+  secondAbsolute?: boolean;
+  finalPlace: string;
+  finalProduct: string;
+  finalCost: Partial<Record<WishMaterial, number>>;
+};
 
 const QINGHE_WEST_PATH_END = -12;
 const QINGHE_WEST_EXIT = -13;
@@ -211,6 +226,7 @@ type GameState = {
   residentQuestCompletions: string[];
   residentTripDays: string[];
   residentWishes: Record<string, ResidentWishProgress>;
+  wishPlantingRecords: Record<string, number>;
   cropQualityHarvests: CropQualityRecord;
   cropQualityStock: CropQualityStock;
   chestCropQualityStock: CropQualityStock;
@@ -625,23 +641,42 @@ const RESIDENT_QUESTS: ResidentQuest[] = [
   { id: "ananTrail", giver: "安安", title: "林边小路的新脚印", location: "安安的小农场", village: "qinghe", scene: "westFriendFarm", detail: "安安在小路上发现一串陌生脚印，请沿地面慢慢观察它通向哪里。", action: "沿着脚印调查小路", icon: "印", reward: 75 },
 ];
 
+const starHarvestCount = (state: GameState, crops: CropType[] = CROP_TYPES) => crops.reduce((total, crop) => total + state.cropQualityHarvests[crop].silver + state.cropQualityHarvests[crop].gold, 0);
+const goldHarvestCount = (state: GameState) => CROP_TYPES.reduce((total, crop) => total + state.cropQualityHarvests[crop].gold, 0);
+const discoveredCropCount = (state: GameState) => CROP_TYPES.filter((crop) => Object.values(state.cropQualityHarvests[crop]).some((count) => count > 0)).length;
+const natureDiscoveryCount = (state: GameState) => discoveredCropCount(state)
+  + Math.min(3, state.museumArtifacts.length)
+  + Math.min(2, state.libraryBooks.length)
+  + (state.fishCaught > 0 ? 1 : 0)
+  + (state.herbs > 0 ? 1 : 0)
+  + (state.diamonds > 0 ? 1 : 0);
+const sunnyFruitPlantings = (state: GameState) => ["strawberry", "blueberry", "watermelon", "pineapple"].reduce((total, crop) => total + (state.wishPlantingRecords[`weather:sunny:${crop}`] ?? 0), 0);
+const suitableSeasonPlantings = (state: GameState) => [
+  [0, "radish"], [0, "strawberry"], [0, "blueberry"],
+  [1, "watermelon"], [1, "tomato"], [1, "pineapple"],
+  [2, "corn"], [2, "pumpkin"], [2, "potato"],
+  [3, "potato"], [3, "radish"], [3, "blueberry"],
+].reduce((total, [season, crop]) => total + (state.wishPlantingRecords[`season:${season}:${crop}`] ?? 0), 0);
+
+const WISH_MATERIAL_INFO: Record<WishMaterial, string> = { wood: "木头", stone: "石材", resin: "树脂", herbs: "药材", pinecones: "松果", pineNuts: "松子", diamonds: "钻石" };
+
 const RESIDENT_WISH_DEFINITIONS: Record<string, ResidentWishDefinition> = {
-  林婶: { title: "四季果园茶会", story: "林婶想用亲手照料的果实办一场小茶会，但要连续观察几天的作物甜度。", firstLabel: "再收获 5 份成熟作物", firstNeed: 5, firstMetric: (state) => state.harvested, secondLabel: "再完成 8 次认真浇水", secondNeed: 8, secondMetric: (state) => state.wateredCount, finalPlace: "带着记录去东郊果园找林婶" },
-  鲁师傅: { title: "会呼吸的木屋模型", story: "鲁师傅想试做一间随季节通风的小屋，必须先用真实农场数据反复修改尺寸。", firstLabel: "再播种 6 次测试土地", firstNeed: 6, firstMetric: (state) => state.planted, secondLabel: "再收获 5 份作物检验空间", secondNeed: 5, secondMetric: (state) => state.harvested, finalPlace: "去南坡院子和鲁师傅拼装模型" },
-  叶老师: { title: "山谷自然观察册", story: "叶老师想写一本不照抄旧书的观察册，需要真正记录水边和田里的变化。", firstLabel: "再钓到 3 件水中发现", firstNeed: 3, firstMetric: (state) => state.fishCaught, secondLabel: "再收获 4 份不同农事记录", secondNeed: 4, secondMetric: (state) => state.harvested, finalPlace: "到北林书屋和叶老师整理页码" },
-  白医生: { title: "雨季健康手册", story: "白医生希望把劳动、饮食和休息写成人人看得懂的手册，需要几天真实生活记录。", firstLabel: "再完成 7 次浇水劳动", firstNeed: 7, firstMetric: (state) => state.wateredCount, secondLabel: "再钓到 2 份健康食材", secondNeed: 2, secondMetric: (state) => state.fishCaught, finalPlace: "回诊所和白医生核对健康记录" },
-  阿麦: { title: "从农场到餐桌的菜单", story: "阿麦要做一张每天味道都不同的菜单，原料必须是小禾亲自取得的。", firstLabel: "再收获 5 份新鲜作物", firstNeed: 5, firstMetric: (state) => state.harvested, secondLabel: "再钓到 3 份水边食材", secondNeed: 3, secondMetric: (state) => state.fishCaught, finalPlace: "在麦香咖啡和阿麦试做整桌菜单" },
-  周镇长: { title: "真正能走通的新路线", story: "周镇长不想只在纸上画路，要收集居民委托和农场运输的真实结果。", firstLabel: "再完成 2 份居民委托", firstNeed: 2, firstMetric: (state) => state.residentQuestCompletions.length, secondLabel: "再收获 6 份运输样品", secondNeed: 6, secondMetric: (state) => state.harvested, finalPlace: "去镇公所和周镇长铺开路线图" },
-  沈馆长: { title: "水土与生活小展览", story: "沈馆长想办一场能摸、能看的展览，需要水中发现和农场样品共同讲故事。", firstLabel: "再钓到 4 件水中发现", firstNeed: 4, firstMetric: (state) => state.fishCaught, secondLabel: "再收获 5 份农场样品", secondNeed: 5, secondMetric: (state) => state.harvested, finalPlace: "到博物馆和沈馆长亲手布置展柜" },
-  许老师: { title: "一堂真正的农场课", story: "许老师想让全班亲眼看见种子到收获的变化，要小禾帮忙记录完整过程。", firstLabel: "再播种 5 次课堂样本", firstNeed: 5, firstMetric: (state) => state.planted, secondLabel: "再收获 5 份成熟样本", secondNeed: 5, secondMetric: (state) => state.harvested, finalPlace: "去学校和许老师摆好课堂标本" },
-  安安: { title: "林边秘密探险册", story: "安安想把不会出现在地图上的小路画进一本探险册，要一起观察树苗和水边。", firstLabel: "再种下 2 棵松果树苗", firstNeed: 2, firstMetric: (state) => state.plantedTrees.length, secondLabel: "再钓到 3 件水边线索", secondNeed: 3, secondMetric: (state) => state.fishCaught, finalPlace: "到安安的小农场一起装订探险册" },
-  诊所助手: { title: "会自己归位的护理箱", story: "诊所助手想按真实使用顺序整理护理箱，需要记录农活后的身体变化。", firstLabel: "再完成 6 次浇水劳动", firstNeed: 6, firstMetric: (state) => state.wateredCount, secondLabel: "再收获 4 份补充体力的食材", secondNeed: 4, secondMetric: (state) => state.harvested, finalPlace: "去诊所和助手按顺序装好护理箱" },
-  小玲: { title: "会开花的小作文", story: "小玲想把每天亲眼看见的幼苗变化写进作文，不能照着旧课本抄。", firstLabel: "再播种 5 颗观察种子", firstNeed: 5, firstMetric: (state) => state.planted, secondLabel: "再完成 7 次成长浇水", secondNeed: 7, secondMetric: (state) => state.wateredCount, finalPlace: "找到小玲，一起给作文画上最后一朵花" },
-  豆豆: { title: "池塘里的数字秘密", story: "豆豆想知道不同日子钓到的东西为什么不一样，需要把鱼获逐天记下来。", firstLabel: "再钓到 4 件水中发现", firstNeed: 4, firstMetric: (state) => state.fishCaught, secondLabel: "再完成 2 份邻居委托", secondNeed: 2, secondMetric: (state) => state.residentQuestCompletions.length, finalPlace: "找到豆豆，一起把鱼获数字画成图表" },
-  小满: { title: "四季种子玻璃瓶", story: "小满想在瓶里留下不同作物成长的痕迹，每一份都要小禾真正种过。", firstLabel: "再播种 6 颗种子", firstNeed: 6, firstMetric: (state) => state.planted, secondLabel: "再收获 5 份成熟作物", secondNeed: 5, secondMetric: (state) => state.harvested, finalPlace: "找到小满，一起把四季标签系到瓶子上" },
-  阿禾: { title: "能摸到的农场单词书", story: "阿禾想让每个英文单词旁边都有真正对应的农场发现。", firstLabel: "再播种 4 颗 seed", firstNeed: 4, firstMetric: (state) => state.planted, secondLabel: "再钓到 3 条 fish", secondNeed: 3, secondMetric: (state) => state.fishCaught, finalPlace: "找到阿禾，一起把实物贴进单词书" },
-  小芽: { title: "幼苗身高尺", story: "小芽想做一把能记录幼苗每天变化的尺子，要耐心照料而不是一天完成。", firstLabel: "再播种 5 株幼苗", firstNeed: 5, firstMetric: (state) => state.planted, secondLabel: "再完成 9 次浇水记录", secondNeed: 9, secondMetric: (state) => state.wateredCount, finalPlace: "找到小芽，一起给身高尺刻上最后一道线" },
-  小石: { title: "溪石与水流路线", story: "小石想用圆石排出溪水真正走过的路线，需要比较水边发现和农田水量。", firstLabel: "再钓到 3 件溪水发现", firstNeed: 3, firstMetric: (state) => state.fishCaught, secondLabel: "再完成 7 次农田浇水", secondNeed: 7, secondMetric: (state) => state.wateredCount, finalPlace: "找到小石，一起在院子里排好溪石路线" },
+  林婶: { title: "四季果园茶会", story: "林婶想用晴天长出的星级水果办茶会，普通作物还不够甜。", firstLabel: "晴天播种草莓、蓝莓、西瓜或菠萝", firstNeed: 4, firstMetric: sunnyFruitPlantings, firstAbsolute: true, secondLabel: "收获银星或金星水果", secondNeed: 4, secondMetric: (state) => starHarvestCount(state, ["strawberry", "blueberry", "watermelon", "pineapple"]), secondAbsolute: true, finalPlace: "带齐配料去东郊果园找林婶煮茶", finalProduct: "四季星果茶宴", finalCost: { herbs: 2, pineNuts: 3, resin: 1 } },
+  鲁师傅: { title: "会呼吸的木屋模型", story: "鲁师傅要做真正能开合通风窗的模型，材料必须结实，还要用树脂封住接缝。", firstLabel: "准备至少 24 块木头", firstNeed: 24, firstMetric: (state) => state.wood, firstAbsolute: true, secondLabel: "准备至少 12 块石材", secondNeed: 12, secondMetric: (state) => state.stone, secondAbsolute: true, finalPlace: "带齐材料去南坡院子，和鲁师傅拼装、打磨并开通风孔", finalProduct: "会呼吸的木屋模型", finalCost: { wood: 24, stone: 12, resin: 4 } },
+  叶老师: { title: "山谷自然观察册", story: "观察册不能只画一种萝卜，要收集田野、水边、书页与博物馆里的不同发现。", firstLabel: "发现并收获不同农作物", firstNeed: 6, firstMetric: discoveredCropCount, firstAbsolute: true, secondLabel: "累计不同自然发现", secondNeed: 9, secondMetric: natureDiscoveryCount, secondAbsolute: true, finalPlace: "带材料到北林书屋分类、压叶并装订", finalProduct: "山谷自然观察册", finalCost: { pinecones: 2, resin: 2, herbs: 1 } },
+  白医生: { title: "星级营养调理册", story: "白医生需要高品质食物和真正的药材记录，普通收获不能代替。", firstLabel: "收获银星或金星食物", firstNeed: 5, firstMetric: starHarvestCount, firstAbsolute: true, secondLabel: "准备至少 4 份药材", secondNeed: 4, secondMetric: (state) => state.herbs, secondAbsolute: true, finalPlace: "到诊所称量药材、研磨松子并完成调理配方", finalProduct: "星级营养药膳", finalCost: { herbs: 4, pineNuts: 3, resin: 1 } },
+  阿麦: { title: "从季节到餐桌的菜单", story: "阿麦只接受在正确季节种下并精心照料的食材，还要亲手做成菜单样品。", firstLabel: "在适合季节播种指定作物", firstNeed: 6, firstMetric: suitableSeasonPlantings, firstAbsolute: true, secondLabel: "收获银星或金星食材", secondNeed: 4, secondMetric: starHarvestCount, secondAbsolute: true, finalPlace: "去麦香咖啡研磨、烹煮并摆好整桌菜单", finalProduct: "四季星级菜单", finalCost: { pineNuts: 4, herbs: 2, resin: 1 } },
+  周镇长: { title: "真正能走通的新路线", story: "路线要经过居民验证，还要准备桥面木料、石基和防水树脂。", firstLabel: "完成不同居民委托", firstNeed: 4, firstMetric: (state) => state.residentQuestCompletions.length, firstAbsolute: true, secondLabel: "准备至少 15 块石材", secondNeed: 15, secondMetric: (state) => state.stone, secondAbsolute: true, finalPlace: "带材料到镇公所测量路线并拼出桥面模型", finalProduct: "青禾谷通行路线模型", finalCost: { wood: 12, stone: 15, resin: 3 } },
+  沈馆长: { title: "水土与生活小展览", story: "展览必须有真正捐赠过的藏品和不同作物记录，不能拿同一样东西凑数。", firstLabel: "向博物馆捐赠不同藏品", firstNeed: 3, firstMetric: (state) => state.museumArtifacts.length, firstAbsolute: true, secondLabel: "发现不同成熟农作物", secondNeed: 5, secondMetric: discoveredCropCount, secondAbsolute: true, finalPlace: "到博物馆清理底座、固定藏品并写说明牌", finalProduct: "水土生活特别展", finalCost: { stone: 8, resin: 2, diamonds: 1 } },
+  许老师: { title: "一堂真正的农场课", story: "课堂要展示适季播种和金星成果，学生必须看到完整成长证据。", firstLabel: "在适合季节播种指定作物", firstNeed: 6, firstMetric: suitableSeasonPlantings, firstAbsolute: true, secondLabel: "收获金星作物", secondNeed: 2, secondMetric: goldHarvestCount, secondAbsolute: true, finalPlace: "去学校摆标本、写黑板并亲自讲完整过程", finalProduct: "农场成长实验课", finalCost: { wood: 6, pinecones: 2, resin: 1 } },
+  安安: { title: "林边秘密探险册", story: "安安要记录真正长起来的树和地图外的不同发现，还需要耐用的野外装订材料。", firstLabel: "种下并照料松果树苗", firstNeed: 3, firstMetric: (state) => state.plantedTrees.length, firstAbsolute: true, secondLabel: "累计不同自然发现", secondNeed: 8, secondMetric: natureDiscoveryCount, secondAbsolute: true, finalPlace: "到安安的小农场压地图、系绳并装订探险册", finalProduct: "林边秘密探险册", finalCost: { wood: 8, pinecones: 2, resin: 3 } },
+  诊所助手: { title: "会自己归位的护理箱", story: "护理箱要装得下星级补给和多种药材，还要能经受反复开合。", firstLabel: "收获银星或金星食物", firstNeed: 3, firstMetric: starHarvestCount, firstAbsolute: true, secondLabel: "准备至少 4 份药材", secondNeed: 4, secondMetric: (state) => state.herbs, secondAbsolute: true, finalPlace: "到诊所按治疗顺序装盒并测试开合", finalProduct: "自动归位护理箱", finalCost: { wood: 10, herbs: 4, resin: 2 } },
+  小玲: { title: "会开花的小作文", story: "作文要记录雨天和晴天都照料过的不同作物，还要压进真正的植物材料。", firstLabel: "发现并收获不同农作物", firstNeed: 5, firstMetric: discoveredCropCount, firstAbsolute: true, secondLabel: "收获银星或金星作物", secondNeed: 3, secondMetric: starHarvestCount, secondAbsolute: true, finalPlace: "找到小玲，压花、排页并写完结尾", finalProduct: "会开花的小作文", finalCost: { herbs: 2, pinecones: 1, resin: 1 } },
+  豆豆: { title: "池塘里的数字秘密", story: "豆豆要把水中发现和居民调查放到同一张图上，样本不能只有鱼。", firstLabel: "钓到至少 6 件水中发现", firstNeed: 6, firstMetric: (state) => state.fishCaught, secondLabel: "完成不同居民委托", secondNeed: 3, secondMetric: (state) => state.residentQuestCompletions.length, secondAbsolute: true, finalPlace: "找到豆豆，分类鱼获并画成完整图表", finalProduct: "池塘数字调查图", finalCost: { wood: 4, stone: 4, resin: 1 } },
+  小满: { title: "四季种子玻璃瓶", story: "瓶子里必须放入在合适季节种下的多种作物记录，不能用同一颗种子重复充数。", firstLabel: "在适合季节播种指定作物", firstNeed: 7, firstMetric: suitableSeasonPlantings, firstAbsolute: true, secondLabel: "发现并收获不同农作物", secondNeed: 6, secondMetric: discoveredCropCount, secondAbsolute: true, finalPlace: "找到小满，分层装瓶并系上四季标签", finalProduct: "四季种子玻璃瓶", finalCost: { herbs: 2, pineNuts: 4, resin: 2 } },
+  阿禾: { title: "能摸到的农场单词书", story: "每个单词旁都要贴真实的不同发现，还要有高品质食物样本。", firstLabel: "累计不同自然发现", firstNeed: 8, firstMetric: natureDiscoveryCount, firstAbsolute: true, secondLabel: "收获银星或金星作物", secondNeed: 3, secondMetric: starHarvestCount, secondAbsolute: true, finalPlace: "找到阿禾，配对单词、实物和图画", finalProduct: "农场实物单词书", finalCost: { wood: 4, herbs: 1, resin: 2 } },
+  小芽: { title: "幼苗天气身高尺", story: "身高尺要比较适季作物和星级作物的成长，观察记录必须跨过几天。", firstLabel: "在适合季节播种指定作物", firstNeed: 5, firstMetric: suitableSeasonPlantings, firstAbsolute: true, secondLabel: "收获银星或金星作物", secondNeed: 4, secondMetric: starHarvestCount, secondAbsolute: true, finalPlace: "找到小芽，对准幼苗逐格刻下高度", finalProduct: "幼苗天气身高尺", finalCost: { wood: 8, stone: 3, resin: 2 } },
+  小石: { title: "溪石与水流路线", story: "小石要用真正的水中发现和坚固石材重现溪流路线。", firstLabel: "钓到至少 5 件水中发现", firstNeed: 5, firstMetric: (state) => state.fishCaught, secondLabel: "准备至少 12 块石材", secondNeed: 12, secondMetric: (state) => state.stone, secondAbsolute: true, finalPlace: "找到小石，逐块排列溪石并试水", finalProduct: "会流动的溪石路线", finalCost: { stone: 12, resin: 2, pinecones: 1 } },
 };
 
 const residentWishDefinition = (name: string): ResidentWishDefinition => RESIDENT_WISH_DEFINITIONS[name] ?? {
@@ -654,7 +689,19 @@ const residentWishDefinition = (name: string): ResidentWishDefinition => RESIDEN
   secondNeed: 6,
   secondMetric: (state) => state.wateredCount,
   finalPlace: `找到${name}，一起把几天的记录装进纪念盒`,
+  finalProduct: `${name}的山谷纪念盒`,
+  finalCost: { wood: 6, stone: 3, resin: 1 },
 };
+
+const wishCostEntries = (definition: ResidentWishDefinition) => (Object.entries(definition.finalCost) as [WishMaterial, number][])
+  .filter(([, amount]) => amount > 0);
+
+const hasWishMaterials = (state: GameState, definition: ResidentWishDefinition) => wishCostEntries(definition)
+  .every(([material, amount]) => state[material] >= amount);
+
+const wishCostText = (definition: ResidentWishDefinition) => wishCostEntries(definition)
+  .map(([material, amount]) => `${WISH_MATERIAL_INFO[material]} ${amount}`)
+  .join("、");
 
 const FESTIVAL_SCHEDULE: { season: number; day: number; id: FestivalId; name: string; place: string; description: string }[] = [
   { season: 0, day: 3, id: "seeds", name: "种子分享日", place: "青禾超市", description: "免费领取水果和蔬菜种子大礼包" },
@@ -1082,6 +1129,7 @@ const makeNewGame = (): GameState => ({
   residentQuestCompletions: [],
   residentTripDays: [],
   residentWishes: {},
+  wishPlantingRecords: {},
   cropQualityHarvests: makeCropQualityRecord(),
   cropQualityStock: makeCropQualityStock(),
   chestCropQualityStock: makeCropQualityStock(),
@@ -1149,6 +1197,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       residentQuestCompletions: parsed.residentQuestCompletions ?? [],
       residentTripDays: parsed.residentTripDays ?? [],
       residentWishes: parsed.residentWishes ?? {},
+      wishPlantingRecords: parsed.wishPlantingRecords ?? {},
       cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
       cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
       chestCropQualityStock: mergeCropQualityStock(parsed.chestCropQualityStock),
@@ -1332,6 +1381,7 @@ export default function FarmGame() {
   const woolClickTimerRef = useRef<number | null>(null);
   const animalProductClickTimerRef = useRef<number | null>(null);
   const speechVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const speechRunRef = useRef(0);
   const walkTimerRef = useRef<number | null>(null);
   const farmEdgeTravelTimerRef = useRef<number | null>(null);
   const farmActionTimerRef = useRef<number | null>(null);
@@ -1458,6 +1508,7 @@ export default function FarmGame() {
             residentQuestCompletions: parsed.residentQuestCompletions ?? [],
             residentTripDays: parsed.residentTripDays ?? [],
             residentWishes: parsed.residentWishes ?? {},
+            wishPlantingRecords: parsed.wishPlantingRecords ?? {},
             cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
             cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
             chestCropQualityStock: mergeCropQualityStock(parsed.chestCropQualityStock),
@@ -1640,6 +1691,7 @@ export default function FarmGame() {
           residentQuestCompletions: data.save.residentQuestCompletions ?? [],
           residentTripDays: data.save.residentTripDays ?? [],
           residentWishes: data.save.residentWishes ?? {},
+          wishPlantingRecords: data.save.wishPlantingRecords ?? {},
           cropQualityHarvests: mergeCropQualityRecord(data.save.cropQualityHarvests),
           cropQualityStock: mergeCropQualityStock(data.save.cropQualityStock),
           chestCropQualityStock: mergeCropQualityStock(data.save.chestCropQualityStock),
@@ -2348,9 +2400,9 @@ export default function FarmGame() {
     const voices = speechVoicesRef.current;
     const younger = (YOUNG_FRIENDS as readonly string[]).includes(person) || person === "安安";
     return {
-      voice: voices.length ? voices[code % Math.min(voices.length, 6)] : null,
-      rate: (younger ? .98 : .93) + (code % 4) * .012,
-      pitch: (younger ? 1.04 : .97) + (code % 4) * .012,
+      voice: voices.length ? voices[code % Math.min(voices.length, 2)] : null,
+      rate: (younger ? .9 : .85) + (code % 4) * .012,
+      pitch: (younger ? 1.04 : .96) + (code % 3) * .015,
     };
   };
 
@@ -2360,24 +2412,43 @@ export default function FarmGame() {
     const spokenText = (quotedSpeech || text.replace(new RegExp(`^${person}[：:]`), ""))
       .replace(/[“”]/g, "")
       .replace(/\s+/g, " ")
-      .replace(/([。！？])(?=\S)/g, "$1 ")
       .trim()
-      .slice(0, 92);
+      .slice(0, 120);
     if (!spokenText) return;
     try {
       const profile = voiceProfileFor(person);
-      const utterance = new SpeechSynthesisUtterance(spokenText);
-      utterance.lang = profile.voice?.lang ?? "zh-CN";
-      utterance.voice = profile.voice;
-      utterance.rate = profile.rate;
-      utterance.pitch = profile.pitch;
-      utterance.volume = .94;
-      utterance.onstart = () => setSpeakingPerson(person);
-      utterance.onend = () => setSpeakingPerson((current) => current === person ? null : current);
-      utterance.onerror = () => setSpeakingPerson((current) => current === person ? null : current);
+      const phrases = (spokenText.match(/[^，。！？；]+[，。！？；]?/g) ?? [spokenText])
+        .map((phrase) => phrase.trim())
+        .filter(Boolean)
+        .slice(0, 5);
+      const runId = speechRunRef.current + 1;
+      speechRunRef.current = runId;
       window.speechSynthesis.cancel();
       window.speechSynthesis.resume();
-      window.speechSynthesis.speak(utterance);
+      setSpeakingPerson(person);
+      const speakPhrase = (index: number) => {
+        if (speechRunRef.current !== runId || index >= phrases.length) {
+          if (speechRunRef.current === runId) setSpeakingPerson((current) => current === person ? null : current);
+          return;
+        }
+        const phrase = phrases[index];
+        const utterance = new SpeechSynthesisUtterance(phrase);
+        utterance.lang = profile.voice?.lang ?? "zh-CN";
+        utterance.voice = profile.voice;
+        utterance.rate = profile.rate + (/[！？]$/.test(phrase) ? .025 : 0);
+        utterance.pitch = profile.pitch + (/[？]$/.test(phrase) ? .035 : 0);
+        utterance.volume = .9;
+        utterance.onend = () => {
+          if (speechRunRef.current !== runId) return;
+          const pause = /[。！？]$/.test(phrase) ? 150 : 85;
+          window.setTimeout(() => speakPhrase(index + 1), pause);
+        };
+        utterance.onerror = () => {
+          if (speechRunRef.current === runId) setSpeakingPerson((current) => current === person ? null : current);
+        };
+        window.speechSynthesis.speak(utterance);
+      };
+      speakPhrase(0);
     } catch {
       // Voice playback is an enhancement; dialogue text remains visible.
     }
@@ -2440,6 +2511,7 @@ export default function FarmGame() {
 
   const toggleSound = () => {
     if (soundOn && typeof window !== "undefined" && "speechSynthesis" in window) {
+      speechRunRef.current += 1;
       window.speechSynthesis.cancel();
       setSpeakingPerson(null);
     }
@@ -3340,9 +3412,11 @@ export default function FarmGame() {
 
   const wishProgressNumbers = (state: GameState, person: string, progress: ResidentWishProgress) => {
     const definition = residentWishDefinition(person);
+    const firstBaseline = definition.firstAbsolute ? 0 : progress.firstBaseline;
+    const secondBaseline = definition.secondAbsolute ? 0 : progress.secondBaseline;
     return {
-      first: Math.min(definition.firstNeed, Math.max(0, definition.firstMetric(state) - progress.firstBaseline)),
-      second: Math.min(definition.secondNeed, Math.max(0, definition.secondMetric(state) - progress.secondBaseline)),
+      first: Math.min(definition.firstNeed, Math.max(0, definition.firstMetric(state) - firstBaseline)),
+      second: Math.min(definition.secondNeed, Math.max(0, definition.secondMetric(state) - secondBaseline)),
       days: Math.max(0, (state.year - 1) * 112 + state.season * 28 + state.day - progress.startedDay),
     };
   };
@@ -3364,8 +3438,8 @@ export default function FarmGame() {
         ...current.residentWishes,
         [person]: {
           startedDay: (current.year - 1) * 112 + current.season * 28 + current.day,
-          firstBaseline: definition.firstMetric(current),
-          secondBaseline: definition.secondMetric(current),
+          firstBaseline: definition.firstAbsolute ? 0 : definition.firstMetric(current),
+          secondBaseline: definition.secondAbsolute ? 0 : definition.secondMetric(current),
           completed: false,
         },
       },
@@ -3374,6 +3448,56 @@ export default function FarmGame() {
     setMessage(`${person}把愿望告诉了你：“${definition.story}”已经记进日记，要亲自完成两段行动，并至少观察两个游戏日。`);
     speakResident(person, definition.story);
     playTone(780);
+  };
+
+  const finishResidentWish = (person: string) => {
+    const progress = game.residentWishes[person];
+    const definition = residentWishDefinition(person);
+    if (!progress || progress.completed) {
+      setMessage(progress?.completed ? `${person}的愿望“${definition.title}”已经完成了。` : `先和${person}认真聊聊，把愿望记进日记。`);
+      return;
+    }
+    const numbers = wishProgressNumbers(game, person, progress);
+    const unfinished = [
+      numbers.first < definition.firstNeed ? `${definition.firstLabel}（${numbers.first}/${definition.firstNeed}）` : "",
+      numbers.second < definition.secondNeed ? `${definition.secondLabel}（${numbers.second}/${definition.secondNeed}）` : "",
+      numbers.days < 2 ? `共同观察还差 ${2 - numbers.days} 个游戏日` : "",
+    ].filter(Boolean);
+    if (unfinished.length) {
+      const text = `现在还不能交付。还需要：${unfinished.join("；")}。`;
+      setResidentSpeech({ person, text });
+      setMessage(text);
+      speakResident(person, text);
+      return;
+    }
+    const missingMaterials = wishCostEntries(definition)
+      .filter(([material, amount]) => game[material] < amount)
+      .map(([material, amount]) => `${WISH_MATERIAL_INFO[material]}还差 ${amount - game[material]}`);
+    if (missingMaterials.length) {
+      const text = `调查已经完成了，不过制作“${definition.finalProduct}”还缺：${missingMaterials.join("、")}。准备齐再来找我。`;
+      setResidentSpeech({ person, text });
+      setMessage(text);
+      speakResident(person, text);
+      return;
+    }
+    setGame((current) => withFriendship({
+      ...current,
+      wood: current.wood - (definition.finalCost.wood ?? 0),
+      stone: current.stone - (definition.finalCost.stone ?? 0),
+      resin: current.resin - (definition.finalCost.resin ?? 0),
+      herbs: current.herbs - (definition.finalCost.herbs ?? 0),
+      pinecones: current.pinecones - (definition.finalCost.pinecones ?? 0),
+      pineNuts: current.pineNuts - (definition.finalCost.pineNuts ?? 0),
+      diamonds: current.diamonds - (definition.finalCost.diamonds ?? 0),
+      coins: current.coins + 260,
+      residentWishes: { ...current.residentWishes, [person]: { ...current.residentWishes[person], completed: true } },
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：把${wishCostText(definition)}当面交给${person}，一起完成了“${definition.finalProduct}”，获得 260 金币。`, ...current.journalEntries].slice(0, 40),
+    }, person, 30));
+    const text = `材料都对上了！我们一起做好了“${definition.finalProduct}”。谢谢你真的花了好几天准备。`;
+    setResidentSpeech({ person, text });
+    setMessage(`${person}收下材料，和小禾一起完成“${definition.finalProduct}”。获得 260 金币，好感 +30！`);
+    speakResident(person, text);
+    playTone(980);
   };
 
   const interactWithPerson = (person: string, fallback: string, preferFallback = false) => {
@@ -3393,14 +3517,12 @@ export default function FarmGame() {
       const definition = residentWishDefinition(person);
       const wishNumbers = wishProgressNumbers(game, person, activeWish);
       if (wishNumbers.first >= definition.firstNeed && wishNumbers.second >= definition.secondNeed && wishNumbers.days >= 2) {
-        setGame((current) => withFriendship({
-          ...current,
-          coins: current.coins + 180,
-          residentWishes: { ...current.residentWishes, [person]: { ...current.residentWishes[person], completed: true } },
-          journalEntries: [`${SEASONS[current.season]}第${current.day}天：和${person}亲手完成了愿望“${definition.title}”，获得 180 金币，好感大幅提升。`, ...current.journalEntries].slice(0, 40),
-        }, person, 25));
-        showSpeech(`${person}：你真的花了好几天帮我实现“${definition.title}”！最后这一步我们一起完成了，谢谢你。`);
-        playTone(980);
+        const missingMaterials = wishCostEntries(definition)
+          .filter(([material, amount]) => game[material] < amount)
+          .map(([material, amount]) => `${WISH_MATERIAL_INFO[material]}还差 ${amount - game[material]}`);
+        showSpeech(missingMaterials.length
+          ? `${person}：前面的调查已经完成了！最后还缺${missingMaterials.join("、")}，带齐后再点“交付愿望材料”。`
+          : `${person}：调查和材料都齐了！请点对话里的“交付愿望材料”，我们现在一起做${definition.finalProduct}。`);
         return;
       }
     }
@@ -4942,6 +5064,11 @@ export default function FarmGame() {
         next[cropDetails.seedField] -= 1;
         next.energy = Math.max(0, current.energy - staminaCost(current, 2));
         next.planted += 1;
+        next.wishPlantingRecords = {
+          ...current.wishPlantingRecords,
+          [`weather:${current.weather}:${selectedCrop}`]: (current.wishPlantingRecords[`weather:${current.weather}:${selectedCrop}`] ?? 0) + 1,
+          [`season:${current.season}:${selectedCrop}`]: (current.wishPlantingRecords[`season:${current.season}:${selectedCrop}`] ?? 0) + 1,
+        };
         next.daily = { ...current.daily, planted: current.daily.planted + 1 };
         feedback = `${cropDetails.name}种子睡进土里了。记得浇水！`;
         tone = 480;
@@ -6085,6 +6212,14 @@ export default function FarmGame() {
   const farmStory = FARM_STORIES[game.weather === "rain" || game.weather === "thunder" ? 0 : 1];
   const currentGuideTopic = GUIDE_TOPICS.find((topic) => topic.id === guideTopic) ?? GUIDE_TOPICS[0];
   const relationshipPeople = Object.keys(PERSON_DIALOGUES).filter((name) => !name.includes("助手") || name === "诊所助手");
+  const speakingWishDefinition = residentSpeech ? residentWishDefinition(residentSpeech.person) : null;
+  const speakingWishProgress = residentSpeech ? game.residentWishes[residentSpeech.person] : null;
+  const speakingWishNumbers = residentSpeech && speakingWishProgress ? wishProgressNumbers(game, residentSpeech.person, speakingWishProgress) : null;
+  const speakingWishObjectivesReady = Boolean(speakingWishDefinition && speakingWishProgress && speakingWishNumbers && !speakingWishProgress.completed
+    && speakingWishNumbers.first >= speakingWishDefinition.firstNeed
+    && speakingWishNumbers.second >= speakingWishDefinition.secondNeed
+    && speakingWishNumbers.days >= 2);
+  const speakingWishCanSubmit = Boolean(speakingWishObjectivesReady && speakingWishDefinition && hasWishMaterials(game, speakingWishDefinition));
   const qualityTotals = CROP_TYPES.reduce((totals, crop) => ({ normal: totals.normal + game.cropQualityHarvests[crop].normal, silver: totals.silver + game.cropQualityHarvests[crop].silver, gold: totals.gold + game.cropQualityHarvests[crop].gold }), { normal: 0, silver: 0, gold: 0 });
   const absoluteGameDay = (game.year - 1) * 112 + game.season * 28 + game.day;
   const residentQuestCycle = Math.floor(Math.max(0, absoluteGameDay - 1) / 3);
@@ -7538,7 +7673,9 @@ export default function FarmGame() {
               const wishDefinition = residentWishDefinition(name);
               const wish = game.residentWishes[name];
               const wishNumbers = wish ? wishProgressNumbers(game, name, wish) : null;
-              const wishReady = Boolean(wish && wishNumbers && !wish.completed && wishNumbers.first >= wishDefinition.firstNeed && wishNumbers.second >= wishDefinition.secondNeed && wishNumbers.days >= 2);
+              const wishObjectivesReady = Boolean(wish && wishNumbers && !wish.completed && wishNumbers.first >= wishDefinition.firstNeed && wishNumbers.second >= wishDefinition.secondNeed && wishNumbers.days >= 2);
+              const wishMaterialsReady = hasWishMaterials(game, wishDefinition);
+              const wishReady = wishObjectivesReady && wishMaterialsReady;
               return <article key={name} className={`${bestFriend ? "best-friend" : ""} ${wish?.completed ? "wish-completed" : wish ? "wish-active" : ""}`} style={personClothesStyle(name)}>
                 <div className="friend-portrait"><i /><b /></div>
                 <div className="friend-summary"><strong>{name}{bestFriend && <em className="best-friend-badge">挚友</em>}</strong><span className="heart-row">{"♥".repeat(hearts)}<em>{"♡".repeat(5 - hearts)}</em></span><small>{points}/100 · {activity.label}</small>{farmFriend && <small>会每天轮流来农场实际浇水、施肥或播种</small>}{bestFriend && <small>更常邀请旅行 · 主动帮助 · 挚友纪念奖励</small>}</div>
@@ -7549,9 +7686,10 @@ export default function FarmGame() {
                     <div className="wish-progress-line"><span>{wishDefinition.firstLabel}</span><b>{wishNumbers.first}/{wishDefinition.firstNeed}</b><i><em style={{ width: `${Math.min(100, wishNumbers.first / wishDefinition.firstNeed * 100)}%` }} /></i></div>
                     <div className="wish-progress-line"><span>{wishDefinition.secondLabel}</span><b>{wishNumbers.second}/{wishDefinition.secondNeed}</b><i><em style={{ width: `${Math.min(100, wishNumbers.second / wishDefinition.secondNeed * 100)}%` }} /></i></div>
                     <small>共同观察 {Math.min(2, wishNumbers.days)}/2 天 · 不能一天完成</small>
-                    <button className={wishReady ? "wish-ready-button" : ""} onClick={() => { if (wishReady) { setJournalOpen(false); setMessage(`愿望行动都完成了。现在要亲自找到${name}：${wishDefinition.finalPlace}。`); } else setMessage(`还不能收尾：继续亲手完成进度，并让记录跨过至少两个游戏日。`); }}>{wishReady ? `去找${name}完成最后一步` : "查看还差什么"}</button>
+                    <div className="wish-final-recipe"><strong>最后一起制作：{wishDefinition.finalProduct}</strong><span>{wishCostEntries(wishDefinition).map(([material, amount]) => <em key={`${name}-${material}`} className={game[material] >= amount ? "enough" : "missing"}>{WISH_MATERIAL_INFO[material]} {game[material]}/{amount}</em>)}</span><small>{wishDefinition.finalPlace}</small></div>
+                    <button className={wishReady ? "wish-ready-button" : ""} onClick={() => { if (wishReady) { setJournalOpen(false); setMessage(`全部准备好了。亲自找到${name}，点击本人，再点“交付愿望材料”。`); } else if (wishObjectivesReady) setMessage(`调查完成了，但合成材料还没有齐：需要${wishCostText(wishDefinition)}。`); else setMessage("还不能收尾：继续亲手完成两段行动，并让记录跨过至少两个游戏日。"); }}>{wishReady ? `去找${name} · 当面交付` : wishObjectivesReady ? "调查完成 · 继续准备材料" : "查看还差什么"}</button>
                   </>}
-                  {wish?.completed && <div className="wish-finished"><b>愿望已实现 ✓</b><span>你们花了几天亲手完成，获得 180 金币与 25 好感。</span></div>}
+                  {wish?.completed && <div className="wish-finished"><b>愿望已实现 ✓</b><span>你们花了几天亲手完成，获得 260 金币与 30 好感。</span></div>}
                 </section>
               </article>;
             })}</div>}
@@ -7728,7 +7866,7 @@ export default function FarmGame() {
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "mysteryRoad" ? "▤" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
             {residentSpeech && <div className={`resident-speech-card ${speakingPerson === residentSpeech.person ? "resident-is-speaking" : ""}`} role="status" aria-live="polite" onClick={(event) => event.stopPropagation()}>
               <span className="resident-speech-portrait" style={personClothesStyle(residentSpeech.person)} aria-hidden="true"><i /><b /></span>
-              <p><strong>{residentSpeech.person}</strong><span>{residentSpeech.text}</span>{relationshipPeople.includes(residentSpeech.person) && <button className="resident-speech-wish" onClick={() => { if (!game.residentWishes[residentSpeech.person]) startResidentWish(residentSpeech.person); setJournalTab("friends"); setJournalOpen(true); setResidentSpeech(null); }}>{game.residentWishes[residentSpeech.person]?.completed ? "心愿已经一起实现 ✓" : game.residentWishes[residentSpeech.person] ? "打开日记查看心愿进度" : `听听${residentSpeech.person}的心愿`}</button>}</p>
+              <p><strong>{residentSpeech.person}</strong><span>{residentSpeech.text}</span>{relationshipPeople.includes(residentSpeech.person) && <span className="resident-speech-actions">{speakingWishProgress && !speakingWishProgress.completed && <button className={speakingWishCanSubmit ? "resident-speech-submit-wish ready" : "resident-speech-submit-wish"} onClick={() => finishResidentWish(residentSpeech.person)}>交付愿望材料{speakingWishCanSubmit ? " ✓" : ""}</button>}<button className="resident-speech-wish" onClick={() => { if (!game.residentWishes[residentSpeech.person]) startResidentWish(residentSpeech.person); setJournalTab("friends"); setJournalOpen(true); setResidentSpeech(null); }}>{game.residentWishes[residentSpeech.person]?.completed ? "心愿已经一起实现 ✓" : game.residentWishes[residentSpeech.person] ? "打开日记查看详细进度" : `听听${residentSpeech.person}的心愿`}</button></span>}</p>
               <button onClick={() => setResidentSpeech(null)} aria-label="收起居民对话">×</button>
             </div>}
             {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /><i className="dream-backward-birds" /><i className="dream-long-shadow" /><i className="dream-floating-light" /><i className="dream-pale-animal" /><i className="dream-cookie-rain" /><i className="dream-dancing-crops" /><i className="dream-bubble-fish" /><i className="dream-tiny-footprints" /><i className="dream-pond-stars" /><i className="dream-winking-window" /><i className="dream-walking-scarecrow" /><i className="dream-grass-train" /><i className="dream-floating-sheep" /><i className="dream-rainbow-rain" /><i className="dream-twin-moons" /></div>}
