@@ -1310,6 +1310,7 @@ export default function FarmGame() {
   const [inspectedItem, setInspectedItem] = useState<string | null>(null);
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
   const [soundOn, setSoundOn] = useState(true);
+  const [speakingPerson, setSpeakingPerson] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [transferringSave, setTransferringSave] = useState(false);
   const [splitScreen, setSplitScreen] = useState(false);
@@ -1330,6 +1331,7 @@ export default function FarmGame() {
   const matchesClickTimerRef = useRef<number | null>(null);
   const woolClickTimerRef = useRef<number | null>(null);
   const animalProductClickTimerRef = useRef<number | null>(null);
+  const speechVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const walkTimerRef = useRef<number | null>(null);
   const farmEdgeTravelTimerRef = useRef<number | null>(null);
   const farmActionTimerRef = useRef<number | null>(null);
@@ -2302,6 +2304,26 @@ export default function FarmGame() {
     return () => window.removeEventListener("message", handleSplitMove);
   }, [embeddedMode, move]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const naturalVoiceScore = (voice: SpeechSynthesisVoice) => {
+      const name = voice.name.toLowerCase();
+      let score = voice.localService ? 8 : 3;
+      if (voice.lang.toLowerCase() === "zh-cn") score += 5;
+      if (/premium|enhanced|natural|neural|siri|xiaoxiao|yunxi|yunyang|tingting|mei-jia|sin-ji/.test(name)) score += 24;
+      if (/compact|basic|novelty/.test(name)) score -= 20;
+      return score;
+    };
+    const refreshVoices = () => {
+      speechVoicesRef.current = window.speechSynthesis.getVoices()
+        .filter((voice) => voice.lang.toLowerCase().startsWith("zh"))
+        .sort((first, second) => naturalVoiceScore(second) - naturalVoiceScore(first));
+    };
+    refreshVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", refreshVoices);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", refreshVoices);
+  }, []);
+
   const playTone = (frequency = 420) => {
     if (!soundOn) return;
     try {
@@ -2323,23 +2345,24 @@ export default function FarmGame() {
 
   const voiceProfileFor = (person: string) => {
     const code = [...person].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), 0);
-    const voices = typeof window !== "undefined" && "speechSynthesis" in window
-      ? window.speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().startsWith("zh"))
-      : [];
+    const voices = speechVoicesRef.current;
+    const younger = (YOUNG_FRIENDS as readonly string[]).includes(person) || person === "安安";
     return {
-      voice: voices.length ? voices[code % voices.length] : null,
-      rate: .84 + (code % 5) * .035,
-      pitch: .86 + (code % 7) * .055,
+      voice: voices.length ? voices[code % Math.min(voices.length, 6)] : null,
+      rate: (younger ? .98 : .93) + (code % 4) * .012,
+      pitch: (younger ? 1.04 : .97) + (code % 4) * .012,
     };
   };
 
   const speakResident = (person: string, text: string) => {
     if (!soundOn || typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    const spokenText = text
-      .replace(new RegExp(`^${person}[：:]`), "")
+    const quotedSpeech = [...text.matchAll(/“([^”]+)”/g)].map((match) => match[1]).join("，");
+    const spokenText = (quotedSpeech || text.replace(new RegExp(`^${person}[：:]`), ""))
       .replace(/[“”]/g, "")
       .replace(/\s+/g, " ")
-      .trim();
+      .replace(/([。！？])(?=\S)/g, "$1 ")
+      .trim()
+      .slice(0, 92);
     if (!spokenText) return;
     try {
       const profile = voiceProfileFor(person);
@@ -2348,8 +2371,12 @@ export default function FarmGame() {
       utterance.voice = profile.voice;
       utterance.rate = profile.rate;
       utterance.pitch = profile.pitch;
-      utterance.volume = .9;
+      utterance.volume = .94;
+      utterance.onstart = () => setSpeakingPerson(person);
+      utterance.onend = () => setSpeakingPerson((current) => current === person ? null : current);
+      utterance.onerror = () => setSpeakingPerson((current) => current === person ? null : current);
       window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
     } catch {
       // Voice playback is an enhancement; dialogue text remains visible.
@@ -2392,15 +2419,18 @@ export default function FarmGame() {
     if (!soundOn || typeof window === "undefined" || !("speechSynthesis" in window)) return;
     try {
       const speakerNames = BIRTHDAY_GUESTS.filter((name) => name !== person).slice(0, 4);
+      const wishes = [`${person}，祝你生日快乐！`, "生日快乐！", "祝你天天开心！", "大家一起唱起来！"];
       window.speechSynthesis.cancel();
       speakerNames.forEach((name, index) => {
         const profile = voiceProfileFor(name);
-        const utterance = new SpeechSynthesisUtterance(`${person}，祝你生日快乐！`);
+        const utterance = new SpeechSynthesisUtterance(wishes[index]);
         utterance.lang = profile.voice?.lang ?? "zh-CN";
         utterance.voice = profile.voice;
-        utterance.rate = .82 + index * .035;
+        utterance.rate = .94 + index * .012;
         utterance.pitch = profile.pitch;
-        utterance.volume = .78;
+        utterance.volume = .88;
+        utterance.onstart = () => setSpeakingPerson(name);
+        utterance.onend = () => setSpeakingPerson((current) => current === name ? null : current);
         window.speechSynthesis.speak(utterance);
       });
     } catch {
@@ -2409,7 +2439,10 @@ export default function FarmGame() {
   };
 
   const toggleSound = () => {
-    if (soundOn && typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    if (soundOn && typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      setSpeakingPerson(null);
+    }
     setSoundOn((value) => !value);
   };
 
@@ -5475,11 +5508,15 @@ export default function FarmGame() {
     const petCareMessage = !game.pets.length ? "" : !allPetsFed ? ` 宠物粮不够了：${game.pets.length} 只宠物每晚需要 ${game.pets.length} 份粮，可以去远方新区商场买平价宠物粮。` : ` 宠物们睡前吃掉了 ${game.pets.length} 份粮。${featherGain ? `留下 ${featherGain} 根羽毛；` : ""}${softFurGain ? `兔子留下 ${softFurGain} 团软毛；` : ""}${petFishGain ? `猫带回 ${petFishGain} 条鱼；` : ""}${petCoinGain ? `狗找到 ${petCoinGain} 金币；` : ""}${petSeedGain ? `仓鼠翻出 ${petSeedGain} 颗萝卜种子；` : ""}`;
     const petHealthMessage = newlySickPet ? ` ${PET_CATALOG.find((pet) => pet.id === newlySickPet.type)?.name}今天生病了，颜色变灰、眼睛垂下来。可以用药材治疗或带去新区宠物医院。` : "";
     const rarePetMessage = newlyMissingPet ? ` 很少见的小意外发生了：${PET_CATALOG.find((pet) => pet.id === newlyMissingPet.type)?.name}跑进青禾山洞里躲着吃东西，去山洞找到它并抱回来吧。` : chickTreasure ? ` 小鸡隔了很久出去探险，今天叼回了${chickTreasure === "bone" ? "一块小骨头" : chickTreasure === "wood" ? "两块木头" : "三份宠物粮"}！` : "";
-    const helperCandidates = YOUNG_FRIENDS.filter((name) => (game.friendship[name] ?? 0) >= 20);
-    const farmHelperToday = helperCandidates.length > 0 && nextAbsoluteDay % 2 === 0 ? helperCandidates[nextAbsoluteDay % helperCandidates.length] : null;
+    const helperCandidates = [...YOUNG_FRIENDS];
+    const farmHelperToday = helperCandidates[nextAbsoluteDay % helperCandidates.length];
     const helperPlantIndexes = farmHelperToday ? game.tiles.map((tile, index) => tile.state === "soil" ? index : -1).filter((index) => index >= 0).slice(0, Math.min(2, game.seeds)) : [];
     const helperWaterIndexes = farmHelperToday ? game.tiles.map((tile, index) => tile.state === "crop" && index !== eatenCropIndex && index !== lightningCropIndex ? index : -1).filter((index) => index >= 0).slice(0, 6) : [];
-    const farmHelperMessage = farmHelperToday ? ` ${farmHelperToday}清早轮流来帮忙，给 ${helperWaterIndexes.length} 株作物浇了水${helperPlantIndexes.length ? `，还播下了 ${helperPlantIndexes.length} 颗萝卜种子` : ""}。本人会留在农场边等你说话。` : "";
+    const helperGiftSeeds = farmHelperToday && helperPlantIndexes.length === 0 && helperWaterIndexes.length === 0 ? 2 : 0;
+    const farmHelperMessage = farmHelperToday ? helperWaterIndexes.length || helperPlantIndexes.length
+      ? ` ${farmHelperToday}清早轮流来帮忙，给 ${helperWaterIndexes.length} 株作物浇水施肥${helperPlantIndexes.length ? `，还亲手播下了 ${helperPlantIndexes.length} 颗萝卜种子` : ""}。这些变化已经真实留在田里。`
+      : ` ${farmHelperToday}清早来帮忙，但田里暂时没有能浇或能播的地，于是整理了农具，并留下 2 颗萝卜种子。`
+      : "";
     const morningNews = dailyNewsForState({
       ...game,
       year: nextYear,
@@ -5585,7 +5622,7 @@ export default function FarmGame() {
         softFur: current.softFur + softFurGain,
         petBones: current.petBones + (chickTreasure === "bone" ? 1 : 0),
         wood: current.wood + (chickTreasure === "wood" ? 2 : 0),
-        seeds: Math.max(0, current.seeds - helperPlantIndexes.length) + petSeedGain,
+        seeds: Math.max(0, current.seeds - helperPlantIndexes.length) + petSeedGain + helperGiftSeeds,
         inventory: { ...current.inventory, fish: current.inventory.fish + petFishGain },
         coins: current.coins + shippedEarnings + petCoinGain,
         sickPetIds: newlySickPet && !current.sickPetIds.includes(newlySickPet.id) ? [...current.sickPetIds, newlySickPet.id] : current.sickPetIds,
@@ -7504,7 +7541,7 @@ export default function FarmGame() {
               const wishReady = Boolean(wish && wishNumbers && !wish.completed && wishNumbers.first >= wishDefinition.firstNeed && wishNumbers.second >= wishDefinition.secondNeed && wishNumbers.days >= 2);
               return <article key={name} className={`${bestFriend ? "best-friend" : ""} ${wish?.completed ? "wish-completed" : wish ? "wish-active" : ""}`} style={personClothesStyle(name)}>
                 <div className="friend-portrait"><i /><b /></div>
-                <div className="friend-summary"><strong>{name}{bestFriend && <em className="best-friend-badge">挚友</em>}</strong><span className="heart-row">{"♥".repeat(hearts)}<em>{"♡".repeat(5 - hearts)}</em></span><small>{points}/100 · {activity.label}</small>{farmFriend && <small>{points >= 20 ? "已经会轮流来农场帮忙浇水、播种" : "达到 20 好感后会加入轮流农场帮助"}</small>}{bestFriend && <small>更常邀请旅行 · 主动帮助 · 挚友纪念奖励</small>}</div>
+                <div className="friend-summary"><strong>{name}{bestFriend && <em className="best-friend-badge">挚友</em>}</strong><span className="heart-row">{"♥".repeat(hearts)}<em>{"♡".repeat(5 - hearts)}</em></span><small>{points}/100 · {activity.label}</small>{farmFriend && <small>会每天轮流来农场实际浇水、施肥或播种</small>}{bestFriend && <small>更常邀请旅行 · 主动帮助 · 挚友纪念奖励</small>}</div>
                 <section className="resident-wish-card">
                   <header><span>心愿</span><strong>{wishDefinition.title}</strong></header>
                   {!wish && <><p>{wishDefinition.story}</p><button onClick={() => startResidentWish(name)}>认真听听愿望</button></>}
@@ -7689,7 +7726,7 @@ export default function FarmGame() {
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
           <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "mysteryRoad" ? "mystery-road-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${displaySeason} weather-world-${game.weather} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome || friendHomeOpen || mallOpen ? "interior-open" : ""} ${playingWithAnan ? "playing-with-anan" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "mysteryRoad" ? "▤" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
-            {residentSpeech && <div className="resident-speech-card" role="status" aria-live="polite" onClick={(event) => event.stopPropagation()}>
+            {residentSpeech && <div className={`resident-speech-card ${speakingPerson === residentSpeech.person ? "resident-is-speaking" : ""}`} role="status" aria-live="polite" onClick={(event) => event.stopPropagation()}>
               <span className="resident-speech-portrait" style={personClothesStyle(residentSpeech.person)} aria-hidden="true"><i /><b /></span>
               <p><strong>{residentSpeech.person}</strong><span>{residentSpeech.text}</span>{relationshipPeople.includes(residentSpeech.person) && <button className="resident-speech-wish" onClick={() => { if (!game.residentWishes[residentSpeech.person]) startResidentWish(residentSpeech.person); setJournalTab("friends"); setJournalOpen(true); setResidentSpeech(null); }}>{game.residentWishes[residentSpeech.person]?.completed ? "心愿已经一起实现 ✓" : game.residentWishes[residentSpeech.person] ? "打开日记查看心愿进度" : `听听${residentSpeech.person}的心愿`}</button>}</p>
               <button onClick={() => setResidentSpeech(null)} aria-label="收起居民对话">×</button>
@@ -7718,7 +7755,7 @@ export default function FarmGame() {
                 {fishingPhase === "reeling" && <div className="fishing-challenge" onClick={(event) => event.stopPropagation()}><header><span>提竿小游戏</span><b>{fishingScore}/3</b></header><p>等红色游标进入绿色区域时，点击提竿！</p><div className="fishing-timing-bar"><i className={game.toolUpgrades.rod ? "lucky-zone" : ""} /><b ref={fishingMarkerElementRef} style={{ left: "4%" }} /></div><button onClick={attemptReel}>提竿！</button><small>{game.toolUpgrades.rod ? "幸运鱼竿：咬钩更快，成功区域更宽" : "连续命中 3 次才能把鱼钓上来"}</small></div>}
                 {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节并不断挥竿钓鱼的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} fishing-villager fishing-villager-${index + 1} ${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：提竿时要咬紧牙用力拉！有时也会钓到石头、袜子或饮料。`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><em className="festival-fishing-rod" /><u className="fishing-effort-mouth" /><u className="festival-caught-fish" /><u className="festival-surprise-catch" /><span>{name}<small>等待鱼儿咬钩</small></span></button>)}</div>}
                 {isBirthday && <div className="birthday-farm-friends" aria-label="在生日当天跑到菜地和农场玩耍的朋友">{BIRTHDAY_GUESTS.slice(0, 6).map((name, index) => <button key={`farm-party-${name}`} style={personClothesStyle(name)} className={`birthday-field-friend field-friend-${index + 1} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：我们从农舍跑到菜地边玩啦，一会儿再回去吃生日蛋糕！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div>}
-                {game.farmHelperToday && <button className="farm-helper-friend" style={personClothesStyle(game.farmHelperToday)} onClick={(event) => { event.stopPropagation(); interactWithPerson(game.farmHelperToday!, `${game.farmHelperToday}：我今天轮到来帮忙啦！浇过的地颜色更深，新播下的种子也在田里。`); }} aria-label={`和今天来农场帮忙的${game.farmHelperToday}说话`}><i /><b /><span>{game.farmHelperToday}<small>今天轮流来帮农活</small></span></button>}
+                {game.farmHelperToday && <button className="farm-helper-friend" style={personClothesStyle(game.farmHelperToday)} onClick={(event) => { event.stopPropagation(); interactWithPerson(game.farmHelperToday!, `${game.farmHelperToday}：我今天真的干过活啦！有作物时我会浇水施肥，有空地和种子时我会播种；如果田里没活，我就整理农具并留下种子。`, true); }} aria-label={`和今天来农场帮忙的${game.farmHelperToday}说话`}><i /><b /><span>{game.farmHelperToday}<small>今天的帮助已经生效</small></span></button>}
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${game.upgrades.secondFloor ? "has-second-floor" : ""} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setHouseFloor(1); setUpstairsRoom(null); setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" />{game.upgrades.secondFloor > 0 && <><span className="upper-window upper-window-left" /><span className="upper-window upper-window-right" /></>}<span className="sign">{displayName}的农舍{game.upgrades.secondFloor ? " · 两层" : game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
                 <button className={`crafted-object crafted-chest home-storage-chest ${selectedResource ? "ready-to-store" : ""}`} onClick={() => { if (selected === "axe") { setMessage("这是农舍旁边固定的收纳木箱，不会被斧头拆掉。 "); return; } useChest(); }} aria-label={`农舍旁的木箱，内有 ${Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)} 件物品`}><i /><b>{Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)}</b></button>
                 <button className="home-shipping-bin" onClick={() => { setShippingBinOpen(true); setMessage("打开大号售卖箱。单击物品放进去，睡到第二天就会卖掉换成金币。 "); }} aria-label={`农舍旁的大号售卖箱，已有 ${Object.values(game.shippingBin).reduce((sum, count) => sum + count, 0)} 件待售物品`}><i /><i /><b>{Object.values(game.shippingBin).reduce((sum, count) => sum + count, 0)}</b><span>大号售卖箱</span></button>
