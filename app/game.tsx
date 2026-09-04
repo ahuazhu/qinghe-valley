@@ -6,7 +6,7 @@ type Tool = "hoe" | "seed" | "water" | "hand" | "rod" | "axe" | "pickaxe";
 type TileState = "grass" | "soil" | "crop";
 type Scene = "farm" | "westFriendFarm" | "mysteryRoad" | "town" | "cultureDistrict" | "residentialDistrict" | "eastNeighbor" | "southNeighbor" | "northNeighbor";
 type NeighborScene = "eastNeighbor" | "southNeighbor" | "northNeighbor";
-type ResidentHomeOwner = "白医生" | "阿麦" | "周镇长" | "沈馆长" | "诊所助手" | "许老师";
+type ResidentHomeOwner = "白医生" | "阿麦" | "周镇长" | "沈馆长" | "诊所助手" | "许老师" | "小玲" | "豆豆" | "小满" | "阿禾" | "小芽" | "小石";
 type BuildingId = "farmhouse" | "supermarket" | "townhall" | "clinic" | "cafe" | "workshop" | "library" | "museum" | "school";
 type CropType = "radish" | "strawberry" | "corn" | "pineapple" | "watermelon" | "tomato" | "potato" | "pumpkin" | "blueberry";
 type StorableResource = CropType | "fish";
@@ -124,6 +124,7 @@ type GameState = {
   crafted: Record<CraftType, number>;
   placedCrafts: PlacedCraft[];
   farmVisitor: "crow" | "animal" | null;
+  farmHelperToday: string | null;
   upgrades: { house: number; land: number; field: number; storage: number; greenhouse: number; pond: number; stoneWall: number; secondFloor: number; upstairsKitchen: number; upstairsBathroom: number };
   builderSupplies: { wood: number; stone: number };
   equipment: { lampOn: boolean };
@@ -478,12 +479,15 @@ const PERSON_DIALOGUES: Record<string, string> = {
   豆豆: "豆豆：数学课算鱼获特别有趣，我已经会算今天钓了几条鱼。",
   小满: "小满：我喜欢四季课，夏天的西瓜和秋天的南瓜都很好看。",
   阿禾: "阿禾：英语里的 seed 是种子，我把这个单词记得最牢。",
+  小芽: "小芽：我在窗台养了三盆嫩芽，每天都会记下它们长高了多少。",
+  小石: "小石：我喜欢沿着溪边找圆石头，也愿意帮朋友给农田浇水。",
   安安: "安安：我住在农场西边，喜欢爬山、认路和在帐篷里看星星。有空一起去山洞探险吧！",
 };
-const SCHEDULED_RESIDENTS = ["林婶", "鲁师傅", "叶老师", "白医生", "阿麦", "周镇长", "沈馆长", "许老师"] as const;
+const YOUNG_FRIENDS = ["小玲", "豆豆", "小满", "阿禾", "小芽", "小石"] as const;
+const SCHEDULED_RESIDENTS = ["林婶", "鲁师傅", "叶老师", "白医生", "阿麦", "周镇长", "沈馆长", "许老师", ...YOUNG_FRIENDS] as const;
 const PERSON_CLOTHES: Record<string, string> = {
   林婶: "#b85c55", 鲁师傅: "#8a6848", 叶老师: "#77618e", 白医生: "#e8eee7", 阿麦: "#d68a45", 周镇长: "#526f91", 沈馆长: "#39766f", 诊所助手: "#c74646", 红衣助手: "#c74646", 许老师: "#4f7d66",
-  小玲: "#dc7081", 豆豆: "#5f83b5", 小满: "#e29b45", 阿禾: "#6e9d58", 安安: "#4d9c9a",
+  小玲: "#dc7081", 豆豆: "#5f83b5", 小满: "#e29b45", 阿禾: "#6e9d58", 小芽: "#bf71a1", 小石: "#4e8b9b", 安安: "#4d9c9a",
   小桃: "#d9798b", 阿木: "#6f8d58", 小文: "#6d79a9", 小麦: "#d8a144", 小程: "#5e88a5", 小岚: "#499184", 小晴: "#9a6fa6",
 };
 const FOREST_STORY_TITLES = ["褪色的老松树", "迷路的萤火种", "雨后倒下的鸟屋", "沉睡的森林小溪"] as const;
@@ -577,6 +581,13 @@ const residentActivity = (name: string, hour: number, day: number, weather: Weat
   const workplace: Scene = ["周镇长", "沈馆长", "许老师"].includes(name) ? "cultureDistrict" : "town";
   const home: Scene = name === "林婶" ? "eastNeighbor" : name === "鲁师傅" ? "southNeighbor" : name === "叶老师" ? "northNeighbor" : "residentialDistrict";
   const weekday = (day - 1) % 7;
+  if ((YOUNG_FRIENDS as readonly string[]).includes(name)) {
+    if (hour < 8) return { key: "home", label: "在自己的家里整理书包", scene: home };
+    if (hour < 10) return { key: "breakfast", label: "在麦香咖啡吃早饭、等朋友", scene: "town" };
+    if ([0, 2, 4, 6].includes(weekday) && hour < 15) return { key: "school", label: "在青禾学校坐在课桌前听课", scene: "cultureDistrict" };
+    if (hour < 19) return { key: "play", label: weekday % 2 ? "在农场边玩，也愿意帮忙干农活" : "在文化街和同学一起玩", scene: weekday % 2 ? "farm" : "cultureDistrict" };
+    return { key: "home", label: "回到自己的小屋休息", scene: home };
+  }
   if (hour < 8) return { key: "breakfast", label: "在自己的家里准备出门", scene: home };
   if (hour < 10) return { key: "breakfast", label: name === "阿麦" ? "在麦香咖啡准备大家的早餐" : "在麦香咖啡吃早饭", scene: "town" };
   if (weather === "rain" || weather === "thunder") {
@@ -624,6 +635,13 @@ const RESIDENT_WISH_DEFINITIONS: Record<string, ResidentWishDefinition> = {
   沈馆长: { title: "水土与生活小展览", story: "沈馆长想办一场能摸、能看的展览，需要水中发现和农场样品共同讲故事。", firstLabel: "再钓到 4 件水中发现", firstNeed: 4, firstMetric: (state) => state.fishCaught, secondLabel: "再收获 5 份农场样品", secondNeed: 5, secondMetric: (state) => state.harvested, finalPlace: "到博物馆和沈馆长亲手布置展柜" },
   许老师: { title: "一堂真正的农场课", story: "许老师想让全班亲眼看见种子到收获的变化，要小禾帮忙记录完整过程。", firstLabel: "再播种 5 次课堂样本", firstNeed: 5, firstMetric: (state) => state.planted, secondLabel: "再收获 5 份成熟样本", secondNeed: 5, secondMetric: (state) => state.harvested, finalPlace: "去学校和许老师摆好课堂标本" },
   安安: { title: "林边秘密探险册", story: "安安想把不会出现在地图上的小路画进一本探险册，要一起观察树苗和水边。", firstLabel: "再种下 2 棵松果树苗", firstNeed: 2, firstMetric: (state) => state.plantedTrees.length, secondLabel: "再钓到 3 件水边线索", secondNeed: 3, secondMetric: (state) => state.fishCaught, finalPlace: "到安安的小农场一起装订探险册" },
+  诊所助手: { title: "会自己归位的护理箱", story: "诊所助手想按真实使用顺序整理护理箱，需要记录农活后的身体变化。", firstLabel: "再完成 6 次浇水劳动", firstNeed: 6, firstMetric: (state) => state.wateredCount, secondLabel: "再收获 4 份补充体力的食材", secondNeed: 4, secondMetric: (state) => state.harvested, finalPlace: "去诊所和助手按顺序装好护理箱" },
+  小玲: { title: "会开花的小作文", story: "小玲想把每天亲眼看见的幼苗变化写进作文，不能照着旧课本抄。", firstLabel: "再播种 5 颗观察种子", firstNeed: 5, firstMetric: (state) => state.planted, secondLabel: "再完成 7 次成长浇水", secondNeed: 7, secondMetric: (state) => state.wateredCount, finalPlace: "找到小玲，一起给作文画上最后一朵花" },
+  豆豆: { title: "池塘里的数字秘密", story: "豆豆想知道不同日子钓到的东西为什么不一样，需要把鱼获逐天记下来。", firstLabel: "再钓到 4 件水中发现", firstNeed: 4, firstMetric: (state) => state.fishCaught, secondLabel: "再完成 2 份邻居委托", secondNeed: 2, secondMetric: (state) => state.residentQuestCompletions.length, finalPlace: "找到豆豆，一起把鱼获数字画成图表" },
+  小满: { title: "四季种子玻璃瓶", story: "小满想在瓶里留下不同作物成长的痕迹，每一份都要小禾真正种过。", firstLabel: "再播种 6 颗种子", firstNeed: 6, firstMetric: (state) => state.planted, secondLabel: "再收获 5 份成熟作物", secondNeed: 5, secondMetric: (state) => state.harvested, finalPlace: "找到小满，一起把四季标签系到瓶子上" },
+  阿禾: { title: "能摸到的农场单词书", story: "阿禾想让每个英文单词旁边都有真正对应的农场发现。", firstLabel: "再播种 4 颗 seed", firstNeed: 4, firstMetric: (state) => state.planted, secondLabel: "再钓到 3 条 fish", secondNeed: 3, secondMetric: (state) => state.fishCaught, finalPlace: "找到阿禾，一起把实物贴进单词书" },
+  小芽: { title: "幼苗身高尺", story: "小芽想做一把能记录幼苗每天变化的尺子，要耐心照料而不是一天完成。", firstLabel: "再播种 5 株幼苗", firstNeed: 5, firstMetric: (state) => state.planted, secondLabel: "再完成 9 次浇水记录", secondNeed: 9, secondMetric: (state) => state.wateredCount, finalPlace: "找到小芽，一起给身高尺刻上最后一道线" },
+  小石: { title: "溪石与水流路线", story: "小石想用圆石排出溪水真正走过的路线，需要比较水边发现和农田水量。", firstLabel: "再钓到 3 件溪水发现", firstNeed: 3, firstMetric: (state) => state.fishCaught, secondLabel: "再完成 7 次农田浇水", secondNeed: 7, secondMetric: (state) => state.wateredCount, finalPlace: "找到小石，一起在院子里排好溪石路线" },
 };
 
 const residentWishDefinition = (name: string): ResidentWishDefinition => RESIDENT_WISH_DEFINITIONS[name] ?? {
@@ -839,6 +857,12 @@ const NPC_SICK_DAYS: Record<string, number[]> = {
   沈馆长: [15],
   诊所助手: [14],
   许老师: [21],
+  小玲: [9],
+  豆豆: [18],
+  小满: [24],
+  阿禾: [12],
+  小芽: [6],
+  小石: [27],
 };
 const RELIEF_WORKERS: Record<string, { name: string; greeting: string }> = {
   林婶: { name: "小桃", greeting: "林婶今天在家休息，我来替她照看超市。平时我就和林婶住在果园小屋里。" },
@@ -857,6 +881,12 @@ const RESIDENT_HOMES: { owner: ResidentHomeOwner; home: string; greeting: string
   { owner: "沈馆长", home: "沈馆长的藏品小宅", greeting: "我把复制品放在家里研究，真正的珍品仍会留在博物馆展柜。", items: ["放大镜桌", "标本柜", "棕色床铺"] },
   { owner: "诊所助手", home: "诊所助手的红瓦小屋", greeting: "平时我住在这里，白医生需要休息时，我就穿上红色制服去诊所代班。", items: ["红色制服", "护理笔记", "暖黄床铺"] },
   { owner: "许老师", home: "许老师的书香小院", greeting: "放学后我会回到这里备课，书架上放着下一节农场知识课的笔记。", items: ["备课书桌", "字母卡片", "绿色床铺"] },
+  { owner: "小玲", home: "小玲的花窗小屋", greeting: "欢迎来我家！窗台上的花和语文作文本都可以看。", items: ["花朵作文", "彩笔盒", "粉色小床"] },
+  { owner: "豆豆", home: "豆豆的蓝顶小屋", greeting: "我把每天的鱼获数量都写在小黑板上，算起来可有意思了。", items: ["数字黑板", "鱼形闹钟", "蓝色小床"] },
+  { owner: "小满", home: "小满的四季小屋", greeting: "屋里每个架子代表一个季节，我正在收集四季的叶子。", items: ["四季叶册", "种子玻璃瓶", "橙色小床"] },
+  { owner: "阿禾", home: "阿禾的绿芽小屋", greeting: "进来坐吧！我在墙上贴了很多农场英文单词。", items: ["单词卡墙", "嫩芽花盆", "绿色小床"] },
+  { owner: "小芽", home: "小芽的紫花小屋", greeting: "我的窗台每天都有新芽冒出来，浇水时我可以叫上你。", items: ["幼苗尺", "紫花窗帘", "软绒小床"] },
+  { owner: "小石", home: "小石的溪石小屋", greeting: "门口的圆石头不会挡路，我把最好看的几块摆在书架上了。", items: ["溪石收藏", "小水壶", "青蓝小床"] },
 ];
 type ReturnGift = { kind: "seed"; field: SeedField; amount: number; name: string } | { kind: "material"; field: "wood" | "stone"; amount: number; name: string } | { kind: "energy"; amount: number; name: string } | { kind: "coins"; amount: number; name: string };
 const PERSON_RETURN_GIFTS: Record<string, ReturnGift> = {
@@ -868,6 +898,12 @@ const PERSON_RETURN_GIFTS: Record<string, ReturnGift> = {
   周镇长: { kind: "coins", amount: 25, name: "25 枚感谢金币" },
   诊所助手: { kind: "energy", amount: 12, name: "一杯护理草药茶" },
   许老师: { kind: "coins", amount: 30, name: "30 枚学习奖励金币" },
+  小玲: { kind: "seed", field: "strawberrySeeds", amount: 2, name: "2 颗草莓种子" },
+  豆豆: { kind: "seed", field: "cornSeeds", amount: 2, name: "2 颗玉米种子" },
+  小满: { kind: "seed", field: "pumpkinSeeds", amount: 2, name: "2 颗南瓜种子" },
+  阿禾: { kind: "seed", field: "seeds", amount: 3, name: "3 颗萝卜种子" },
+  小芽: { kind: "seed", field: "tomatoSeeds", amount: 2, name: "2 颗番茄种子" },
+  小石: { kind: "material", field: "stone", amount: 2, name: "2 块圆润石材" },
 };
 
 const DAILY_WOODCRAFTS = [
@@ -959,6 +995,7 @@ const makeNewGame = (): GameState => ({
   crafted: { chest: 0, fence: 0, gate: 0, scarecrow: 0, lamp: 0, bench: 0, sign: 0, table: 0, floorLamp: 0, television: 0, sofa: 0, bookshelf: 0, dresser: 0, nightstand: 0, matches: 0, blanket: 0 },
   placedCrafts: [],
   farmVisitor: null,
+  farmHelperToday: null,
   upgrades: { house: 0, land: 0, field: 0, storage: 0, greenhouse: 0, pond: 0, stoneWall: 0, secondFloor: 0, upstairsKitchen: 0, upstairsBathroom: 0 },
   builderSupplies: { wood: 0, stone: 0 },
   equipment: { lampOn: false },
@@ -1077,6 +1114,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       caveDiamondSpots: parsed.caveDiamondSpots?.length === 3 ? parsed.caveDiamondSpots : defaults.caveDiamondSpots,
       crafted: { ...defaults.crafted, ...(parsed.crafted ?? {}) },
       placedCrafts: parsed.placedCrafts ?? [],
+      farmHelperToday: parsed.farmHelperToday ?? null,
       upgrades: { ...defaults.upgrades, ...(parsed.upgrades ?? {}) },
       builderSupplies: { ...defaults.builderSupplies, ...(parsed.builderSupplies ?? {}) },
       equipment: { ...defaults.equipment, ...(parsed.equipment ?? {}) },
@@ -1383,6 +1421,7 @@ export default function FarmGame() {
             caveDiamondSpots: parsed.caveDiamondSpots?.length === 3 ? parsed.caveDiamondSpots : defaults.caveDiamondSpots,
             crafted: { ...defaults.crafted, ...(parsed.crafted ?? {}) },
             placedCrafts: parsed.placedCrafts ?? [],
+            farmHelperToday: parsed.farmHelperToday ?? null,
             farmVisitor: parsed.farmVisitor ?? null,
             upgrades: { ...defaults.upgrades, ...(parsed.upgrades ?? {}) },
             builderSupplies: { ...defaults.builderSupplies, ...(parsed.builderSupplies ?? {}) },
@@ -1581,6 +1620,7 @@ export default function FarmGame() {
           treatmentBaths: data.save.treatmentBaths ?? {},
           daily: { ...defaults.daily, ...(data.save.daily ?? {}) },
           caveDiamondStates: defaults.caveDiamondStates.map((standing, index) => data.save.caveDiamondStates?.[index] ?? standing),
+          farmHelperToday: data.save.farmHelperToday ?? null,
           caveDiamondSpots: data.save.caveDiamondSpots?.length === 3 ? data.save.caveDiamondSpots : defaults.caveDiamondSpots,
           lanternRiddlesSolved: data.save.lanternRiddlesSolved ?? [],
           festivalActivitiesCompleted: data.save.festivalActivitiesCompleted ?? [],
@@ -2279,6 +2319,98 @@ export default function FarmGame() {
     } catch {
       // Sound is an optional enhancement.
     }
+  };
+
+  const voiceProfileFor = (person: string) => {
+    const code = [...person].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), 0);
+    const voices = typeof window !== "undefined" && "speechSynthesis" in window
+      ? window.speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().startsWith("zh"))
+      : [];
+    return {
+      voice: voices.length ? voices[code % voices.length] : null,
+      rate: .84 + (code % 5) * .035,
+      pitch: .86 + (code % 7) * .055,
+    };
+  };
+
+  const speakResident = (person: string, text: string) => {
+    if (!soundOn || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const spokenText = text
+      .replace(new RegExp(`^${person}[：:]`), "")
+      .replace(/[“”]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!spokenText) return;
+    try {
+      const profile = voiceProfileFor(person);
+      const utterance = new SpeechSynthesisUtterance(spokenText);
+      utterance.lang = profile.voice?.lang ?? "zh-CN";
+      utterance.voice = profile.voice;
+      utterance.rate = profile.rate;
+      utterance.pitch = profile.pitch;
+      utterance.volume = .9;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      // Voice playback is an enhancement; dialogue text remains visible.
+    }
+  };
+
+  const playBirthdayChoirNote = (noteIndex: number) => {
+    if (!soundOn) return;
+    const melody = [523.25, 523.25, 587.33, 523.25];
+    try {
+      const context = new window.AudioContext();
+      const now = context.currentTime;
+      const master = context.createGain();
+      master.gain.setValueAtTime(.0001, now);
+      master.gain.exponentialRampToValueAtTime(.11, now + .035);
+      master.gain.exponentialRampToValueAtTime(.0001, now + .58);
+      master.connect(context.destination);
+      [-13, -6, 0, 7, 12].forEach((detune, singerIndex) => {
+        const oscillator = context.createOscillator();
+        const singerGain = context.createGain();
+        const warmth = context.createBiquadFilter();
+        oscillator.type = singerIndex % 2 ? "sine" : "triangle";
+        oscillator.frequency.value = melody[noteIndex % melody.length] * (singerIndex >= 3 ? 1.25 : singerIndex === 0 ? .75 : 1);
+        oscillator.detune.value = detune;
+        warmth.type = "bandpass";
+        warmth.frequency.value = 720 + singerIndex * 115;
+        warmth.Q.value = .65;
+        singerGain.gain.value = .22;
+        oscillator.connect(warmth).connect(singerGain).connect(master);
+        oscillator.start(now + singerIndex * .008);
+        oscillator.stop(now + .6);
+      });
+      window.setTimeout(() => void context.close(), 750);
+    } catch {
+      playTone(620 + noteIndex * 60);
+    }
+  };
+
+  const speakBirthdayChorus = (person: string) => {
+    if (!soundOn || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    try {
+      const speakerNames = BIRTHDAY_GUESTS.filter((name) => name !== person).slice(0, 4);
+      window.speechSynthesis.cancel();
+      speakerNames.forEach((name, index) => {
+        const profile = voiceProfileFor(name);
+        const utterance = new SpeechSynthesisUtterance(`${person}，祝你生日快乐！`);
+        utterance.lang = profile.voice?.lang ?? "zh-CN";
+        utterance.voice = profile.voice;
+        utterance.rate = .82 + index * .035;
+        utterance.pitch = profile.pitch;
+        utterance.volume = .78;
+        window.speechSynthesis.speak(utterance);
+      });
+    } catch {
+      // The layered Web Audio choir still plays when speech synthesis is unavailable.
+    }
+  };
+
+  const toggleSound = () => {
+    if (soundOn && typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    setSoundOn((value) => !value);
   };
 
   useEffect(() => {
@@ -3171,16 +3303,73 @@ export default function FarmGame() {
     playTone(780);
   };
 
+  const currentAbsoluteDay = () => (game.year - 1) * 112 + game.season * 28 + game.day;
+
+  const wishProgressNumbers = (state: GameState, person: string, progress: ResidentWishProgress) => {
+    const definition = residentWishDefinition(person);
+    return {
+      first: Math.min(definition.firstNeed, Math.max(0, definition.firstMetric(state) - progress.firstBaseline)),
+      second: Math.min(definition.secondNeed, Math.max(0, definition.secondMetric(state) - progress.secondBaseline)),
+      days: Math.max(0, (state.year - 1) * 112 + state.season * 28 + state.day - progress.startedDay),
+    };
+  };
+
+  const startResidentWish = (person: string) => {
+    const existing = game.residentWishes[person];
+    const definition = residentWishDefinition(person);
+    if (existing?.completed) {
+      setMessage(`${person}的愿望“${definition.title}”已经和你一起实现了。`);
+      return;
+    }
+    if (existing) {
+      setMessage(`${person}的愿望已经记在日记里了。它需要真实播种、浇水、收获或探索，还要经过至少两个游戏日。`);
+      return;
+    }
+    setGame((current) => ({
+      ...current,
+      residentWishes: {
+        ...current.residentWishes,
+        [person]: {
+          startedDay: (current.year - 1) * 112 + current.season * 28 + current.day,
+          firstBaseline: definition.firstMetric(current),
+          secondBaseline: definition.secondMetric(current),
+          completed: false,
+        },
+      },
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：认真听完了${person}的愿望“${definition.title}”，决定用几天时间慢慢帮忙。`, ...current.journalEntries].slice(0, 40),
+    }));
+    setMessage(`${person}把愿望告诉了你：“${definition.story}”已经记进日记，要亲自完成两段行动，并至少观察两个游戏日。`);
+    speakResident(person, definition.story);
+    playTone(780);
+  };
+
   const interactWithPerson = (person: string, fallback: string, preferFallback = false) => {
     if (giveHeldItem(person)) return;
     const showSpeech = (text: string) => {
       const prefix = `${person}：`;
       setResidentSpeech({ person, text: text.startsWith(prefix) ? text.slice(prefix.length) : text });
       setMessage(text);
+      speakResident(person, text);
     };
     const talkKey = `${game.year}-${game.season}-${game.day}`;
     if (game.lastTalkedDays[person] !== talkKey) {
       setGame((current) => withFriendship({ ...current, lastTalkedDays: { ...current.lastTalkedDays, [person]: talkKey } }, person, 2, `${SEASONS[current.season]}第${current.day}天：小禾和${person}聊了一会儿。`));
+    }
+    const activeWish = game.residentWishes[person];
+    if (activeWish && !activeWish.completed) {
+      const definition = residentWishDefinition(person);
+      const wishNumbers = wishProgressNumbers(game, person, activeWish);
+      if (wishNumbers.first >= definition.firstNeed && wishNumbers.second >= definition.secondNeed && wishNumbers.days >= 2) {
+        setGame((current) => withFriendship({
+          ...current,
+          coins: current.coins + 180,
+          residentWishes: { ...current.residentWishes, [person]: { ...current.residentWishes[person], completed: true } },
+          journalEntries: [`${SEASONS[current.season]}第${current.day}天：和${person}亲手完成了愿望“${definition.title}”，获得 180 金币，好感大幅提升。`, ...current.journalEntries].slice(0, 40),
+        }, person, 25));
+        showSpeech(`${person}：你真的花了好几天帮我实现“${definition.title}”！最后这一步我们一起完成了，谢谢你。`);
+        playTone(980);
+        return;
+      }
     }
     if (NPC_SICK_DAYS[person]?.includes(game.day) && game.npcHealedDays[person] !== game.day) {
       showSpeech(`${person}今天有些不舒服，露出了伤心的表情：“我休息一天，明天应该就会好起来。”`);
@@ -3214,8 +3403,6 @@ export default function FarmGame() {
     showSpeech(preferFallback ? fallback : PERSON_DIALOGUES[person] ?? fallback);
     playTone(520);
   };
-
-  const currentAbsoluteDay = () => (game.year - 1) * 112 + game.season * 28 + game.day;
 
   const talkWithCafeResident = (person: string, schedule: ResidentSchedule) => {
     const nameCode = [...person].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), 0);
@@ -3795,6 +3982,25 @@ export default function FarmGame() {
   };
 
   const useUpstairsFurniture = (craft: PlacedCraft) => {
+    if (selected === "axe") {
+      if (craft.type === "chest" && Object.values(game.atticStorage).some((count) => count > 0)) {
+        setMessage("二楼收纳箱里还有东西，要先全部取出来才能拆除。 ");
+        return;
+      }
+      const recipe = CRAFT_RECIPES[craft.type];
+      const woodBack = Math.max(1, Math.floor(recipe.wood / 2));
+      setGame((current) => ({
+        ...current,
+        energy: Math.max(0, current.energy - staminaCost(current, 2)),
+        wood: current.wood + woodBack,
+        stone: current.stone + Math.floor(recipe.stone / 2),
+        atticChestPlaced: craft.type === "chest" ? false : current.atticChestPlaced,
+        atticPlacedCrafts: current.atticPlacedCrafts.filter((placed) => placed.id !== craft.id),
+      }));
+      setMessage(`拆掉了${recipe.name}，木料重新变成 ${woodBack} 块木头，已经放回资源记录。`);
+      playTone(360);
+      return;
+    }
     if (craft.type === "chest") {
       setAtticStorageOpen(true);
       setMessage("打开二楼专用收纳箱，可以单个放入或取出材料。 ");
@@ -5269,6 +5475,11 @@ export default function FarmGame() {
     const petCareMessage = !game.pets.length ? "" : !allPetsFed ? ` 宠物粮不够了：${game.pets.length} 只宠物每晚需要 ${game.pets.length} 份粮，可以去远方新区商场买平价宠物粮。` : ` 宠物们睡前吃掉了 ${game.pets.length} 份粮。${featherGain ? `留下 ${featherGain} 根羽毛；` : ""}${softFurGain ? `兔子留下 ${softFurGain} 团软毛；` : ""}${petFishGain ? `猫带回 ${petFishGain} 条鱼；` : ""}${petCoinGain ? `狗找到 ${petCoinGain} 金币；` : ""}${petSeedGain ? `仓鼠翻出 ${petSeedGain} 颗萝卜种子；` : ""}`;
     const petHealthMessage = newlySickPet ? ` ${PET_CATALOG.find((pet) => pet.id === newlySickPet.type)?.name}今天生病了，颜色变灰、眼睛垂下来。可以用药材治疗或带去新区宠物医院。` : "";
     const rarePetMessage = newlyMissingPet ? ` 很少见的小意外发生了：${PET_CATALOG.find((pet) => pet.id === newlyMissingPet.type)?.name}跑进青禾山洞里躲着吃东西，去山洞找到它并抱回来吧。` : chickTreasure ? ` 小鸡隔了很久出去探险，今天叼回了${chickTreasure === "bone" ? "一块小骨头" : chickTreasure === "wood" ? "两块木头" : "三份宠物粮"}！` : "";
+    const helperCandidates = YOUNG_FRIENDS.filter((name) => (game.friendship[name] ?? 0) >= 20);
+    const farmHelperToday = helperCandidates.length > 0 && nextAbsoluteDay % 2 === 0 ? helperCandidates[nextAbsoluteDay % helperCandidates.length] : null;
+    const helperPlantIndexes = farmHelperToday ? game.tiles.map((tile, index) => tile.state === "soil" ? index : -1).filter((index) => index >= 0).slice(0, Math.min(2, game.seeds)) : [];
+    const helperWaterIndexes = farmHelperToday ? game.tiles.map((tile, index) => tile.state === "crop" && index !== eatenCropIndex && index !== lightningCropIndex ? index : -1).filter((index) => index >= 0).slice(0, 6) : [];
+    const farmHelperMessage = farmHelperToday ? ` ${farmHelperToday}清早轮流来帮忙，给 ${helperWaterIndexes.length} 株作物浇了水${helperPlantIndexes.length ? `，还播下了 ${helperPlantIndexes.length} 颗萝卜种子` : ""}。本人会留在农场边等你说话。` : "";
     const morningNews = dailyNewsForState({
       ...game,
       year: nextYear,
@@ -5290,7 +5501,7 @@ export default function FarmGame() {
     const birthdayMessage = nextSeason === 0 && nextDayNumber === 19 ? ` 今天是第 ${nextYear} 年春天第十九天，也是小禾的二月十九日生日！大家已经带着蛋糕来到农舍，回家就能开生日派对。` : "";
     const shippingMessage = shippedItemCount > 0 ? ` 昨晚大号售卖箱卖出了 ${shippedItemCount} 件东西，赚到 ${shippedEarnings} 金币！${shippedQualityBonus ? `星级作物多赚了 ${shippedQualityBonus} 金币。` : ""}` : "";
     const weatherMessage = nextWeather === "sunny" ? " 今天阳光很好。" : nextWeather === "cloudy" ? " 今天是阴天，云层把太阳遮住了。" : nextWeather === "rain" ? " 今天下雨，农田和树苗会自动浇水。" : " 今天有雷雨，天空偶尔会打雷闪电，出门记得撑伞。";
-    const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${weatherMessage}${newsMessage}${missedUrgentMessage}${shippingMessage}${visitorMessage}${lightningMessage}${petBirthMessage}${petCareMessage}${petHealthMessage}${rarePetMessage}${birthdayMessage}`;
+    const morningMessage = `${expiringTools.length ? `${morningMessageBase} ${expiringTools.join("和")}的一周使用期到了，已经恢复成普通工具。` : morningMessageBase}${weatherMessage}${newsMessage}${missedUrgentMessage}${shippingMessage}${visitorMessage}${lightningMessage}${farmHelperMessage}${petBirthMessage}${petCareMessage}${petHealthMessage}${rarePetMessage}${birthdayMessage}`;
     setShippingReport(shippedItemCount > 0 ? { itemCount: shippedItemCount, earnings: shippedEarnings } : null);
     setGame((current) => {
       const treeStates = [...current.treeStates];
@@ -5352,7 +5563,9 @@ export default function FarmGame() {
         hour: 7,
         shippingBin: {},
         shippingCropQualityStock: makeCropQualityStock(),
-        daily: { ...makeNewGame().daily, day: nextDayNumber },
+        daily: { ...makeNewGame().daily, day: nextDayNumber, planted: helperPlantIndexes.length, watered: helperWaterIndexes.length },
+        planted: current.planted + helperPlantIndexes.length,
+        wateredCount: current.wateredCount + helperWaterIndexes.length,
         energy: remainsSick ? 65 : 100,
         sick: remainsSick,
         diagnosed: false,
@@ -5372,7 +5585,7 @@ export default function FarmGame() {
         softFur: current.softFur + softFurGain,
         petBones: current.petBones + (chickTreasure === "bone" ? 1 : 0),
         wood: current.wood + (chickTreasure === "wood" ? 2 : 0),
-        seeds: current.seeds + petSeedGain,
+        seeds: Math.max(0, current.seeds - helperPlantIndexes.length) + petSeedGain,
         inventory: { ...current.inventory, fish: current.inventory.fish + petFishGain },
         coins: current.coins + shippedEarnings + petCoinGain,
         sickPetIds: newlySickPet && !current.sickPetIds.includes(newlySickPet.id) ? [...current.sickPetIds, newlySickPet.id] : current.sickPetIds,
@@ -5381,6 +5594,7 @@ export default function FarmGame() {
         lastDreamAbsoluteDay: dreamTonight === null ? current.lastDreamAbsoluteDay : nextAbsoluteDay,
         lastDreamVariant: dreamTonight === null ? current.lastDreamVariant : dreamTonight,
         farmVisitor,
+        farmHelperToday,
         treeStates,
         plantedTrees: current.plantedTrees.map((tree) => ({ ...tree, stage: tree.watered ? Math.min(3, tree.stage + 1) : tree.stage, watered: rainyMorning })),
         rockStates,
@@ -5389,11 +5603,15 @@ export default function FarmGame() {
         groundBooks,
         groundArtifacts,
         groundSupplies,
-        tiles: current.tiles.map((tile, index) => index === eatenCropIndex || index === lightningCropIndex
-          ? { state: "soil", stage: 0, watered: false, care: 0 }
-          : tile.state === "crop"
-            ? { ...tile, stage: Math.min(3, tile.stage + (tile.watered ? (current.upgrades.greenhouse ? 2 : 1) : greenhouseAutoDay ? 1 : 0)), watered: rainyMorning, care: (tile.care ?? 0) + (rainyMorning ? 1 : 0) }
-            : tile),
+        tiles: current.tiles.map((tile, index) => {
+          if (index === eatenCropIndex || index === lightningCropIndex) return { state: "soil", stage: 0, watered: false, care: 0 };
+          if (helperPlantIndexes.includes(index)) return { state: "crop", stage: 0, watered: true, cropType: "radish", care: 1 };
+          if (tile.state === "crop") {
+            const helped = helperWaterIndexes.includes(index);
+            return { ...tile, stage: Math.min(3, tile.stage + (tile.watered ? (current.upgrades.greenhouse ? 2 : 1) : greenhouseAutoDay ? 1 : 0)), watered: rainyMorning || helped, care: (tile.care ?? 0) + (rainyMorning || helped ? 1 : 0) };
+          }
+          return tile;
+        }),
       };
     });
     setDreamScene(dreamTonight);
@@ -5536,16 +5754,16 @@ export default function FarmGame() {
 
   const tapBirthdaySong = () => {
     if (!birthdayCeremony || birthdayCeremony.step !== 0) return;
+    playBirthdayChoirNote(birthdayCeremony.songTaps);
     const nextTaps = birthdayCeremony.songTaps + 1;
     if (nextTaps >= 4) {
       setBirthdayCeremony({ ...birthdayCeremony, step: 1, songTaps: 4 });
       setMessage("四句生日歌唱完了！现在连续吹三次，把三根蜡烛一根根吹灭。 ");
-      playTone(900);
+      speakBirthdayChorus(birthdayCeremony.person);
       return;
     }
     setBirthdayCeremony({ ...birthdayCeremony, songTaps: nextTaps });
     setMessage(`唱完第 ${nextTaps} 句生日歌，还剩 ${4 - nextTaps} 句。`);
-    playTone(650 + nextTaps * 70);
   };
 
   const blowBirthdayCandle = () => {
@@ -7226,7 +7444,7 @@ export default function FarmGame() {
           <button className="multiplayer-button" onClick={() => setSplitScreen(true)}>双人模式</button>
           <button className="cloud-transfer-button" onClick={transferSaveToWeb} disabled={transferringSave}>{transferringSave ? "转移中…" : "转移到网页版"}</button>
           <button className="round-button home-button" onClick={returnToFarm} aria-label="回到农场" title="回到农场">⌂</button>
-          <button className="round-button" onClick={() => setSoundOn((value) => !value)} aria-label={soundOn ? "关闭音效" : "打开音效"}>{soundOn ? "♪" : "×"}</button>
+          <button className="round-button" onClick={toggleSound} aria-label={soundOn ? "关闭全部声音" : "打开人物语音和音效"} title={soundOn ? "人物语音与音效已开启" : "人物语音与音效已关闭"}>{soundOn ? "♪" : "×"}</button>
           <button className="round-button" onClick={resetGame} aria-label="重新开始">↻</button>
         </div>
       </header>
@@ -7274,7 +7492,32 @@ export default function FarmGame() {
           <nav><button className={journalTab === "today" ? "active" : ""} onClick={() => setJournalTab("today")}>日记与任务</button><button className={journalTab === "friends" ? "active" : ""} onClick={() => setJournalTab("friends")}>居民好感</button><button className={journalTab === "collection" ? "active" : ""} onClick={() => setJournalTab("collection")}>收藏图鉴</button><button className={journalTab === "recipes" ? "active" : ""} onClick={() => setJournalTab("recipes")}>料理食谱</button></nav>
           <div className="journal-pages">
             {journalTab === "today" && <><div className="task-refresh-board"><article><i>日</i><div><strong>今日小目标</strong><span>{game.daily.rewardClaimed ? "今天已经完成" : `${completed}/3 已完成`}</span><small>还有 1 个游戏日 · 明天早上 7:00 刷新</small></div></article><article><i>委</i><div><strong>居民轮流发布委托</strong><span>{completedResidentQuestCount}/3 已完成 · {residentBoardDaysLeft} 天后换一批</span><small>林婶、鲁师傅、叶老师等居民都会发布任务</small></div></article><article className={game.forestQuestStage === 5 ? "waiting-story" : "active-story"}><i>林</i><div><strong>安安的连续森林故事</strong><span>{game.forestQuestStage === 5 ? forestStoryDaysLeft > 0 ? `还有 ${forestStoryDaysLeft} 个游戏日出现新任务` : "新线索已经出现，去找安安" : `正在进行：${forestStoryTitle}`}</span><small>森林故事只是任务中的一条，不是全部任务</small></div></article></div><section className="resident-quest-journal"><header><div><span>本期三份委托 · 每三天轮换</span><h3>邻居们正在等小禾帮忙</h3></div><b>{completedResidentQuestCount}/3</b></header><div>{activeResidentQuests.map((quest) => { const done = game.residentQuestCompletions.includes(residentQuestKey(quest)); const here = quest.village === activeVillage && quest.scene === scene; return <article key={quest.id} className={done ? "completed" : here ? "at-location" : ""} style={personClothesStyle(quest.giver)}><i>{quest.icon}</i><div><small>{quest.giver}发布 · {quest.location}</small><strong>{quest.title}</strong><p>{quest.detail}</p><em>{done ? `已领取 ${quest.reward} 金币 · ${quest.giver}好感 +5` : here ? `已到达 · 奖励 ${quest.reward} 金币 · 好感 +5` : `前往${quest.location} · 完成后好感 +5`}</em></div><button disabled={done} onClick={() => { setJournalOpen(false); if (here) setMessage(`${quest.giver}的委托就在这里：${quest.action}。寻找带黄色感叹号的任务物品。`); else { setMapOpen(true); setMessage(`打开地图，准备前往${quest.location}完成${quest.giver}的委托。`); } }}>{done ? "完成 ✓" : here ? "去现场查看" : "打开地图找地点"}</button></article>; })}</div></section><article className="forest-story-journal"><span>另外保留 · 第 {game.forestQuestEpisode + 1} 段森林故事</span><h3>安安与{forestStoryTitle}</h3><div className="forest-story-progress">{[0, 1, 2, 3, 4, 5].map((stage) => <i key={stage} className={game.forestQuestStage >= stage ? "done" : ""}>{stage === 5 ? "★" : stage + 1}</i>)}</div><p>{game.forestQuestStage === 5 ? forestStoryDaysLeft > 0 ? `这段故事已经完成。安安还在观察森林，${forestStoryDaysLeft} 个游戏日后日记会出现新的动静。` : "纸页边缘出现了新记号，安安似乎已经发现下一件事。" : game.forestQuestEpisode === 0 ? game.forestQuestStage === 0 ? "老松树的颜色有些不对，先去安安的小农场亲自看看。" : "日记只记录已经观察到的现象；去现场、等待天气与材料慢慢发生变化。" : game.forestQuestEpisode === 1 ? "玻璃瓶里的小种子会对不同气味和夜晚光线产生反应。" : game.forestQuestEpisode === 2 ? "湿木板、羽毛和树脂留下的痕迹，正在慢慢指向一座旧鸟屋。" : "小溪石缝里仍有很轻的水声，答案可能藏在潮湿的泥土下面。"}</p></article><div className="journal-entry-list">{game.journalEntries.length ? game.journalEntries.map((entry, index) => <p key={`${entry}-${index}`}><i>{index === 0 ? "今" : "记"}</i><span>{entry}</span></p>) : <p>今天还没有写下新的事情。</p>}</div></>}
-            {journalTab === "friends" && <div className="friendship-grid">{relationshipPeople.map((name) => { const points = game.friendship[name] ?? 0; const hearts = Math.min(5, Math.floor(points / 20)); const activity = residentActivity(name, game.hour, game.day, game.weather); const bestFriend = points >= 100; return <article key={name} className={bestFriend ? "best-friend" : ""} style={personClothesStyle(name)}><div className="friend-portrait"><i /><b /></div><div><strong>{name}{bestFriend && <em className="best-friend-badge">挚友</em>}</strong><span className="heart-row">{"♥".repeat(hearts)}<em>{"♡".repeat(5 - hearts)}</em></span><small>{points}/100 · {activity.label}</small>{bestFriend && <small>更常邀请旅行 · 主动帮助 · 挚友纪念奖励</small>}</div></article>; })}</div>}
+            {journalTab === "friends" && <div className="friendship-grid">{relationshipPeople.map((name) => {
+              const points = game.friendship[name] ?? 0;
+              const hearts = Math.min(5, Math.floor(points / 20));
+              const activity = residentActivity(name, game.hour, game.day, game.weather);
+              const bestFriend = points >= 100;
+              const farmFriend = (YOUNG_FRIENDS as readonly string[]).includes(name);
+              const wishDefinition = residentWishDefinition(name);
+              const wish = game.residentWishes[name];
+              const wishNumbers = wish ? wishProgressNumbers(game, name, wish) : null;
+              const wishReady = Boolean(wish && wishNumbers && !wish.completed && wishNumbers.first >= wishDefinition.firstNeed && wishNumbers.second >= wishDefinition.secondNeed && wishNumbers.days >= 2);
+              return <article key={name} className={`${bestFriend ? "best-friend" : ""} ${wish?.completed ? "wish-completed" : wish ? "wish-active" : ""}`} style={personClothesStyle(name)}>
+                <div className="friend-portrait"><i /><b /></div>
+                <div className="friend-summary"><strong>{name}{bestFriend && <em className="best-friend-badge">挚友</em>}</strong><span className="heart-row">{"♥".repeat(hearts)}<em>{"♡".repeat(5 - hearts)}</em></span><small>{points}/100 · {activity.label}</small>{farmFriend && <small>{points >= 20 ? "已经会轮流来农场帮忙浇水、播种" : "达到 20 好感后会加入轮流农场帮助"}</small>}{bestFriend && <small>更常邀请旅行 · 主动帮助 · 挚友纪念奖励</small>}</div>
+                <section className="resident-wish-card">
+                  <header><span>心愿</span><strong>{wishDefinition.title}</strong></header>
+                  {!wish && <><p>{wishDefinition.story}</p><button onClick={() => startResidentWish(name)}>认真听听愿望</button></>}
+                  {wish && !wish.completed && wishNumbers && <>
+                    <div className="wish-progress-line"><span>{wishDefinition.firstLabel}</span><b>{wishNumbers.first}/{wishDefinition.firstNeed}</b><i><em style={{ width: `${Math.min(100, wishNumbers.first / wishDefinition.firstNeed * 100)}%` }} /></i></div>
+                    <div className="wish-progress-line"><span>{wishDefinition.secondLabel}</span><b>{wishNumbers.second}/{wishDefinition.secondNeed}</b><i><em style={{ width: `${Math.min(100, wishNumbers.second / wishDefinition.secondNeed * 100)}%` }} /></i></div>
+                    <small>共同观察 {Math.min(2, wishNumbers.days)}/2 天 · 不能一天完成</small>
+                    <button className={wishReady ? "wish-ready-button" : ""} onClick={() => { if (wishReady) { setJournalOpen(false); setMessage(`愿望行动都完成了。现在要亲自找到${name}：${wishDefinition.finalPlace}。`); } else setMessage(`还不能收尾：继续亲手完成进度，并让记录跨过至少两个游戏日。`); }}>{wishReady ? `去找${name}完成最后一步` : "查看还差什么"}</button>
+                  </>}
+                  {wish?.completed && <div className="wish-finished"><b>愿望已实现 ✓</b><span>你们花了几天亲手完成，获得 180 金币与 25 好感。</span></div>}
+                </section>
+              </article>;
+            })}</div>}
             {journalTab === "collection" && <div className="collection-grid"><article><b>★</b><strong>作物品质</strong><span>普通 {qualityTotals.normal}</span><span>银星 {qualityTotals.silver}</span><span>金星 {qualityTotals.gold}</span></article><article><b>书</b><strong>山谷图书</strong><span>{game.libraryBooks.length}/{LOST_BOOKS.length} 本归还</span></article><article><b>◆</b><strong>博物馆藏品</strong><span>{game.museumArtifacts.length}/{RARE_ARTIFACTS.length} 件捐赠</span></article><article><b>视</b><strong>动画收藏</strong><span>看过 {game.watchedTvEpisodes.length} 集不同动画</span></article><article><b>鱼</b><strong>钓鱼记录</strong><span>累计钓到 {game.fishCaught} 条鱼</span></article><article><b>梦</b><strong>梦境记录</strong><span>{game.lastDreamAbsoluteDay > 0 ? "已经遇见过神秘梦境" : "还没有做过特别的梦"}</span></article></div>}
             {journalTab === "recipes" && <div className="recipe-journal"><article className={game.recipesDiscovered.includes("香草烤螃蟹") ? "discovered" : "locked"}><i className="cooked-crab-icon" /><div><strong>香草烤螃蟹</strong><p>切开蟹壳、控制火候，最后放进深盘。熟食在餐桌吃恢复更多体力。</p></div><span>{game.recipesDiscovered.includes("香草烤螃蟹") ? "已学会" : "去二楼厨房发现"}</span></article><article className={game.recipesDiscovered.includes("清香炒小虾") ? "discovered" : "locked"}><i className="cooked-shrimp-icon" /><div><strong>清香炒小虾</strong><p>处理小虾、及时翻面，再装进白瓷盘，保持清亮颜色。</p></div><span>{game.recipesDiscovered.includes("清香炒小虾") ? "已学会" : "去二楼厨房发现"}</span></article></div>}
           </div>
@@ -7308,7 +7551,7 @@ export default function FarmGame() {
             <button className={`map-place map-maple ${activeVillage === "maple" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("farm", { x: 1, y: 5 }, "枫叶村"); }}><i className="map-scene-picture picture-maple"><em /><em /><em /></i><b>枫叶村</b><span>从东郊继续向右</span></button>
             <button className={`map-place map-south ${activeVillage === "qinghe" && scene === "southNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("southNeighbor", { x: 6, y: 3 }, "鲁师傅的院子"); }}><i className="map-scene-picture picture-workshop"><em /><em /><em /></i><b>南坡院子</b><span>鲁师傅家</span></button>
             <button className={`map-place map-north ${activeVillage === "qinghe" && scene === "northNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("northNeighbor", { x: 6, y: 5 }, "叶老师的书屋"); }}><i className="map-scene-picture picture-library"><em /><em /><em /></i><b>北林书屋</b><span>叶老师家</span></button>
-            <button className={`map-place map-residential ${activeVillage === "qinghe" && scene === "residentialDistrict" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("residentialDistrict", { x: 2, y: 5 }, "青禾住宅坡"); }}><i className="map-scene-picture picture-residential"><em /><em /><em /></i><b>青禾住宅坡</b><span>白医生 · 阿麦 · 周镇长 · 沈馆长 · 助手 · 许老师</span></button>
+            <button className={`map-place map-residential ${activeVillage === "qinghe" && scene === "residentialDistrict" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("residentialDistrict", { x: 2, y: 5 }, "青禾住宅坡"); }}><i className="map-scene-picture picture-residential"><em /><em /><em /></i><b>青禾住宅坡</b><span>居民院落 · 小玲、豆豆、小满、阿禾等朋友的家</span></button>
             <div className="map-legend"><span><i />你现在的位置</span><small>点击地图上的场景图可以直接前往</small></div>
           </div> : <div className="village-map-canvas maple-map-canvas">
             <i className="maple-map-ridge ridge-one" /><i className="maple-map-ridge ridge-two" /><i className="maple-map-stream" /><i className="maple-map-road maple-route-crossing-farm" /><i className="maple-map-road maple-route-farm-town" /><i className="maple-map-road maple-route-town-east" /><i className="maple-map-road maple-route-town-culture" /><i className="maple-map-road maple-route-culture-north" /><i className="maple-map-road maple-route-culture-residential" /><i className="maple-map-road maple-route-town-south" /><i className="maple-leaf-grove grove-one" /><i className="maple-leaf-grove grove-two" /><i className="maple-leaf-grove grove-three" />
@@ -7446,9 +7689,9 @@ export default function FarmGame() {
         <section className="world-card" aria-label={`${sceneLabel}游戏区域`}>
           <div className={`world ${scene === "farm" ? "farm-world" : scene === "westFriendFarm" ? "friend-farm-world" : scene === "mysteryRoad" ? "mystery-road-world" : scene === "town" ? "town-world" : scene === "cultureDistrict" ? "culture-world" : scene === "residentialDistrict" ? "residential-world" : "neighbor-world"} ${activeVillage}-village season-${displaySeason} weather-world-${game.weather} ${twilightLevel > 0 ? "twilight-world" : ""} ${activeBuilding || neighborInterior || residentHome || friendHomeOpen || mallOpen ? "interior-open" : ""} ${playingWithAnan ? "playing-with-anan" : ""}`} style={{ "--twilight": twilightLevel } as CSSProperties} onClick={walkToPointer}>
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "mysteryRoad" ? "▤" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
-            {scene === "town" && residentSpeech && <div className="resident-speech-card" role="status" aria-live="polite" onClick={(event) => event.stopPropagation()}>
+            {residentSpeech && <div className="resident-speech-card" role="status" aria-live="polite" onClick={(event) => event.stopPropagation()}>
               <span className="resident-speech-portrait" style={personClothesStyle(residentSpeech.person)} aria-hidden="true"><i /><b /></span>
-              <p><strong>{residentSpeech.person}</strong><span>{residentSpeech.text}</span></p>
+              <p><strong>{residentSpeech.person}</strong><span>{residentSpeech.text}</span>{relationshipPeople.includes(residentSpeech.person) && <button className="resident-speech-wish" onClick={() => { if (!game.residentWishes[residentSpeech.person]) startResidentWish(residentSpeech.person); setJournalTab("friends"); setJournalOpen(true); setResidentSpeech(null); }}>{game.residentWishes[residentSpeech.person]?.completed ? "心愿已经一起实现 ✓" : game.residentWishes[residentSpeech.person] ? "打开日记查看心愿进度" : `听听${residentSpeech.person}的心愿`}</button>}</p>
               <button onClick={() => setResidentSpeech(null)} aria-label="收起居民对话">×</button>
             </div>}
             {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /><i className="dream-backward-birds" /><i className="dream-long-shadow" /><i className="dream-floating-light" /><i className="dream-pale-animal" /><i className="dream-cookie-rain" /><i className="dream-dancing-crops" /><i className="dream-bubble-fish" /><i className="dream-tiny-footprints" /><i className="dream-pond-stars" /><i className="dream-winking-window" /><i className="dream-walking-scarecrow" /><i className="dream-grass-train" /><i className="dream-floating-sheep" /><i className="dream-rainbow-rain" /><i className="dream-twin-moons" /></div>}
@@ -7475,6 +7718,7 @@ export default function FarmGame() {
                 {fishingPhase === "reeling" && <div className="fishing-challenge" onClick={(event) => event.stopPropagation()}><header><span>提竿小游戏</span><b>{fishingScore}/3</b></header><p>等红色游标进入绿色区域时，点击提竿！</p><div className="fishing-timing-bar"><i className={game.toolUpgrades.rod ? "lucky-zone" : ""} /><b ref={fishingMarkerElementRef} style={{ left: "4%" }} /></div><button onClick={attemptReel}>提竿！</button><small>{game.toolUpgrades.rod ? "幸运鱼竿：咬钩更快，成功区域更宽" : "连续命中 3 次才能把鱼钓上来"}</small></div>}
                 {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节并不断挥竿钓鱼的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} fishing-villager fishing-villager-${index + 1} ${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：提竿时要咬紧牙用力拉！有时也会钓到石头、袜子或饮料。`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><em className="festival-fishing-rod" /><u className="fishing-effort-mouth" /><u className="festival-caught-fish" /><u className="festival-surprise-catch" /><span>{name}<small>等待鱼儿咬钩</small></span></button>)}</div>}
                 {isBirthday && <div className="birthday-farm-friends" aria-label="在生日当天跑到菜地和农场玩耍的朋友">{BIRTHDAY_GUESTS.slice(0, 6).map((name, index) => <button key={`farm-party-${name}`} style={personClothesStyle(name)} className={`birthday-field-friend field-friend-${index + 1} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：我们从农舍跑到菜地边玩啦，一会儿再回去吃生日蛋糕！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div>}
+                {game.farmHelperToday && <button className="farm-helper-friend" style={personClothesStyle(game.farmHelperToday)} onClick={(event) => { event.stopPropagation(); interactWithPerson(game.farmHelperToday!, `${game.farmHelperToday}：我今天轮到来帮忙啦！浇过的地颜色更深，新播下的种子也在田里。`); }} aria-label={`和今天来农场帮忙的${game.farmHelperToday}说话`}><i /><b /><span>{game.farmHelperToday}<small>今天轮流来帮农活</small></span></button>}
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${game.upgrades.secondFloor ? "has-second-floor" : ""} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setHouseFloor(1); setUpstairsRoom(null); setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" />{game.upgrades.secondFloor > 0 && <><span className="upper-window upper-window-left" /><span className="upper-window upper-window-right" /></>}<span className="sign">{displayName}的农舍{game.upgrades.secondFloor ? " · 两层" : game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
                 <button className={`crafted-object crafted-chest home-storage-chest ${selectedResource ? "ready-to-store" : ""}`} onClick={() => { if (selected === "axe") { setMessage("这是农舍旁边固定的收纳木箱，不会被斧头拆掉。 "); return; } useChest(); }} aria-label={`农舍旁的木箱，内有 ${Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)} 件物品`}><i /><b>{Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)}</b></button>
                 <button className="home-shipping-bin" onClick={() => { setShippingBinOpen(true); setMessage("打开大号售卖箱。单击物品放进去，睡到第二天就会卖掉换成金币。 "); }} aria-label={`农舍旁的大号售卖箱，已有 ${Object.values(game.shippingBin).reduce((sum, count) => sum + count, 0)} 件待售物品`}><i /><i /><b>{Object.values(game.shippingBin).reduce((sum, count) => sum + count, 0)}</b><span>大号售卖箱</span></button>
@@ -7485,7 +7729,7 @@ export default function FarmGame() {
                 {game.plantedTrees.map((tree) => <button key={tree.id} className={`planted-pine-tree pine-stage-${tree.stage} ${tree.watered ? "watered" : ""}`} style={{ left: `${tree.x}%`, top: `${tree.y}%` }} onClick={() => chopPlantedTree(tree)} aria-label={tree.stage >= 3 ? "松果种出的成熟松树" : `正在生长的松树苗，第 ${tree.stage + 1} 阶段，${tree.watered ? "今天已经浇水" : "今天还没浇水"}`}><i /><i /><b /><span>{tree.stage >= 3 ? "大树" : tree.watered ? "已浇水" : "需要浇水"}</span></button>)}
                 <div className="flowers flowers-a">✿ · ✿</div><div className="flowers flowers-b">· ✿ ·</div>
                 {selectedCraftItem === "fence" && FENCE_PLACEMENT_SLOTS.map((slot) => { const occupied = game.placedCrafts.some((craft) => craft.type === "fence" && Math.abs(craft.x - slot.x) < 1 && Math.abs(craft.y - slot.y) < 1); return <button key={slot.id} className={`fence-placement-slot ${slot.rotation === 90 ? "slot-vertical" : "slot-horizontal"} ${occupied ? "occupied" : ""}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={(event) => { event.stopPropagation(); placeFenceInSlot(slot); }} disabled={occupied} aria-label={occupied ? "这里已经放有围栏" : "点击在绿色位置放置木围栏"}><i /><span>{occupied ? "已放" : "+"}</span></button>; })}
-                {game.placedCrafts.map((craft) => <button key={craft.id} className={`placed-craft placed-${craft.type} ${craft.type === "fence" && craft.rotation === 90 ? "fence-vertical" : ""} ${craft.type === "gate" && farmGateOpen ? "gate-open" : ""} ${craft.type === "lamp" && isNight ? "placed-lamp-lit" : ""}`} style={{ left: `${craft.x}%`, top: `${craft.y}%`, transform: `translate(-50%,-50%) rotate(${craft.rotation}deg)` }} onClick={(event) => { event.stopPropagation(); usePlacedCraft(craft); }} aria-label={`${CRAFT_RECIPES[craft.type].name}，${craft.type === "gate" ? (farmGateOpen ? "现在打开，点击关门" : "现在关闭，点击开门") : selected === "axe" ? "点击拆除" : "点击使用或查看"}`}><i /><i /><i /><b>{craft.type === "chest" ? Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0) : ""}</b></button>)}
+                {game.placedCrafts.map((craft) => <button key={craft.id} className={`placed-craft placed-${craft.type} ${selected === "axe" ? "dismantle-ready" : ""} ${craft.type === "fence" && craft.rotation === 90 ? "fence-vertical" : ""} ${craft.type === "gate" && farmGateOpen ? "gate-open" : ""} ${craft.type === "lamp" && isNight ? "placed-lamp-lit" : ""}`} style={{ left: `${craft.x}%`, top: `${craft.y}%`, transform: `translate(-50%,-50%) rotate(${craft.rotation}deg)` }} onClick={(event) => { event.stopPropagation(); usePlacedCraft(craft); }} aria-label={`${CRAFT_RECIPES[craft.type].name}，${craft.type === "gate" ? (farmGateOpen ? "现在打开，点击关门" : "现在关闭，点击开门") : selected === "axe" ? "点击拆除" : "点击使用或查看"}`}><i /><i /><i /><b>{craft.type === "chest" ? Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0) : ""}</b></button>)}
                 {game.farmVisitor === "crow" && <div className="farm-visitor crow-visitor" aria-label="乌鸦飞进农田"><i /><i /><span>嘎！</span></div>}
                 {game.farmVisitor === "animal" && <div className="farm-visitor animal-visitor" aria-label="小动物跑进农田"><i /><b /><span>偷吃幼苗</span></div>}
                 {game.upgrades.stoneWall > 0 && <div className="farm-stone-wall" aria-label="鲁师傅修建的农场石墙"><i /><i /><i /><i /></div>}
@@ -7589,7 +7833,7 @@ export default function FarmGame() {
               <>
                 <div className="residential-main-path" />
                 <div className="residential-plots" aria-label="青禾住宅坡的居民院地">
-                  {RESIDENT_HOMES.map((home, index) => { const activity = residentActivity(home.owner, game.hour, game.day, game.weather); return <article className={`resident-plot resident-plot-${index + 1}`} key={home.owner}><span className="plot-fence" /><i className="plot-tree" /><button className="resident-house" onClick={() => { setResidentHome(home.owner); setIndoorPlayer({ x: 33, y: 70 }); setMessage(`走进${home.home}，${home.owner}住在这里。`); }} aria-label={`进入${home.home}`}><span className="resident-roof" /><span className="resident-wall" /><span className="resident-door" /><span className="resident-window" /><strong>{home.home}<small>点击进入</small></strong></button>{activity.scene === "residentialDistrict" ? <button style={personClothesStyle(home.owner)} className={`residential-resident npc-activity-${activity.key} ${isNpcSick(home.owner) ? "sick-npc" : ""} ${home.owner === "诊所助手" ? "red-uniform-resident" : ""}`} onClick={() => interactWithPerson(home.owner, `${home.owner}：${home.greeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${home.owner}` : `和${home.owner}交谈`}><i /><b /><span>{home.owner}<small>{activity.label}</small></span></button> : <button className="resident-away-note" onClick={() => setMessage(`${home.owner}现在${activity.label}，可以在山谷里找到本人。`)}><b>{home.owner}外出了</b><small>{activity.label}</small></button>}</article>; })}
+                  {RESIDENT_HOMES.map((home, index) => { const activity = residentActivity(home.owner, game.hour, game.day, game.weather); const youngFriend = (YOUNG_FRIENDS as readonly string[]).includes(home.owner); return <article className={`resident-plot resident-plot-${index + 1} ${youngFriend ? "young-friend-plot" : ""}`} key={home.owner}><span className="plot-fence" /><i className="plot-tree" /><button className="resident-house" onClick={() => { setResidentHome(home.owner); setIndoorPlayer({ x: 33, y: 70 }); setMessage(`走进${home.home}，${home.owner}住在这里。`); }} aria-label={`进入${home.home}`}><span className="resident-roof" /><span className="resident-wall" /><span className="resident-door" /><span className="resident-window" /><strong>{home.home}<small>{youngFriend ? "朋友的家 · 点击进入" : "点击进入"}</small></strong></button>{activity.scene === "residentialDistrict" ? <button style={personClothesStyle(home.owner)} className={`residential-resident npc-activity-${activity.key} ${isNpcSick(home.owner) ? "sick-npc" : ""} ${home.owner === "诊所助手" ? "red-uniform-resident" : ""}`} onClick={() => interactWithPerson(home.owner, `${home.owner}：${home.greeting}`)} aria-label={heldItem ? `把${carriedItemName}送给${home.owner}` : `和${home.owner}交谈`}><i /><b /><span>{home.owner}<small>{activity.label}</small></span></button> : <button className="resident-away-note" onClick={() => setMessage(`${home.owner}现在${activity.label}，可以在山谷里找到本人。`)}><b>{home.owner}外出了</b><small>{activity.label}</small></button>}</article>; })}
                 </div>
                 <button className="edge-gate residential-return" onClick={() => { setScene("cultureDistrict"); setPlayer({ x: 11, y: 5 }); setMessage("从住宅坡回到清河文化街。 "); }}><b>←</b><span>返回文化街</span><small>沿着小路向左</small></button>
               </>
@@ -7811,7 +8055,7 @@ export default function FarmGame() {
               <div className="shop-overlay crafting-book-overlay" role="presentation" onClick={() => { setCraftingOpen(false); setMessage("收起制作手册，可以继续走路了。"); }}>
                 <section className="craft-panel" role="dialog" aria-modal="true" aria-labelledby="craft-title" onClick={(event) => event.stopPropagation()}>
                   <header className="craft-sticky-header"><div><span>农场手作</span><h2 id="craft-title">制作手册</h2></div><div className="wood-wallet"><small>现有材料</small><strong>{game.wood} 木 · {game.stone} 石 · {game.resin} 树脂 · {game.wool} 羊毛</strong></div><button className="craft-close-button" onClick={() => setCraftingOpen(false)} aria-label="关闭制作菜单">×</button></header>
-                  <div className="craft-intro"><span>⚒</span><p><strong>把木头、石材、树脂和羊毛做成实用物品</strong>火柴需要 3 木和 2 树脂；羊毛毯需要 3 团羊毛。</p></div>
+                  <div className="craft-intro"><span>⚒</span><p><strong>把木头、石材、树脂和羊毛做成实用物品</strong>火柴需要 3 木和 2 树脂；羊毛毯需要 3 团羊毛。</p><button className="start-dismantle-button" onClick={() => { setSelected("axe"); setSelectedCraftItem(null); setCraftingOpen(false); setMessage("进入拆除模式：已经摆放的物品会亮出红色虚线。点击一件就能拆掉并回收木头；有物品的木箱必须先清空。 "); }}>拆除已摆物品<small>回收成木头</small></button></div>
                   <div className="recipe-grid">
                     {CRAFT_GROUPS.map((group) => <section className="recipe-group" key={group.title}><header><strong>{group.title}</strong><small>{group.note}</small></header><div>{group.items.map((item) => { const recipe = CRAFT_RECIPES[item]; return <article className="recipe-card" key={item}><span className={`recipe-icon ${item}-recipe`}>{recipe.short}</span><div><strong>{recipe.name}</strong><small>{recipe.description}</small><em>背包里 {game.crafted[item]} 个{INDOOR_FURNITURE.includes(item) ? ` · 屋内已摆 ${game.atticPlacedCrafts.filter((placed) => placed.type === item).length} 个` : !HANDCRAFTS.includes(item) && ` · 农场已摆 ${game.placedCrafts.filter((placed) => placed.type === item).length} 个`}</em></div><button onClick={() => craftItem(item)}>{recipe.wood > 0 && <><span>木</span>{recipe.wood}</>}{recipe.stone > 0 && <> · <span>石</span>{recipe.stone}</>}{(recipe.resin ?? 0) > 0 && <> · <span>脂</span>{recipe.resin}</>}{(recipe.wool ?? 0) > 0 && <><span>毛</span>{recipe.wool}</>}</button></article>; })}</div></section>)}
                   </div>
@@ -7867,7 +8111,7 @@ export default function FarmGame() {
                     {game.upgrades.secondFloor > 0 && <button className={`house-stairs real-house-staircase ${stairTravel === "up" ? "stairs-in-use" : ""}`} onClick={(event) => { event.stopPropagation(); travelHouseStairs("up"); }} aria-label="走上真正的木楼梯到二楼"><span className="stair-flight">{Array.from({ length: 7 }, (_, index) => <i key={`lower-stair-${index}`} style={{ "--stair-index": index } as CSSProperties} />)}</span><b className="stair-railing" /><em className="stair-landing" /></button>}
                     {isBirthday && <><div className="birthday-banner">二月十九日 · {displayName}生日快乐！</div><div className="birthday-loft" aria-label="生日派对时可以跑上去的小阁楼"><i /><b /><span>小阁楼</span></div><div className="birthday-house-guests" aria-label="会在农舍里跑动、看窗户、跳床和玩耍的所有朋友">{BIRTHDAY_GUESTS.map((name, index) => <button key={`birthday-${name}`} style={personClothesStyle(name)} className={`birthday-guest birthday-guest-${index + 1} birthday-behavior-${index % 5} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：生日快乐！我们刚才在屋里跑来跑去、看窗外，还轮流在床上跳呢！`)} aria-label={`和参加生日派对的${name}聊天`}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><button className={`birthday-cake ${game.birthdayCakeYear === game.year ? "cake-eaten" : ""}`} onClick={eatBirthdayCake} aria-label="分享生日蛋糕恢复体力"><i /><b /><em /><span>{game.birthdayCakeYear === game.year ? "蛋糕已经分享完" : "点击吃生日蛋糕 · 恢复40体力"}</span></button></>}
                     <button className="house-bed" onClick={sleepAtHome} aria-label="点击床睡到第二天"><i /><b /><span>点击睡觉</span></button>
-                    {houseFloor === 1 && game.firstFloorNightstandPlaced && <button className="first-floor-nightstand" onClick={(event) => { event.stopPropagation(); setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) })); setMessage("从床边小柜拿起温水慢慢喝完，恢复 5 点体力。 "); playTone(610); }} aria-label="床边小柜，点击喝温水恢复体力"><i /><b /><span>床边小柜</span></button>}
+                    {houseFloor === 1 && game.firstFloorNightstandPlaced && <button className={`first-floor-nightstand ${selected === "axe" ? "dismantle-ready" : ""}`} onClick={(event) => { event.stopPropagation(); if (selected === "axe") { const woodBack = Math.max(1, Math.floor(CRAFT_RECIPES.nightstand.wood / 2)); setGame((current) => ({ ...current, firstFloorNightstandPlaced: false, wood: current.wood + woodBack, energy: Math.max(0, current.energy - staminaCost(current, 2)) })); setMessage(`拆掉了床边小柜，回收成 ${woodBack} 块木头。`); playTone(360); return; } setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) })); setMessage("从床边小柜拿起温水慢慢喝完，恢复 5 点体力。 "); playTone(610); }} aria-label={selected === "axe" ? "点击拆除床边小柜并回收木头" : "床边小柜，点击喝温水恢复体力"}><i /><b /><span>床边小柜</span></button>}
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && <div className={`sleeping-player-in-bed ${bedtimePhase}`} aria-label={bedtimePhase === "waking" ? "小禾第二天在床上醒来" : "小禾盖着被子睡觉"}><i className="sleep-head" /><b className="sleep-blanket" /><span>{bedtimePhase === "waking" ? "早上七点 · 点击房间起床" : "盖好被子睡觉中…"}</span></div>}
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && followingPets.length > 0 && <div className="sleeping-pet-cages" aria-label="睡觉时宠物们回到农舍里的小窝"><strong>宠物们的睡觉小窝</strong>{followingPets.slice(0, 6).map((pet) => <span key={`sleep-${pet.id}`} className={`sleep-pet-cage pet-${pet.type} ${game.sickPetIds.includes(pet.id) ? "sick-pet" : ""}`}><i /><b /><em /></span>)}</div>}
                     <div className="house-table"><i /><i /></div>
@@ -7887,7 +8131,7 @@ export default function FarmGame() {
                         {game.upgrades.upstairsBathroom > 0 && <button className="upstairs-room-door bathroom-room-door" onClick={() => { setUpstairsRoom("bathroom"); setSelectedAtticCraft(null); setMessage("推门进入二楼卫生间，浴缸、花洒、洗手台和镜子都可以使用。 "); }}><i /><b /><strong>卫生间</strong><small>点击进入</small></button>}
                       </div>
                       {selectedAtticCraft && <div className="upstairs-placement-grid" aria-label="绿色家具摆放位置">{ATTIC_PLACEMENT_SLOTS.map((slot, index) => game.atticPlacedCrafts.some((craft) => craft.x === index) ? null : <button key={`attic-slot-${index}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => placeFurnitureUpstairs(index)} aria-label={`在第 ${index + 1} 个绿色方格摆放${CRAFT_RECIPES[selectedAtticCraft].name}`}><i /></button>)}</div>}
-                      <div className="upstairs-placed-furniture">{game.atticPlacedCrafts.map((craft) => { const slot = ATTIC_PLACEMENT_SLOTS[craft.x]; if (!slot) return null; return <button key={craft.id} className={`upstairs-furniture upstairs-furniture-${craft.type} ${craft.type === "floorLamp" && game.equipment.lampOn ? "floor-lamp-on" : ""}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => useUpstairsFurniture(craft)} aria-label={craft.type === "floorLamp" ? `室内落地灯，现在${game.equipment.lampOn ? "亮着" : "关闭"}，点击${game.equipment.lampOn ? "关灯" : "开灯"}` : CRAFT_RECIPES[craft.type].name}><i /><b /><span>{craft.type === "floorLamp" ? game.equipment.lampOn ? "落地灯 · 亮着" : "落地灯 · 点击开灯" : CRAFT_RECIPES[craft.type].name}</span></button>; })}</div>
+                      <div className="upstairs-placed-furniture">{game.atticPlacedCrafts.map((craft) => { const slot = ATTIC_PLACEMENT_SLOTS[craft.x]; if (!slot) return null; return <button key={craft.id} className={`upstairs-furniture upstairs-furniture-${craft.type} ${selected === "axe" ? "dismantle-ready" : ""} ${craft.type === "floorLamp" && game.equipment.lampOn ? "floor-lamp-on" : ""}`} style={{ left: `${slot.x}%`, top: `${slot.y}%` }} onClick={() => useUpstairsFurniture(craft)} aria-label={selected === "axe" ? `拆除${CRAFT_RECIPES[craft.type].name}并回收木头` : craft.type === "floorLamp" ? `室内落地灯，现在${game.equipment.lampOn ? "亮着" : "关闭"}，点击${game.equipment.lampOn ? "关灯" : "开灯"}` : CRAFT_RECIPES[craft.type].name}><i /><b /><span>{selected === "axe" ? `拆除${CRAFT_RECIPES[craft.type].name}` : craft.type === "floorLamp" ? game.equipment.lampOn ? "落地灯 · 亮着" : "落地灯 · 点击开灯" : CRAFT_RECIPES[craft.type].name}</span></button>; })}</div>
                       {upstairsRoom && <div className={`upstairs-private-room private-${upstairsRoom}`}>
                         <button className="private-room-back" onClick={() => { setUpstairsRoom(null); setMessage("从小房间回到宽敞的二楼。 "); }}>← 回到二楼</button>
                         {upstairsRoom === "kitchen" ? <><div className="private-room-title"><strong>二楼厨房</strong><small>每道料理都要切配、控制火候并亲手装盘</small></div><button className="functional-kitchen-stove" onClick={() => setMessage("灶台已经烧热了。选择下面的螃蟹或小虾，开始完整的做饭过程。 ")}><i /><b /><span>灶台 · 点火</span></button><button className="functional-kitchen-sink" onClick={() => { setMessage("用水槽把海鲜和蔬菜洗干净了，准备放到砧板上处理。 "); playTone(610); }}><i /><b /><span>水槽 · 清洗食材</span></button><button className="functional-kitchen-cabinet" onClick={() => setMessage(`料理柜里记录着：生螃蟹 ${game.crabs}、生小虾 ${game.shrimp}、熟螃蟹 ${game.cookedCrabs}、熟小虾 ${game.cookedShrimp}。已发现食谱 ${game.recipesDiscovered.length}/2。`)}><i /><b /><span>料理柜 · 查看食材</span></button><div className="private-kitchen-actions"><button disabled={game.crabs <= 0} onClick={() => startCookingSeafood("crabs")}>亲手做螃蟹 ×{game.crabs}</button><button disabled={game.shrimp <= 0} onClick={() => startCookingSeafood("shrimp")}>亲手做小虾 ×{game.shrimp}</button></div></> : <><div className="private-room-title"><strong>二楼卫生间</strong><small>洗澡会恢复健康，并让明天更有精神</small></div><button className="functional-bathtub" onClick={takeTherapeuticBath}><i /><b /><span>浴缸与花洒 · 洗澡</span></button><button className="functional-bath-sink" onClick={() => { setGame((current) => ({ ...current, rainExposure: 0, energy: Math.min(100, current.energy + 3) })); setMessage("在洗手台洗净泥土和雨水，恢复 3 点体力。 "); }}><i /><b /><span>洗手台 · 清洁</span></button><button className="functional-bath-mirror" onClick={() => { const nextOutfit = game.mallItems.redCoat > 0 && game.equippedOutfit !== "redCoat" ? "redCoat" : game.mallItems.blueOutfit > 0 && game.equippedOutfit !== "blueOutfit" ? "blueOutfit" : "default"; setGame((current) => ({ ...current, equippedOutfit: nextOutfit })); setMessage(nextOutfit === "default" ? "照了照镜子，换回平常的农场衣服。" : `在镜子前整理衣服，换上了${nextOutfit === "redCoat" ? "红色外套" : "蓝色套装"}。`); }}><i /><b /><span>镜子 · 整理换装</span></button></>}
