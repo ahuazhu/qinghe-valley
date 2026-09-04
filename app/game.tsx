@@ -48,6 +48,8 @@ type AtticResource = "wood" | "stone" | "diamonds" | "herbs" | "resin" | "pineco
 type ResidentQuestId = "orchardCrate" | "clinicParcel" | "roadSigns" | "workshopMeasure" | "springWater" | "museumRubbing" | "libraryPages" | "schoolSpecimen" | "ananTrail";
 type ResidentQuest = { id: ResidentQuestId; giver: string; title: string; location: string; village: VillageId; scene: Scene; detail: string; action: string; icon: string; reward: number };
 type WishMaterial = "wood" | "stone" | "resin" | "herbs" | "pinecones" | "pineNuts" | "diamonds";
+type ResidentWorkJob = "water" | "plantFruit" | "fertilize" | "mineDiamond" | "chopWood" | "gatherHerbs";
+type ResidentWorkOrder = { person: string; job: ResidentWorkJob; absoluteDay: number; amount: number; result: string };
 type ResidentWishProgress = { startedDay: number; firstBaseline: number; secondBaseline: number; completed: boolean };
 type ResidentWishDefinition = {
   title: string;
@@ -227,6 +229,7 @@ type GameState = {
   residentTripDays: string[];
   residentWishes: Record<string, ResidentWishProgress>;
   wishPlantingRecords: Record<string, number>;
+  residentWorkOrders: ResidentWorkOrder[];
   cropQualityHarvests: CropQualityRecord;
   cropQualityStock: CropQualityStock;
   chestCropQualityStock: CropQualityStock;
@@ -703,6 +706,17 @@ const wishCostText = (definition: ResidentWishDefinition) => wishCostEntries(def
   .map(([material, amount]) => `${WISH_MATERIAL_INFO[material]} ${amount}`)
   .join("、");
 
+const RESIDENT_WORK_OPTIONS: { job: ResidentWorkJob; icon: string; label: string; place: string }[] = [
+  { job: "water", icon: "水", label: "给农作物浇水", place: "青禾农场" },
+  { job: "plantFruit", icon: "苗", label: "帮我播种水果", place: "青禾农场" },
+  { job: "fertilize", icon: "肥", label: "给作物施肥", place: "青禾农场" },
+  { job: "mineDiamond", icon: "钻", label: "进山洞挖钻石", place: "青禾山洞" },
+  { job: "chopWood", icon: "木", label: "砍树收集木材", place: "青禾农场" },
+  { job: "gatherHerbs", icon: "药", label: "去野外采药材", place: "青禾农场" },
+];
+
+const residentWorkLabel = (job: ResidentWorkJob) => RESIDENT_WORK_OPTIONS.find((option) => option.job === job)?.label ?? "帮助农场";
+
 const FESTIVAL_SCHEDULE: { season: number; day: number; id: FestivalId; name: string; place: string; description: string }[] = [
   { season: 0, day: 3, id: "seeds", name: "种子分享日", place: "青禾超市", description: "免费领取水果和蔬菜种子大礼包" },
   { season: 0, day: 8, id: "kite", name: "春风纸鸢会", place: "中心广场", description: "亲手装好纸鸢，迎着春风把它放上天空" },
@@ -1130,6 +1144,7 @@ const makeNewGame = (): GameState => ({
   residentTripDays: [],
   residentWishes: {},
   wishPlantingRecords: {},
+  residentWorkOrders: [],
   cropQualityHarvests: makeCropQualityRecord(),
   cropQualityStock: makeCropQualityStock(),
   chestCropQualityStock: makeCropQualityStock(),
@@ -1198,6 +1213,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       residentTripDays: parsed.residentTripDays ?? [],
       residentWishes: parsed.residentWishes ?? {},
       wishPlantingRecords: parsed.wishPlantingRecords ?? {},
+      residentWorkOrders: parsed.residentWorkOrders ?? [],
       cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
       cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
       chestCropQualityStock: mergeCropQualityStock(parsed.chestCropQualityStock),
@@ -1360,6 +1376,7 @@ export default function FarmGame() {
   const [message, setMessage] = useState("先用锄头开垦一块土地吧！");
   const [soundOn, setSoundOn] = useState(true);
   const [speakingPerson, setSpeakingPerson] = useState<string | null>(null);
+  const [workMenuPerson, setWorkMenuPerson] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [transferringSave, setTransferringSave] = useState(false);
   const [splitScreen, setSplitScreen] = useState(false);
@@ -1509,6 +1526,7 @@ export default function FarmGame() {
             residentTripDays: parsed.residentTripDays ?? [],
             residentWishes: parsed.residentWishes ?? {},
             wishPlantingRecords: parsed.wishPlantingRecords ?? {},
+            residentWorkOrders: parsed.residentWorkOrders ?? [],
             cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
             cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
             chestCropQualityStock: mergeCropQualityStock(parsed.chestCropQualityStock),
@@ -1692,6 +1710,7 @@ export default function FarmGame() {
           residentTripDays: data.save.residentTripDays ?? [],
           residentWishes: data.save.residentWishes ?? {},
           wishPlantingRecords: data.save.wishPlantingRecords ?? {},
+          residentWorkOrders: data.save.residentWorkOrders ?? [],
           cropQualityHarvests: mergeCropQualityRecord(data.save.cropQualityHarvests),
           cropQualityStock: mergeCropQualityStock(data.save.cropQualityStock),
           chestCropQualityStock: mergeCropQualityStock(data.save.chestCropQualityStock),
@@ -2360,16 +2379,20 @@ export default function FarmGame() {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     const naturalVoiceScore = (voice: SpeechSynthesisVoice) => {
       const name = voice.name.toLowerCase();
-      let score = voice.localService ? 8 : 3;
-      if (voice.lang.toLowerCase() === "zh-cn") score += 5;
-      if (/premium|enhanced|natural|neural|siri|xiaoxiao|yunxi|yunyang|tingting|mei-jia|sin-ji/.test(name)) score += 24;
-      if (/compact|basic|novelty/.test(name)) score -= 20;
+      let score = voice.localService ? 3 : 9;
+      if (voice.lang.toLowerCase() === "zh-cn") score += 10;
+      if (/natural|neural|premium|enhanced/.test(name)) score += 48;
+      if (/google|microsoft|siri|xiaoxiao|xiaoyi|yunxi|yunyang|yunxia|tingting|mei-jia|sin-ji|li-mu/.test(name)) score += 34;
+      if (/compact|basic|novelty|espeak|festival/.test(name)) score -= 60;
       return score;
     };
     const refreshVoices = () => {
-      speechVoicesRef.current = window.speechSynthesis.getVoices()
+      const sortedVoices = window.speechSynthesis.getVoices()
         .filter((voice) => voice.lang.toLowerCase().startsWith("zh"))
         .sort((first, second) => naturalVoiceScore(second) - naturalVoiceScore(first));
+      const bestScore = sortedVoices[0] ? naturalVoiceScore(sortedVoices[0]) : 0;
+      const naturalVoices = sortedVoices.filter((voice) => naturalVoiceScore(voice) >= bestScore - 8).slice(0, 3);
+      speechVoicesRef.current = naturalVoices.length ? naturalVoices : sortedVoices.slice(0, 1);
     };
     refreshVoices();
     window.speechSynthesis.addEventListener("voiceschanged", refreshVoices);
@@ -2400,9 +2423,9 @@ export default function FarmGame() {
     const voices = speechVoicesRef.current;
     const younger = (YOUNG_FRIENDS as readonly string[]).includes(person) || person === "安安";
     return {
-      voice: voices.length ? voices[code % Math.min(voices.length, 2)] : null,
-      rate: (younger ? .9 : .85) + (code % 4) * .012,
-      pitch: (younger ? 1.04 : .96) + (code % 3) * .015,
+      voice: voices.length ? voices[code % voices.length] : null,
+      rate: (younger ? .98 : .94) + (code % 3) * .01,
+      pitch: (younger ? 1.025 : .985) + (code % 3) * .008,
     };
   };
 
@@ -2417,38 +2440,31 @@ export default function FarmGame() {
     if (!spokenText) return;
     try {
       const profile = voiceProfileFor(person);
-      const phrases = (spokenText.match(/[^，。！？；]+[，。！？；]?/g) ?? [spokenText])
-        .map((phrase) => phrase.trim())
-        .filter(Boolean)
-        .slice(0, 5);
       const runId = speechRunRef.current + 1;
       speechRunRef.current = runId;
       window.speechSynthesis.cancel();
       window.speechSynthesis.resume();
-      setSpeakingPerson(person);
-      const speakPhrase = (index: number) => {
-        if (speechRunRef.current !== runId || index >= phrases.length) {
-          if (speechRunRef.current === runId) setSpeakingPerson((current) => current === person ? null : current);
-          return;
-        }
-        const phrase = phrases[index];
-        const utterance = new SpeechSynthesisUtterance(phrase);
-        utterance.lang = profile.voice?.lang ?? "zh-CN";
-        utterance.voice = profile.voice;
-        utterance.rate = profile.rate + (/[！？]$/.test(phrase) ? .025 : 0);
-        utterance.pitch = profile.pitch + (/[？]$/.test(phrase) ? .035 : 0);
-        utterance.volume = .9;
-        utterance.onend = () => {
-          if (speechRunRef.current !== runId) return;
-          const pause = /[。！？]$/.test(phrase) ? 150 : 85;
-          window.setTimeout(() => speakPhrase(index + 1), pause);
-        };
-        utterance.onerror = () => {
-          if (speechRunRef.current === runId) setSpeakingPerson((current) => current === person ? null : current);
-        };
-        window.speechSynthesis.speak(utterance);
+      const naturalText = spokenText
+        .replace(/，/g, "， ")
+        .replace(/；/g, "； ")
+        .replace(/([。！？])/g, "$1 ")
+        .trim();
+      const utterance = new SpeechSynthesisUtterance(naturalText);
+      utterance.lang = profile.voice?.lang ?? "zh-CN";
+      utterance.voice = profile.voice;
+      utterance.rate = profile.rate;
+      utterance.pitch = profile.pitch;
+      utterance.volume = .96;
+      utterance.onstart = () => {
+        if (speechRunRef.current === runId) setSpeakingPerson(person);
       };
-      speakPhrase(0);
+      utterance.onend = () => {
+        if (speechRunRef.current === runId) setSpeakingPerson((current) => current === person ? null : current);
+      };
+      utterance.onerror = () => {
+        if (speechRunRef.current === runId) setSpeakingPerson((current) => current === person ? null : current);
+      };
+      window.speechSynthesis.speak(utterance);
     } catch {
       // Voice playback is an enhancement; dialogue text remains visible.
     }
@@ -3500,7 +3516,110 @@ export default function FarmGame() {
     playTone(980);
   };
 
+  const requestResidentWork = (person: string, job: ResidentWorkJob) => {
+    const today = currentAbsoluteDay();
+    if (game.residentWorkOrders.some((order) => order.person === person && order.absoluteDay === today)) {
+      const text = `我今天已经帮过忙啦，明天还可以再来。`;
+      setResidentSpeech({ person, text });
+      setMessage(`${person}今天已经完成过一份工作。`);
+      speakResident(person, text);
+      setWorkMenuPerson(null);
+      return;
+    }
+
+    let amount = 0;
+    let result = "";
+    let applyWork: ((state: GameState) => GameState) | null = null;
+
+    if (job === "water") {
+      const indexes = game.tiles.map((tile, index) => tile.state === "crop" && !tile.watered ? index : -1).filter((index) => index >= 0).slice(0, 10);
+      if (!indexes.length) {
+        setMessage("田里暂时没有缺水的作物，换一项工作吧。");
+        return;
+      }
+      amount = indexes.length;
+      result = `给 ${amount} 株作物浇了水`;
+      applyWork = (state) => ({ ...state, tiles: state.tiles.map((tile, index) => indexes.includes(index) ? { ...tile, watered: true, care: (tile.care ?? 0) + 1 } : tile), wateredCount: state.wateredCount + amount, daily: { ...state.daily, watered: state.daily.watered + amount } });
+    } else if (job === "plantFruit") {
+      const seasonalFruits: CropType[][] = [["strawberry", "blueberry"], ["watermelon", "pineapple", "tomato"], ["pineapple", "pumpkin", "corn"], ["blueberry", "strawberry", "potato"]];
+      const crop = seasonalFruits[game.season].find((candidate) => game[CROP_INFO[candidate].seedField] > 0);
+      const soilIndexes = game.tiles.map((tile, index) => tile.state === "soil" ? index : -1).filter((index) => index >= 0);
+      if (!crop || !soilIndexes.length) {
+        setMessage(crop ? "田里没有松好且空着的土地，先用锄头整理几格吧。" : "背包里没有适合当前季节的水果种子，先去超市准备一些吧。");
+        return;
+      }
+      const seedField = CROP_INFO[crop].seedField;
+      const indexes = soilIndexes.slice(0, Math.min(4, game[seedField]));
+      amount = indexes.length;
+      result = `播下了 ${amount} 颗${CROP_INFO[crop].name}种子`;
+      applyWork = (state) => {
+        const next = {
+          ...state,
+          tiles: state.tiles.map((tile, index) => indexes.includes(index) ? { state: "crop" as TileState, stage: 0, watered: false, care: 0, cropType: crop } : tile),
+          planted: state.planted + amount,
+          daily: { ...state.daily, planted: state.daily.planted + amount },
+          wishPlantingRecords: {
+            ...state.wishPlantingRecords,
+            [`weather:${state.weather}:${crop}`]: (state.wishPlantingRecords[`weather:${state.weather}:${crop}`] ?? 0) + amount,
+            [`season:${state.season}:${crop}`]: (state.wishPlantingRecords[`season:${state.season}:${crop}`] ?? 0) + amount,
+          },
+        };
+        next[seedField] = state[seedField] - amount;
+        return next;
+      };
+    } else if (job === "fertilize") {
+      const indexes = game.tiles.map((tile, index) => tile.state === "crop" ? index : -1).filter((index) => index >= 0).slice(0, 10);
+      if (!indexes.length) {
+        setMessage("田里暂时没有作物可以施肥，先播种再来拜托居民吧。");
+        return;
+      }
+      amount = indexes.length;
+      result = `给 ${amount} 株作物施了肥，品质更容易提高`;
+      applyWork = (state) => ({ ...state, tiles: state.tiles.map((tile, index) => indexes.includes(index) ? { ...tile, care: (tile.care ?? 0) + 2 } : tile) });
+    } else if (job === "mineDiamond") {
+      const veinIndex = game.caveDiamondStates.findIndex(Boolean);
+      if (veinIndex < 0) {
+        setMessage("今天山洞里能看见的钻石矿已经挖完了，等新的矿脉出现再来吧。");
+        return;
+      }
+      amount = 1;
+      result = "在青禾山洞挖到 1 颗钻石和 2 块石材";
+      applyWork = (state) => ({ ...state, diamonds: state.diamonds + 1, stone: state.stone + 2, caveDiamondStates: state.caveDiamondStates.map((standing, index) => index === veinIndex ? false : standing) });
+    } else if (job === "chopWood") {
+      const treeIndex = game.treeStates.findIndex(Boolean);
+      if (treeIndex < 0) {
+        setMessage("农场今天没有还能砍的树，等树重新生长后再来吧。");
+        return;
+      }
+      amount = 6;
+      result = "砍树收集了 6 块木头和 2 滴树脂";
+      applyWork = (state) => ({ ...state, wood: state.wood + 6, resin: state.resin + 2, treeStates: state.treeStates.map((standing, index) => index === treeIndex ? false : standing) });
+    } else {
+      amount = 3;
+      result = "从野外采回了 3 份药材";
+      applyWork = (state) => ({ ...state, herbs: state.herbs + 3 });
+    }
+
+    if (!applyWork) return;
+    setGame((current) => {
+      const workedState = applyWork!(current);
+      return withFriendship({
+        ...workedState,
+        residentWorkOrders: [...workedState.residentWorkOrders.filter((order) => order.absoluteDay >= today - 7), { person, job, absoluteDay: today, amount, result }].slice(-24),
+        journalEntries: [`${SEASONS[workedState.season]}第${workedState.day}天：拜托${person}${residentWorkLabel(job)}，${result}。成果已经加入田地或资源记录。`, ...workedState.journalEntries].slice(0, 40),
+      }, person, 2);
+    });
+    const place = RESIDENT_WORK_OPTIONS.find((option) => option.job === job)?.place ?? "农场";
+    const text = `好呀，我这就去${place}。${result}，你过去就能看到我，成果也已经记进资源和田地了。`;
+    setResidentSpeech({ person, text });
+    setMessage(`${person}接受了工作：${result}。`);
+    setWorkMenuPerson(null);
+    speakResident(person, text);
+    playTone(850);
+  };
+
   const interactWithPerson = (person: string, fallback: string, preferFallback = false) => {
+    setWorkMenuPerson(null);
     if (giveHeldItem(person)) return;
     const showSpeech = (text: string) => {
       const prefix = `${person}：`;
@@ -6222,6 +6341,8 @@ export default function FarmGame() {
   const speakingWishCanSubmit = Boolean(speakingWishObjectivesReady && speakingWishDefinition && hasWishMaterials(game, speakingWishDefinition));
   const qualityTotals = CROP_TYPES.reduce((totals, crop) => ({ normal: totals.normal + game.cropQualityHarvests[crop].normal, silver: totals.silver + game.cropQualityHarvests[crop].silver, gold: totals.gold + game.cropQualityHarvests[crop].gold }), { normal: 0, silver: 0, gold: 0 });
   const absoluteGameDay = (game.year - 1) * 112 + game.season * 28 + game.day;
+  const currentResidentWorkers = game.residentWorkOrders.filter((order) => order.absoluteDay === absoluteGameDay && order.job !== "mineDiamond");
+  const currentCaveWorkers = game.residentWorkOrders.filter((order) => order.absoluteDay === absoluteGameDay && order.job === "mineDiamond");
   const residentQuestCycle = Math.floor(Math.max(0, absoluteGameDay - 1) / 3);
   const activeResidentQuests = Array.from({ length: 3 }, (_, index) => RESIDENT_QUESTS[(residentQuestCycle * 3 + index) % RESIDENT_QUESTS.length]);
   const residentQuestKey = (quest: ResidentQuest) => `${residentQuestCycle}-${quest.id}`;
@@ -7866,9 +7987,10 @@ export default function FarmGame() {
             <div className="location-chip"><span>{scene === "farm" ? "⌂" : scene === "westFriendFarm" ? "♣" : scene === "mysteryRoad" ? "▤" : scene === "cultureDistrict" ? "▣" : scene === "residentialDistrict" ? "屋" : "◆"}</span>{sceneLabel}</div>
             {residentSpeech && <div className={`resident-speech-card ${speakingPerson === residentSpeech.person ? "resident-is-speaking" : ""}`} role="status" aria-live="polite" onClick={(event) => event.stopPropagation()}>
               <span className="resident-speech-portrait" style={personClothesStyle(residentSpeech.person)} aria-hidden="true"><i /><b /></span>
-              <p><strong>{residentSpeech.person}</strong><span>{residentSpeech.text}</span>{relationshipPeople.includes(residentSpeech.person) && <span className="resident-speech-actions">{speakingWishProgress && !speakingWishProgress.completed && <button className={speakingWishCanSubmit ? "resident-speech-submit-wish ready" : "resident-speech-submit-wish"} onClick={() => finishResidentWish(residentSpeech.person)}>交付愿望材料{speakingWishCanSubmit ? " ✓" : ""}</button>}<button className="resident-speech-wish" onClick={() => { if (!game.residentWishes[residentSpeech.person]) startResidentWish(residentSpeech.person); setJournalTab("friends"); setJournalOpen(true); setResidentSpeech(null); }}>{game.residentWishes[residentSpeech.person]?.completed ? "心愿已经一起实现 ✓" : game.residentWishes[residentSpeech.person] ? "打开日记查看详细进度" : `听听${residentSpeech.person}的心愿`}</button></span>}</p>
-              <button onClick={() => setResidentSpeech(null)} aria-label="收起居民对话">×</button>
+              <p><strong>{residentSpeech.person}</strong><span>{residentSpeech.text}</span>{relationshipPeople.includes(residentSpeech.person) && <span className="resident-speech-actions">{speakingWishProgress && !speakingWishProgress.completed && <button className={speakingWishCanSubmit ? "resident-speech-submit-wish ready" : "resident-speech-submit-wish"} onClick={() => finishResidentWish(residentSpeech.person)}>交付愿望材料{speakingWishCanSubmit ? " ✓" : ""}</button>}<button className="resident-work-request" onClick={() => setWorkMenuPerson(residentSpeech.person)}>请帮我干活</button><button className="resident-speech-wish" onClick={() => { if (!game.residentWishes[residentSpeech.person]) startResidentWish(residentSpeech.person); setJournalTab("friends"); setJournalOpen(true); setResidentSpeech(null); setWorkMenuPerson(null); }}>{game.residentWishes[residentSpeech.person]?.completed ? "心愿已经一起实现 ✓" : game.residentWishes[residentSpeech.person] ? "打开日记查看详细进度" : `听听${residentSpeech.person}的心愿`}</button></span>}</p>
+              <button onClick={() => { setResidentSpeech(null); setWorkMenuPerson(null); }} aria-label="收起居民对话">×</button>
             </div>}
+            {workMenuPerson && residentSpeech?.person === workMenuPerson && <section className="resident-work-menu" onClick={(event) => event.stopPropagation()} aria-label={`请${workMenuPerson}帮忙`}><header><div><small>当面拜托居民</small><strong>请{workMenuPerson}帮我做什么？</strong></div><button onClick={() => setWorkMenuPerson(null)} aria-label="关闭帮忙菜单">×</button></header><div>{RESIDENT_WORK_OPTIONS.map((option) => <button key={option.job} onClick={() => requestResidentWork(workMenuPerson, option.job)}><i>{option.icon}</i><span>{option.label}<small>{option.place} · 成果直接生效</small></span></button>)}</div><footer>每位居民每天可以接受一项工作，第二天还能再次拜托。</footer></section>}
             {dreamScene !== null && dreamPhase === "outside" && <div className={`dream-reality-anomalies anomaly-${dreamOddity}`} aria-hidden="true"><i className="dream-wrong-ripple" /><i className="dream-rising-leaves" /><i className="dream-second-moon" /><i className="dream-strange-watcher" /><i className="dream-backward-birds" /><i className="dream-long-shadow" /><i className="dream-floating-light" /><i className="dream-pale-animal" /><i className="dream-cookie-rain" /><i className="dream-dancing-crops" /><i className="dream-bubble-fish" /><i className="dream-tiny-footprints" /><i className="dream-pond-stars" /><i className="dream-winking-window" /><i className="dream-walking-scarecrow" /><i className="dream-grass-train" /><i className="dream-floating-sheep" /><i className="dream-rainbow-rain" /><i className="dream-twin-moons" /></div>}
             <div className="cloud cloud-one" /><div className="cloud cloud-two" />
             <div className="mountain mountain-one" /><div className="mountain mountain-two" />
@@ -7894,6 +8016,7 @@ export default function FarmGame() {
                 {currentFestival?.id === "fishing" && <div className="festival-crowd fishing-festival-crowd" aria-label="参加钓鱼节并不断挥竿钓鱼的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} fishing-villager fishing-villager-${index + 1} ${name === "安安" ? "anan-character" : ""} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：提竿时要咬紧牙用力拉！有时也会钓到石头、袜子或饮料。`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><em className="festival-fishing-rod" /><u className="fishing-effort-mouth" /><u className="festival-caught-fish" /><u className="festival-surprise-catch" /><span>{name}<small>等待鱼儿咬钩</small></span></button>)}</div>}
                 {isBirthday && <div className="birthday-farm-friends" aria-label="在生日当天跑到菜地和农场玩耍的朋友">{BIRTHDAY_GUESTS.slice(0, 6).map((name, index) => <button key={`farm-party-${name}`} style={personClothesStyle(name)} className={`birthday-field-friend field-friend-${index + 1} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：我们从农舍跑到菜地边玩啦，一会儿再回去吃生日蛋糕！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div>}
                 {game.farmHelperToday && <button className="farm-helper-friend" style={personClothesStyle(game.farmHelperToday)} onClick={(event) => { event.stopPropagation(); interactWithPerson(game.farmHelperToday!, `${game.farmHelperToday}：我今天真的干过活啦！有作物时我会浇水施肥，有空地和种子时我会播种；如果田里没活，我就整理农具并留下种子。`, true); }} aria-label={`和今天来农场帮忙的${game.farmHelperToday}说话`}><i /><b /><span>{game.farmHelperToday}<small>今天的帮助已经生效</small></span></button>}
+                {currentResidentWorkers.length > 0 && <div className="resident-work-team" aria-label="今天被拜托来农场工作的居民">{currentResidentWorkers.map((order, index) => <button key={`${order.person}-${order.job}`} className={`resident-work-person work-${order.job}`} style={{ ...personClothesStyle(order.person), "--worker-index": index } as CSSProperties} onClick={(event) => { event.stopPropagation(); interactWithPerson(order.person, `${order.person}：${order.result}，已经直接加到你的田地或资源记录里啦。`, true); }}><i /><b /><em>{RESIDENT_WORK_OPTIONS.find((option) => option.job === order.job)?.icon}</em><span>{order.person}<small>{order.result}</small></span></button>)}</div>}
                 <button className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house} ${game.upgrades.secondFloor ? "has-second-floor" : ""} ${isNight ? "night-house" : ""} ${isNight && stoveLit ? "fire-lit-house" : ""}`} onClick={() => { setHouseFloor(1); setUpstairsRoom(null); setActiveBuilding("farmhouse"); setMessage(`走进${displayName}的农舍，屋里暖洋洋的。`); }} aria-label={`进入${displayName}的农舍`}><span className="roof" /><span className={`chimney ${stoveLit ? "smoking" : ""}`}>{stoveLit && <><i /><i /><i /></>}</span><span className="wall" /><span className="door" /><span className="window" />{game.upgrades.secondFloor > 0 && <><span className="upper-window upper-window-left" /><span className="upper-window upper-window-right" /></>}<span className="sign">{displayName}的农舍{game.upgrades.secondFloor ? " · 两层" : game.upgrades.house ? ` · 扩建 ${game.upgrades.house} 级` : ""} · 点击进入</span></button>
                 <button className={`crafted-object crafted-chest home-storage-chest ${selectedResource ? "ready-to-store" : ""}`} onClick={() => { if (selected === "axe") { setMessage("这是农舍旁边固定的收纳木箱，不会被斧头拆掉。 "); return; } useChest(); }} aria-label={`农舍旁的木箱，内有 ${Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)} 件物品`}><i /><b>{Object.values(game.chestStorage).reduce((sum, count) => sum + count, 0)}</b></button>
                 <button className="home-shipping-bin" onClick={() => { setShippingBinOpen(true); setMessage("打开大号售卖箱。单击物品放进去，睡到第二天就会卖掉换成金币。 "); }} aria-label={`农舍旁的大号售卖箱，已有 ${Object.values(game.shippingBin).reduce((sum, count) => sum + count, 0)} 件待售物品`}><i /><i /><b>{Object.values(game.shippingBin).reduce((sum, count) => sum + count, 0)}</b><span>大号售卖箱</span></button>
@@ -8213,7 +8336,7 @@ export default function FarmGame() {
                 <section className={`farm-special-panel ${farmInterior}-interior-panel ${interiorFireLit ? "interior-fire-lit" : ""}`} role="dialog" aria-modal="true" aria-labelledby="farm-special-title">
                   <header><div><span>{farmInterior === "cave" ? "青禾农场西侧" : "溪边露营地"}</span><h2 id="farm-special-title">{farmInterior === "cave" ? "青禾山洞内部" : "双顶帐篷内部"}</h2></div><button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); }} aria-label="离开这里">×</button></header>
                   <div className="farm-special-scene" onClick={walkInsidePointer}>
-                    {farmInterior === "cave" ? <><i className="cave-rock cave-rock-one" /><i className="cave-rock cave-rock-two" />{game.caveDiamondSpots.map((spotIndex, index) => { const diamond = CAVE_DIAMOND_SPOTS[spotIndex]; return <button key={`cave-diamond-${index}-${spotIndex}`} className={`cave-diamond-mine cave-diamond-${index + 1} ${diamond.hidden ? "diamond-partly-hidden" : ""} ${game.caveDiamondStates[index] ? "" : "mined"}`} style={{ left: `${diamond.x}%`, top: `${diamond.y}%` }} onClick={(event) => { event.stopPropagation(); mineCaveDiamond(index); }} aria-label={game.caveDiamondStates[index] ? `${diamond.hidden ? "岩石后露出尖角的" : "地面上的"}钻石矿，使用镐子挖掘` : `第 ${index + 1} 处钻石矿已经挖完`}><i /><b>{game.caveDiamondStates[index] ? diamond.hidden ? "露出的晶尖" : "钻石矿" : "碎矿"}</b></button>; })}<span className="cave-path" /><b className="cave-fire" /></> : <><button className="camp-bed" onClick={(event) => { event.stopPropagation(); nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进帐篷睡铺住了一晚。早上七点，在帐篷里醒来了。 "); }} aria-label="点击帐篷睡铺住到第二天" /><i className="camp-bag" /><i className="camp-table" /><span className="camp-lantern" /><b className="camp-window" />{wildFriendVisit === "camp" && <button style={personClothesStyle("安安")} className="camp-resident anan-character" onClick={() => interactWithPerson("安安", "安安：今晚我们可以住在帐篷里，听着溪水声睡觉。 ")}><i /><em className="anan-pigtails" /><b /><span>安安住在帐篷里</span></button>}</>}
+                    {farmInterior === "cave" ? <><i className="cave-rock cave-rock-one" /><i className="cave-rock cave-rock-two" />{game.caveDiamondSpots.map((spotIndex, index) => { const diamond = CAVE_DIAMOND_SPOTS[spotIndex]; return <button key={`cave-diamond-${index}-${spotIndex}`} className={`cave-diamond-mine cave-diamond-${index + 1} ${diamond.hidden ? "diamond-partly-hidden" : ""} ${game.caveDiamondStates[index] ? "" : "mined"}`} style={{ left: `${diamond.x}%`, top: `${diamond.y}%` }} onClick={(event) => { event.stopPropagation(); mineCaveDiamond(index); }} aria-label={game.caveDiamondStates[index] ? `${diamond.hidden ? "岩石后露出尖角的" : "地面上的"}钻石矿，使用镐子挖掘` : `第 ${index + 1} 处钻石矿已经挖完`}><i /><b>{game.caveDiamondStates[index] ? diamond.hidden ? "露出的晶尖" : "钻石矿" : "碎矿"}</b></button>; })}<span className="cave-path" /><b className="cave-fire" />{currentCaveWorkers.map((order, index) => <button key={`cave-worker-${order.person}`} className={`resident-cave-worker cave-worker-${index + 1}`} style={personClothesStyle(order.person)} onClick={(event) => { event.stopPropagation(); interactWithPerson(order.person, `${order.person}：${order.result}，钻石和石材已经放进你的资源记录。`, true); }}><i /><b /><em>⚒</em><span>{order.person}<small>{order.result}</small></span></button>)}</> : <><button className="camp-bed" onClick={(event) => { event.stopPropagation(); nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进帐篷睡铺住了一晚。早上七点，在帐篷里醒来了。 "); }} aria-label="点击帐篷睡铺住到第二天" /><i className="camp-bag" /><i className="camp-table" /><span className="camp-lantern" /><b className="camp-window" />{wildFriendVisit === "camp" && <button style={personClothesStyle("安安")} className="camp-resident anan-character" onClick={() => interactWithPerson("安安", "安安：今晚我们可以住在帐篷里，听着溪水声睡觉。 ")}><i /><em className="anan-pigtails" /><b /><span>安安住在帐篷里</span></button>}</>}
                     {wildFriendVisit === farmInterior && <button style={personClothesStyle("安安")} className="wild-friend-visitor anan-character" onClick={() => interactWithPerson("安安", farmInterior === "cave" ? "安安：这里的水晶真漂亮！我们点亮火柴，再一起找找通往深处的小路吧。" : "安安：今晚风很轻，我们可以在帐篷里讲山谷探险的故事。") }><i /><em className="anan-pigtails" /><b /><span>安安<small>来陪你玩</small></span></button>}
                     {farmInterior === "cave" && game.missingPetId && (() => { const lostPet = game.pets.find((pet) => pet.id === game.missingPetId); if (!lostPet) return null; const petName = PET_CATALOG.find((pet) => pet.id === lostPet.type)?.name; return <button className={`lost-pet-in-cave pet-${lostPet.type}`} onClick={() => { setGame((current) => ({ ...current, missingPetId: null })); setMessage(`在岩石后面找到了${petName}，小禾把它轻轻抱起来带回家，它又会跟着你了！`); playTone(900); }}><i /><b /><span>{petName}躲在洞里<small>点击抱回家</small></span></button>; })()}
                     {farmInterior === "cave" && dailyNews.kind === "cave" && <button className="cave-prospector" style={personClothesStyle("阿木")} onClick={(event) => { event.stopPropagation(); setMessage("山洞勘探员阿木：新闻是真的。今天三处矿脉的位置已经重新标记，留意岩石后露出的小尖角。"); playTone(680); }}><i /><b /><em className="prospector-helmet" /><span>勘探员阿木<small>点击询问矿脉</small></span></button>}
