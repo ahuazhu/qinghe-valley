@@ -47,6 +47,8 @@ type ShippingCatalogItem = { id: string; name: string; short: string; price: num
 type AtticResource = "wood" | "stone" | "diamonds" | "herbs" | "resin" | "pinecones" | "pineNuts" | "eggs" | "milk" | "wool";
 type ResidentQuestId = "orchardCrate" | "clinicParcel" | "roadSigns" | "workshopMeasure" | "springWater" | "museumRubbing" | "libraryPages" | "schoolSpecimen" | "ananTrail";
 type ResidentQuest = { id: ResidentQuestId; giver: string; title: string; location: string; village: VillageId; scene: Scene; detail: string; action: string; icon: string; reward: number };
+type ResidentWishProgress = { startedDay: number; firstBaseline: number; secondBaseline: number; completed: boolean };
+type ResidentWishDefinition = { title: string; story: string; firstLabel: string; firstNeed: number; firstMetric: (state: GameState) => number; secondLabel: string; secondNeed: number; secondMetric: (state: GameState) => number; finalPlace: string };
 
 const QINGHE_WEST_PATH_END = -12;
 const QINGHE_WEST_EXIT = -13;
@@ -207,6 +209,7 @@ type GameState = {
   forestQuestNextAbsoluteDay: number;
   residentQuestCompletions: string[];
   residentTripDays: string[];
+  residentWishes: Record<string, ResidentWishProgress>;
   cropQualityHarvests: CropQualityRecord;
   cropQualityStock: CropQualityStock;
   chestCropQualityStock: CropQualityStock;
@@ -610,6 +613,30 @@ const RESIDENT_QUESTS: ResidentQuest[] = [
   { id: "schoolSpecimen", giver: "许老师", title: "课堂缺少的种子标本", location: "清河文化街", village: "qinghe", scene: "cultureDistrict", detail: "学校标本盒少了一格，请查看花园边的种子并贴上正确名字。", action: "辨认并装好种子标本", icon: "种", reward: 95 },
   { id: "ananTrail", giver: "安安", title: "林边小路的新脚印", location: "安安的小农场", village: "qinghe", scene: "westFriendFarm", detail: "安安在小路上发现一串陌生脚印，请沿地面慢慢观察它通向哪里。", action: "沿着脚印调查小路", icon: "印", reward: 75 },
 ];
+
+const RESIDENT_WISH_DEFINITIONS: Record<string, ResidentWishDefinition> = {
+  林婶: { title: "四季果园茶会", story: "林婶想用亲手照料的果实办一场小茶会，但要连续观察几天的作物甜度。", firstLabel: "再收获 5 份成熟作物", firstNeed: 5, firstMetric: (state) => state.harvested, secondLabel: "再完成 8 次认真浇水", secondNeed: 8, secondMetric: (state) => state.wateredCount, finalPlace: "带着记录去东郊果园找林婶" },
+  鲁师傅: { title: "会呼吸的木屋模型", story: "鲁师傅想试做一间随季节通风的小屋，必须先用真实农场数据反复修改尺寸。", firstLabel: "再播种 6 次测试土地", firstNeed: 6, firstMetric: (state) => state.planted, secondLabel: "再收获 5 份作物检验空间", secondNeed: 5, secondMetric: (state) => state.harvested, finalPlace: "去南坡院子和鲁师傅拼装模型" },
+  叶老师: { title: "山谷自然观察册", story: "叶老师想写一本不照抄旧书的观察册，需要真正记录水边和田里的变化。", firstLabel: "再钓到 3 件水中发现", firstNeed: 3, firstMetric: (state) => state.fishCaught, secondLabel: "再收获 4 份不同农事记录", secondNeed: 4, secondMetric: (state) => state.harvested, finalPlace: "到北林书屋和叶老师整理页码" },
+  白医生: { title: "雨季健康手册", story: "白医生希望把劳动、饮食和休息写成人人看得懂的手册，需要几天真实生活记录。", firstLabel: "再完成 7 次浇水劳动", firstNeed: 7, firstMetric: (state) => state.wateredCount, secondLabel: "再钓到 2 份健康食材", secondNeed: 2, secondMetric: (state) => state.fishCaught, finalPlace: "回诊所和白医生核对健康记录" },
+  阿麦: { title: "从农场到餐桌的菜单", story: "阿麦要做一张每天味道都不同的菜单，原料必须是小禾亲自取得的。", firstLabel: "再收获 5 份新鲜作物", firstNeed: 5, firstMetric: (state) => state.harvested, secondLabel: "再钓到 3 份水边食材", secondNeed: 3, secondMetric: (state) => state.fishCaught, finalPlace: "在麦香咖啡和阿麦试做整桌菜单" },
+  周镇长: { title: "真正能走通的新路线", story: "周镇长不想只在纸上画路，要收集居民委托和农场运输的真实结果。", firstLabel: "再完成 2 份居民委托", firstNeed: 2, firstMetric: (state) => state.residentQuestCompletions.length, secondLabel: "再收获 6 份运输样品", secondNeed: 6, secondMetric: (state) => state.harvested, finalPlace: "去镇公所和周镇长铺开路线图" },
+  沈馆长: { title: "水土与生活小展览", story: "沈馆长想办一场能摸、能看的展览，需要水中发现和农场样品共同讲故事。", firstLabel: "再钓到 4 件水中发现", firstNeed: 4, firstMetric: (state) => state.fishCaught, secondLabel: "再收获 5 份农场样品", secondNeed: 5, secondMetric: (state) => state.harvested, finalPlace: "到博物馆和沈馆长亲手布置展柜" },
+  许老师: { title: "一堂真正的农场课", story: "许老师想让全班亲眼看见种子到收获的变化，要小禾帮忙记录完整过程。", firstLabel: "再播种 5 次课堂样本", firstNeed: 5, firstMetric: (state) => state.planted, secondLabel: "再收获 5 份成熟样本", secondNeed: 5, secondMetric: (state) => state.harvested, finalPlace: "去学校和许老师摆好课堂标本" },
+  安安: { title: "林边秘密探险册", story: "安安想把不会出现在地图上的小路画进一本探险册，要一起观察树苗和水边。", firstLabel: "再种下 2 棵松果树苗", firstNeed: 2, firstMetric: (state) => state.plantedTrees.length, secondLabel: "再钓到 3 件水边线索", secondNeed: 3, secondMetric: (state) => state.fishCaught, finalPlace: "到安安的小农场一起装订探险册" },
+};
+
+const residentWishDefinition = (name: string): ResidentWishDefinition => RESIDENT_WISH_DEFINITIONS[name] ?? {
+  title: `${name}的山谷纪念盒`,
+  story: `${name}想保存一份亲自参与农场生活的纪念，不希望小禾只是点一下按钮就送来成品。`,
+  firstLabel: "再播种 4 次共同观察的种子",
+  firstNeed: 4,
+  firstMetric: (state) => state.planted,
+  secondLabel: "再完成 6 次浇水照料",
+  secondNeed: 6,
+  secondMetric: (state) => state.wateredCount,
+  finalPlace: `找到${name}，一起把几天的记录装进纪念盒`,
+};
 
 const FESTIVAL_SCHEDULE: { season: number; day: number; id: FestivalId; name: string; place: string; description: string }[] = [
   { season: 0, day: 3, id: "seeds", name: "种子分享日", place: "青禾超市", description: "免费领取水果和蔬菜种子大礼包" },
@@ -1017,6 +1044,7 @@ const makeNewGame = (): GameState => ({
   forestQuestNextAbsoluteDay: 0,
   residentQuestCompletions: [],
   residentTripDays: [],
+  residentWishes: {},
   cropQualityHarvests: makeCropQualityRecord(),
   cropQualityStock: makeCropQualityStock(),
   chestCropQualityStock: makeCropQualityStock(),
@@ -1082,6 +1110,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       forestQuestNextAbsoluteDay: parsed.forestQuestNextAbsoluteDay ?? 0,
       residentQuestCompletions: parsed.residentQuestCompletions ?? [],
       residentTripDays: parsed.residentTripDays ?? [],
+      residentWishes: parsed.residentWishes ?? {},
       cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
       cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
       chestCropQualityStock: mergeCropQualityStock(parsed.chestCropQualityStock),
@@ -1387,6 +1416,7 @@ export default function FarmGame() {
             forestQuestNextAbsoluteDay: parsed.forestQuestNextAbsoluteDay ?? 0,
             residentQuestCompletions: parsed.residentQuestCompletions ?? [],
             residentTripDays: parsed.residentTripDays ?? [],
+            residentWishes: parsed.residentWishes ?? {},
             cropQualityHarvests: mergeCropQualityRecord(parsed.cropQualityHarvests),
             cropQualityStock: mergeCropQualityStock(parsed.cropQualityStock),
             chestCropQualityStock: mergeCropQualityStock(parsed.chestCropQualityStock),
@@ -1567,6 +1597,7 @@ export default function FarmGame() {
           forestQuestNextAbsoluteDay: data.save.forestQuestNextAbsoluteDay ?? 0,
           residentQuestCompletions: data.save.residentQuestCompletions ?? [],
           residentTripDays: data.save.residentTripDays ?? [],
+          residentWishes: data.save.residentWishes ?? {},
           cropQualityHarvests: mergeCropQualityRecord(data.save.cropQualityHarvests),
           cropQualityStock: mergeCropQualityStock(data.save.cropQualityStock),
           chestCropQualityStock: mergeCropQualityStock(data.save.chestCropQualityStock),
@@ -2071,6 +2102,11 @@ export default function FarmGame() {
       }
       if (key === "escape" && guideOpen) { setGuideOpen(false); return; }
       if (key === "escape" && journalOpen) { setJournalOpen(false); return; }
+      if (key === "escape" && schoolLesson) {
+        setSchoolLesson(null);
+        setMessage("已经退出课堂，回到学校教室。下次可以重新开始这节课。 ");
+        return;
+      }
       if (key === "escape" && cookingGame) { setCookingGame(null); setMessage("暂时收起了烹饪台，食材还留在背包。 "); return; }
       if (key === "escape" && bulkChestPrompt) {
         setBulkChestPrompt(null);
@@ -2210,7 +2246,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, bulkShippingPrompt, chestOpen, shippingBinOpen, cookingGame, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, guideOpen, journalOpen, move, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, ranchOpen, residentHome, splitScreen, townhallCalendarOpen]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, bulkShippingPrompt, chestOpen, shippingBinOpen, cookingGame, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, guideOpen, journalOpen, move, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, ranchOpen, residentHome, schoolLesson, splitScreen, townhallCalendarOpen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -7639,7 +7675,7 @@ export default function FarmGame() {
               </div>;
             })()}
 
-            {schoolLesson && <div className={`school-lesson-overlay ${schoolLesson.assembly ? "assembly-lesson" : ""}`} role="presentation"><section className="school-lesson-panel" role="dialog" aria-modal="true" aria-label={schoolLesson.title}><header><div><span>{schoolLesson.assembly ? "紧急新闻 · 全谷集合" : "青禾学校 · 真实课堂"}</span><h2>{schoolLesson.title}</h2><small>第 {schoolLesson.step + 1}/{schoolLesson.pages.length} 段 · 必须听完</small></div><button onClick={() => setSchoolLesson(null)}>×</button></header><div className="lesson-classroom"><div className="lesson-blackboard"><strong>{schoolLesson.title}</strong><p>{schoolLesson.pages[schoolLesson.step]}</p><i /></div><button className="lesson-teacher" style={personClothesStyle(schoolLesson.assembly ? (schoolLesson.step === 0 ? "周镇长" : schoolLesson.step === 1 ? "白医生" : "许老师") : "许老师")}><i /><b /><span>{schoolLesson.assembly ? schoolLesson.step === 0 ? "周镇长" : schoolLesson.step === 1 ? "白医生" : "许老师" : "许老师"}</span></button><div className="lesson-audience">{(schoolLesson.assembly ? [...SCHEDULED_RESIDENTS, ...SCHOOL_STUDENTS] : SCHOOL_STUDENTS).map((name, index) => <i key={`${name}-${index}`} style={personClothesStyle(name)}><b /><span>{name}</span></i>)}</div></div><div className="lesson-page-dots">{schoolLesson.pages.map((_, index) => <i key={index} className={index < schoolLesson.step ? "done" : index === schoolLesson.step ? "active" : ""}>{index < schoolLesson.step ? "✓" : index + 1}</i>)}</div><footer><span>{message}</span><button onClick={advanceSchoolLesson}>{schoolLesson.step === schoolLesson.pages.length - 1 ? "听完并记录" : "认真听下一段"}</button></footer></section></div>}
+            {schoolLesson && <div className={`school-lesson-overlay ${schoolLesson.assembly ? "assembly-lesson" : ""}`} role="presentation"><button className="lesson-floating-exit" onClick={() => { setSchoolLesson(null); setMessage("已经退出课堂，回到学校教室。下次可以重新开始这节课。 "); }}>× 退出课堂</button><section className="school-lesson-panel" role="dialog" aria-modal="true" aria-label={schoolLesson.title}><header><div><span>{schoolLesson.assembly ? "紧急新闻 · 全谷集合" : "青禾学校 · 真实课堂"}</span><h2>{schoolLesson.title}</h2><small>第 {schoolLesson.step + 1}/{schoolLesson.pages.length} 段 · 可以随时退出</small></div><div className="lesson-header-actions"><button className="lesson-header-next" onClick={advanceSchoolLesson}>{schoolLesson.step === schoolLesson.pages.length - 1 ? "听完并记录" : `继续第 ${schoolLesson.step + 2} 段`}</button><button className="lesson-header-close" onClick={() => { setSchoolLesson(null); setMessage("已经退出课堂，回到学校教室。下次可以重新开始这节课。 "); }} aria-label="退出课堂">×</button></div></header><div className="lesson-classroom"><div className="lesson-blackboard"><strong>{schoolLesson.title}</strong><p>{schoolLesson.pages[schoolLesson.step]}</p><i /></div><button className="lesson-teacher" style={personClothesStyle(schoolLesson.assembly ? (schoolLesson.step === 0 ? "周镇长" : schoolLesson.step === 1 ? "白医生" : "许老师") : "许老师")}><i /><b /><span>{schoolLesson.assembly ? schoolLesson.step === 0 ? "周镇长" : schoolLesson.step === 1 ? "白医生" : "许老师" : "许老师"}</span></button><div className="lesson-audience">{(schoolLesson.assembly ? [...SCHEDULED_RESIDENTS, ...SCHOOL_STUDENTS] : SCHOOL_STUDENTS).map((name, index) => <i key={`${name}-${index}`} style={personClothesStyle(name)}><b /><span>{name}</span></i>)}</div></div><div className="lesson-page-dots">{schoolLesson.pages.map((_, index) => <button key={index} className={index < schoolLesson.step ? "done" : index === schoolLesson.step ? "active" : ""} disabled={index > schoolLesson.step} onClick={() => setSchoolLesson({ ...schoolLesson, step: index })}>{index < schoolLesson.step ? "✓" : index + 1}</button>)}</div><footer><span>{message}</span><button onClick={advanceSchoolLesson}>{schoolLesson.step === schoolLesson.pages.length - 1 ? "听完并记录" : `认真听第 ${schoolLesson.step + 2} 段`}</button></footer></section></div>}
 
             {festivalProcess && FESTIVAL_PROCESS_STEPS[festivalProcess.id] && (() => {
               const process = FESTIVAL_PROCESS_STEPS[festivalProcess.id]!;
