@@ -30,6 +30,7 @@ type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft" | "springF
 type WorkshopSeedId = "strawberry" | "watermelon" | "corn" | "pumpkin";
 type WorkshopSeason = "春" | "夏" | "秋" | "冬";
 type SnowBuildState = { playerX: number; bodyX: number; bodySize: number; bodyPlaced: boolean; headX: number; headSize: number; headRolled: boolean; headStacked: boolean };
+type BirthdayCeremonyState = { person: string; own: boolean; step: 0 | 1 | 2; songTaps: number; blowTaps: number; cutProgress: number };
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
 type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "table" | "floorLamp" | "television" | "sofa" | "bookshelf" | "dresser" | "nightstand" | "matches" | "blanket";
 type CraftRotation = 0 | 45 | 90;
@@ -1142,6 +1143,7 @@ export default function FarmGame() {
   const [outingPlayer, setOutingPlayer] = useState({ x: 47, y: 69 });
   const [outingActivitiesDone, setOutingActivitiesDone] = useState<number[]>([]);
   const [residentSpeech, setResidentSpeech] = useState<{ person: string; text: string } | null>(null);
+  const [birthdayCeremony, setBirthdayCeremony] = useState<BirthdayCeremonyState | null>(null);
   const [cafePlayerSitting, setCafePlayerSitting] = useState(false);
   const [careSession, setCareSession] = useState<{ mode: "training" | "treatment"; illness: IllnessId; step: number; progress: number; selected: string[]; herbParts: number; waterParts: number } | null>(null);
   const [medicalThermometerPicked, setMedicalThermometerPicked] = useState(false);
@@ -5463,9 +5465,9 @@ export default function FarmGame() {
       setMessage("今年的生日蛋糕已经和大家一起吃完了，明年春天第十九天还会再举办派对。 ");
       return;
     }
-    setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 40), birthdayCakeYear: current.year }));
-    setMessage("小禾和大家一起切开草莓生日蛋糕，吃下一大块，恢复了 40 点体力！大家一起说：生日快乐！ ");
-    playTone(940);
+    setBirthdayCeremony({ person: displayName, own: true, step: 0, songTaps: 0, blowTaps: 0, cutProgress: 0 });
+    setMessage("生日仪式开始了！先跟着亮起的音符唱完四句生日歌。 ");
+    playTone(720);
   };
 
   const celebrateResidentBirthday = (person: string) => {
@@ -5483,6 +5485,75 @@ export default function FarmGame() {
     }, person, 10));
     setMessage(`大家围到蛋糕旁为${person}唱生日歌，${person}吹灭蜡烛并亲手分蛋糕。恢复 18 点体力，得到 1 块生日曲奇，${person}好感 +10！`);
     playTone(960);
+  };
+
+  const beginResidentBirthdayCeremony = (person: string) => {
+    const partyKey = `resident-birthday-${game.year}-${game.season}-${game.day}-${person}`;
+    if (game.lastTalkedDays[partyKey] === "joined") {
+      setMessage(`${person}的生日蛋糕已经和大家分享过了。还可以和现场每个人聊天，或者举起礼物送给${person}。`);
+      return;
+    }
+    setBirthdayCeremony({ person, own: false, step: 0, songTaps: 0, blowTaps: 0, cutProgress: 0 });
+    setMessage(`大家围到了蛋糕旁。先按顺序唱完四句生日歌，再请${person}吹蜡烛。`);
+    playTone(720);
+  };
+
+  const tapBirthdaySong = () => {
+    if (!birthdayCeremony || birthdayCeremony.step !== 0) return;
+    const nextTaps = birthdayCeremony.songTaps + 1;
+    if (nextTaps >= 4) {
+      setBirthdayCeremony({ ...birthdayCeremony, step: 1, songTaps: 4 });
+      setMessage("四句生日歌唱完了！现在连续吹三次，把三根蜡烛一根根吹灭。 ");
+      playTone(900);
+      return;
+    }
+    setBirthdayCeremony({ ...birthdayCeremony, songTaps: nextTaps });
+    setMessage(`唱完第 ${nextTaps} 句生日歌，还剩 ${4 - nextTaps} 句。`);
+    playTone(650 + nextTaps * 70);
+  };
+
+  const blowBirthdayCandle = () => {
+    if (!birthdayCeremony || birthdayCeremony.step !== 1) return;
+    const nextBlows = birthdayCeremony.blowTaps + 1;
+    if (nextBlows >= 3) {
+      setBirthdayCeremony({ ...birthdayCeremony, step: 2, blowTaps: 3 });
+      setMessage("三根蜡烛都灭了！按住蛋糕刀，从蛋糕左边慢慢拖到右边把蛋糕切开。 ");
+      playTone(880);
+      return;
+    }
+    setBirthdayCeremony({ ...birthdayCeremony, blowTaps: nextBlows });
+    setMessage(`呼——吹灭了第 ${nextBlows} 根蜡烛，再吹 ${3 - nextBlows} 次。`);
+    playTone(540);
+  };
+
+  const finishBirthdayCeremony = () => {
+    if (!birthdayCeremony) return;
+    const ceremony = birthdayCeremony;
+    setBirthdayCeremony(null);
+    if (ceremony.own) {
+      setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 40), birthdayCakeYear: current.year }));
+      setMessage("蛋糕真的切开了！小禾和大家每人分到一块草莓蛋糕，恢复了 40 点体力。大家一起说：生日快乐！ ");
+      playTone(980);
+      return;
+    }
+    celebrateResidentBirthday(ceremony.person);
+  };
+
+  const updateBirthdayCut = (progress: number) => {
+    if (!birthdayCeremony || birthdayCeremony.step !== 2 || progress <= birthdayCeremony.cutProgress) return;
+    if (progress >= 88) {
+      setBirthdayCeremony({ ...birthdayCeremony, cutProgress: 100 });
+      window.setTimeout(finishBirthdayCeremony, 250);
+      return;
+    }
+    setBirthdayCeremony({ ...birthdayCeremony, cutProgress: progress });
+  };
+
+  const dragBirthdayKnife = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!birthdayCeremony || birthdayCeremony.step !== 2) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    updateBirthdayCut(Math.max(0, Math.min(100, ((event.clientX - bounds.left) / bounds.width) * 100)));
   };
 
   const resetGame = () => {
@@ -7126,6 +7197,12 @@ export default function FarmGame() {
 
       {shippingReport && <div className="shipping-report-toast" role="dialog" aria-modal="true" aria-label="昨晚售卖收入"><span>大号售卖箱通知</span><strong>昨晚卖出 {shippingReport.itemCount} 件东西</strong><b>+ {shippingReport.earnings.toLocaleString()} 金币</b><button onClick={() => setShippingReport(null)}>知道了</button></div>}
 
+      {birthdayCeremony && <div className="birthday-ceremony-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label={`${birthdayCeremony.person}的生日仪式`}><header><div><span>亲手完成生日仪式 · 第 {birthdayCeremony.step + 1}/3 步</span><h2>{birthdayCeremony.person}的生日会</h2></div><button onClick={() => { setBirthdayCeremony(null); setMessage("生日仪式暂时停下了，再点一次蛋糕就能重新开始。 "); }} aria-label="暂时离开生日仪式">×</button></header><div className={`birthday-ceremony-stage ceremony-step-${birthdayCeremony.step}`}>
+        {birthdayCeremony.step === 0 && <div className="birthday-song-game"><div className="birthday-singers" aria-hidden="true">{BIRTHDAY_GUESTS.slice(0, 6).map((name, index) => <i key={`singer-${name}`} className={index < birthdayCeremony.songTaps + 2 ? "singing" : ""} style={personClothesStyle(name)}><b /><em /></i>)}</div><strong>跟着亮起的音符唱生日歌</strong><div className="birthday-notes">{["祝", "生", "快", "乐"].map((note, index) => <button key={note} className={index < birthdayCeremony.songTaps ? "sung" : index === birthdayCeremony.songTaps ? "next-note" : ""} disabled={index !== birthdayCeremony.songTaps} onClick={tapBirthdaySong}><i>♪</i><span>{note}</span></button>)}</div><small>依次点击四个音符，所有人会一起开口唱歌</small></div>}
+        {birthdayCeremony.step === 1 && <div className="birthday-blow-game"><strong>连续吹气，把三根蜡烛逐一吹灭</strong><div className="ceremony-cake"><i /><div className="ceremony-candles">{[0, 1, 2].map((candle) => <b key={`candle-${candle}`} className={candle < birthdayCeremony.blowTaps ? "blown" : ""}><em /></b>)}</div></div><button onClick={blowBirthdayCandle}><i>呼——</i><span>{birthdayCeremony.blowTaps < 3 ? `吹第 ${birthdayCeremony.blowTaps + 1} 根蜡烛` : "蜡烛都灭了"}</span></button><small>每点一次，火焰会真正少一根</small></div>}
+        {birthdayCeremony.step === 2 && <div className="birthday-cut-game"><strong>按住蛋糕刀，从左边慢慢拖到右边</strong><div className="cake-cut-board" onPointerDown={dragBirthdayKnife} onPointerMove={(event) => { if (event.buttons > 0 || event.pressure > 0) dragBirthdayKnife(event); }}><div className="cuttable-cake"><i /><i /><b className="cake-cut-line" style={{ width: `${birthdayCeremony.cutProgress}%` }} /></div><span className="birthday-knife" style={{ left: `${Math.max(4, birthdayCeremony.cutProgress)}%` }}><i /><b /></span></div><div className="birthday-cut-progress"><i style={{ width: `${birthdayCeremony.cutProgress}%` }} /><span>已经切开 {Math.round(birthdayCeremony.cutProgress)}%</span></div><button onClick={() => updateBirthdayCut(Math.min(100, birthdayCeremony.cutProgress + 25))}>平板不好拖动时，点这里切一段</button></div>}
+      </div><footer><span>{birthdayCeremony.step === 0 ? "唱完四句，才可以吹蜡烛" : birthdayCeremony.step === 1 ? "三根火焰全部熄灭，才能拿蛋糕刀" : "把刀拖到最右边，蛋糕才会真正切开并发放奖励"}</span></footer></section></div>}
+
       {residentInvitation && <div className={`resident-invitation-card ${residentInvitation.travelMode === "car" ? "car-invitation" : ""}`} role="dialog" aria-label={`${residentInvitation.person}邀请一起出门`}><button className="invitation-person" style={personClothesStyle(residentInvitation.person)} onClick={() => setMessage(`${residentInvitation.person}${residentInvitation.travelMode === "car" ? "已经把车开到咖啡店门口" : "正在路边等小禾跟上"}。`)}><i /><b /></button><div><span>临时邀请 · 只在现在有效</span><strong>{residentInvitation.person}要去{HIDDEN_TRIPS[residentInvitation.trip].name}</strong><p>{residentInvitation.travelMode === "car" ? "居民的车已经停在门口，小禾不能独自前往，但可以坐在副驾驶一起去。" : "这个地方不在地图上，也不能自己开车到达。"}</p></div>{residentInvitation.travelMode === "car" && <i className="resident-trip-car" aria-hidden="true"><b /><em /></i>}<button onClick={followResidentToHiddenPlace}>{residentInvitation.travelMode === "car" ? "跟着上车" : "现在跟上"}</button><button className="decline-invitation" onClick={() => { setResidentInvitation(null); setMessage(`小禾这次没有跟去，${residentInvitation.person}挥挥手独自出发了。`); }}>这次不去</button></div>}
 
       {residentOuting && <div className={`resident-outing-overlay outing-${residentOuting.trip}`} role="presentation"><section role="dialog" aria-modal="true" aria-label={HIDDEN_TRIPS[residentOuting.trip].name}><header><div><span>朋友专属旅行 · 比节日更自由</span><h2>{HIDDEN_TRIPS[residentOuting.trip].name}</h2><small>{residentOuting.travelMode === "car" ? `坐着${residentOuting.person}的车来到这里` : `只有跟着${residentOuting.person}才能来到这里`} · 已体验 {outingActivitiesDone.length}/3</small></div><button onClick={() => { setResidentOuting(null); setOutingActivitiesDone([]); setMessage(`小禾跟着${residentOuting.person}沿原路回到了${sceneLabel}。`); }}>×</button></header><div className="hidden-trip-scene" onClick={(event) => { if (event.target !== event.currentTarget) return; const bounds = event.currentTarget.getBoundingClientRect(); setOutingPlayer({ x: Math.max(8, Math.min(92, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(28, Math.min(76, ((event.clientY - bounds.top) / bounds.height) * 100)) }); }}><div className="trip-sky"><i /><i /></div><div className="trip-land"><i /><i /><b /></div><div className="trip-building"><i /><b /></div>{residentOuting.travelMode === "car" && <div className="outing-parked-car"><i /><b /><em /></div>}{HIDDEN_TRIP_ACTIVITIES[residentOuting.trip].map((activity, index) => <button key={`${residentOuting.trip}-${activity.name}`} className={`trip-activity ${outingActivitiesDone.includes(index) ? "done" : ""}`} style={{ left: `${activity.x}%`, top: `${activity.y}%` }} onClick={() => playOutingActivity(index)}><i>{outingActivitiesDone.includes(index) ? "✓" : activity.icon}</i><span><strong>{activity.name}</strong><small>{outingActivitiesDone.includes(index) ? "已经亲手完成" : "走近后再点一次"}</small></span></button>)}<button className="trip-resident" style={personClothesStyle(residentOuting.person)} onClick={() => setMessage(`${residentOuting.person}：先在这里自由走一走，靠近三个有名字的玩法，再点一次就能和我一起动手。`)}><i /><b /><span>{residentOuting.person}</span></button><div className="trip-player" style={{ left: `${outingPlayer.x}%`, top: `${outingPlayer.y}%` }}><PlayerSprite facing="right" sick={game.sick} /><span>{displayName}</span></div><p>{HIDDEN_TRIPS[residentOuting.trip].description}</p></div><footer><span>点空地自由走动 · 靠近玩法再亲手完成</span><button disabled={outingActivitiesDone.length < 3} onClick={enjoyResidentOuting}>{outingActivitiesDone.length < 3 ? `还差 ${3 - outingActivitiesDone.length} 项` : `完成旅行 · ${HIDDEN_TRIPS[residentOuting.trip].action}`}</button><button onClick={() => { setResidentOuting(null); setOutingActivitiesDone([]); setMessage(`小禾跟着${residentOuting.person}沿原路回来了。`); }}>{residentOuting.travelMode === "car" ? "坐居民的车回去" : "跟着居民回去"}</button></footer></section></div>}
@@ -7347,7 +7424,7 @@ export default function FarmGame() {
             {twilightLevel > 0 && <div className="twilight-layer" aria-hidden="true" />}
             {scene !== "farm" && <div className={`outdoor-lamps outdoor-lamps-${scene}`} aria-hidden="true"><i /><i /><i /><i /></div>}
             {!activeBuilding && !neighborInterior && !residentHome && !friendHomeOpen && !(scene === "town" && todayResidentBirthday) && roamingResidents.length > 0 && <div className={`roaming-residents roaming-${scene}`} aria-label="按照当天作息来到这里的居民">{roamingResidents.map(({ name, schedule }, index) => <button key={`roaming-${name}`} className={`roaming-resident npc-activity-${schedule.key}`} style={{ ...personClothesStyle(name), "--roam-x": `${22 + (index % 6) * 11}%`, "--roam-y": `${42 + (index % 3) * 14}%` } as CSSProperties} onClick={(event) => { event.stopPropagation(); meetScheduledResident(name, schedule); }}><i /><b /><span>{name}<small>{schedule.label}</small>{schedule.invite && (game.friendship[name] ?? 0) >= 20 && <em>可能邀请小禾一起去玩</em>}</span></button>)}</div>}
-            {scene === "town" && !activeBuilding && todayResidentBirthday && <div className="resident-birthday-party" aria-label={`${todayResidentBirthday.name}正在中心广场举办生日会`} onClick={(event) => event.stopPropagation()}><div className="resident-party-bunting" aria-hidden="true"><i /><i /><i /><i /><i /></div><button className="resident-party-person" style={personClothesStyle(todayResidentBirthday.name)} onClick={() => interactWithPerson(todayResidentBirthday.name, `${todayResidentBirthday.name}：谢谢大家真的来陪我过生日！可以一起切蛋糕，也可以把举着的礼物送给我。`)}><i />{todayResidentBirthday.name === "安安" && <em className="anan-pigtails" />}<b /><span>寿星 · {todayResidentBirthday.name}</span></button><button className="resident-party-cake" onClick={() => celebrateResidentBirthday(todayResidentBirthday.name)} aria-label={`和大家分享${todayResidentBirthday.name}的生日蛋糕`}><i /><b /><em /><span>一起唱生日歌、吹蜡烛、切蛋糕</span></button><div className="resident-party-guests">{BIRTHDAY_GUESTS.filter((name) => name !== todayResidentBirthday.name).slice(0, 5).map((name, index) => <button key={`resident-party-${name}`} className={`resident-party-guest party-guest-${index + 1}`} style={personClothesStyle(name)} onClick={() => interactWithPerson(name, `${name}：我们专门来到中心广场，等${todayResidentBirthday.name}吹完蜡烛就一起分蛋糕！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><strong>{SEASONS[game.season]}第 {game.day} 天 · {todayResidentBirthday.name}生日会</strong><small>这不是公告文字：现场可以聊天、送礼、唱歌和分享蛋糕</small></div>}
+            {scene === "town" && !activeBuilding && todayResidentBirthday && <div className="resident-birthday-party" aria-label={`${todayResidentBirthday.name}正在中心广场举办生日会`} onClick={(event) => event.stopPropagation()}><div className="resident-party-bunting" aria-hidden="true"><i /><i /><i /><i /><i /></div><button className="resident-party-person" style={personClothesStyle(todayResidentBirthday.name)} onClick={() => interactWithPerson(todayResidentBirthday.name, `${todayResidentBirthday.name}：谢谢大家真的来陪我过生日！可以一起切蛋糕，也可以把举着的礼物送给我。`)}><i />{todayResidentBirthday.name === "安安" && <em className="anan-pigtails" />}<b /><span>寿星 · {todayResidentBirthday.name}</span></button><button className="resident-party-cake" onClick={() => beginResidentBirthdayCeremony(todayResidentBirthday.name)} aria-label={`和大家分享${todayResidentBirthday.name}的生日蛋糕`}><i /><b /><em /><span>开始生日仪式</span></button><div className="resident-party-guests">{BIRTHDAY_GUESTS.filter((name) => name !== todayResidentBirthday.name).slice(0, 5).map((name, index) => <button key={`resident-party-${name}`} className={`resident-party-guest party-guest-${index + 1}`} style={personClothesStyle(name)} onClick={() => interactWithPerson(name, `${name}：我们专门来到中心广场，等${todayResidentBirthday.name}吹完蜡烛就一起分蛋糕！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><strong>{SEASONS[game.season]}第 {game.day} 天 · {todayResidentBirthday.name}生日会</strong><small>这不是公告文字：现场可以聊天、送礼、唱歌和分享蛋糕</small></div>}
             {!activeBuilding && !neighborInterior && !residentHome && !friendHomeOpen && residentQuestsHere.length > 0 && <div className={`resident-quest-scene quest-scene-${scene}`} aria-label="当前地点的居民委托">{residentQuestsHere.map((quest, index) => <button key={`scene-quest-${quest.id}`} className={`resident-quest-object quest-${quest.id}`} style={{ "--quest-index": index } as CSSProperties} onClick={(event) => { event.stopPropagation(); completeResidentQuest(quest); }}><span className="quest-alert">!</span><i>{quest.icon}</i><div><small>{quest.giver}发布的任务</small><strong>{quest.title}</strong><p>{quest.action}</p><em>完成奖励：{quest.reward} 金币 · 好感 +5</em></div><b>动手完成</b></button>)}</div>}
             {selectedCraftItem && scene === "farm" && <div className="placement-controls" onClick={(event) => event.stopPropagation()}><strong>正在摆放：{CRAFT_RECIPES[selectedCraftItem].name}</strong>{(selectedCraftItem === "sign" || selectedCraftItem === "bench") && <div><button className={craftRotation === 0 ? "selected" : ""} onClick={() => setCraftRotation(0)}>横着</button><button className={craftRotation === 90 ? "selected" : ""} onClick={() => setCraftRotation(90)}>竖着</button><button className={craftRotation === 45 ? "selected" : ""} onClick={() => setCraftRotation(45)}>斜着</button></div>}<span>{selectedCraftItem === "fence" ? "点击农田四周的绿色位置，围栏会自动对齐" : "选好方向后，点击农场空地"}</span><button className="cancel-placement" onClick={() => setSelectedCraftItem(null)}>取消</button></div>}
 
