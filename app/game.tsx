@@ -50,8 +50,10 @@ type PlantedTree = { id: string; x: number; y: number; stage: number; watered: b
 type FencePlacementSlot = { id: string; x: number; y: number; rotation: 0 | 90 };
 type ForestItem = "pinecone" | "pineNut";
 type PetType = "cat" | "dog" | "chick" | "duck" | "rabbit" | "hamster";
-type PetRecord = { id: string; type: PetType; sex: "男生" | "女生"; bornDay: number; bornYear: number };
+type PetRecord = { id: string; type: PetType; sex: "男生" | "女生"; bornDay: number; bornSeason: number; bornYear: number };
 type BabyCareState = { petId: string; stage: 0 | 1 | 2 | 3; feedHits: number; brushProgress: number; mistakes: number };
+type PetContestCue = "left" | "right" | "rush";
+type PetContestState = { ownPetId: string; rival: string; round: 0 | 1 | 2; playerScore: number; rivalScore: number; exchanges: number; boutWins: number; boutLosses: number; cue: PetContestCue; finished: boolean };
 type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "resin" } | { kind: "matches" } | { kind: "product"; id: "egg" | "milk" | "wool" } | { kind: "petGift"; id: "feather" | "softFur" | "bone" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
 type ShippingItemGroup = "resource" | "seed" | "craft" | "single";
 type ShippingSingleField = "wood" | "stone" | "diamonds" | "herbs" | "pinecones" | "pineNuts" | "resin" | "eggs" | "milk" | "wool" | "feathers" | "softFur" | "petBones" | "cookies" | "crabs" | "shrimp" | "cookedCrabs" | "cookedShrimp" | "drinks" | "oldSocks" | "puddleHoes";
@@ -217,6 +219,8 @@ type GameState = {
   lastPetBirthYears: Partial<Record<PetType, number>>;
   lastBabyCareDays: Record<string, string>;
   babyCareStreaks: Record<string, number>;
+  petContestWins: number;
+  petBonds: Record<string, number>;
   sickPetIds: string[];
   lastPetIllnessAbsoluteDay: number;
   missingPetId: string | null;
@@ -636,6 +640,14 @@ const GUIDE_TOPICS: Array<{ id: GuideTopicId; title: string; icon: string; summa
   { id: "save", title: "存档与网页版", icon: "存", summary: "游戏会自动保存当前村庄。不要使用浏览器的无痕模式，否则设备可能不会保留存档。", steps: ["正常游玩时会自动保存", "睡觉和切换村庄也会保存", "需要换设备时使用“转移到网页版”", "打开分享网址进入同一版本游戏", "重新开始按钮会清空当前进度，使用前要确认"], tip: "青禾村与枫叶村分开保存，切换村庄不会互相覆盖。" },
 ];
 const BIRTHDAY_GUESTS = Object.keys(PERSON_DIALOGUES);
+const RESIDENT_PET_NICKNAMES = ["团团", "栗子", "豆包", "雪球", "芝麻", "米粒", "跳跳", "卷卷", "布丁", "小麦", "星星", "云朵", "果果", "点点", "泡泡", "松松", "花生"];
+const residentPetProfile = (name: string) => {
+  const nameCode = [...name].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), 0);
+  const index = Math.abs(nameCode + BIRTHDAY_GUESTS.indexOf(name) * 7);
+  const pet = PET_CATALOG[index % PET_CATALOG.length];
+  const strengths: Record<PetType, string> = { cat: "转身灵巧", dog: "推球有力", chick: "冲刺很快", duck: "脚步稳定", rabbit: "跳跃敏捷", hamster: "判断机灵" };
+  return { ...pet, nickname: RESIDENT_PET_NICKNAMES[index % RESIDENT_PET_NICKNAMES.length], variant: index % 6, strength: strengths[pet.id] };
+};
 const NPC_HAIR_COLORS = ["#4a3328", "#6b432d", "#342f35", "#765230", "#3e4b46", "#6d3d46"];
 const NPC_SKIN_COLORS = ["#efbd95", "#e7ad82", "#d99b72", "#f2c7a1"];
 const NPC_OUTFIT_ACCENTS = ["#f0c768", "#d7e8ed", "#f0a4a0", "#b7d88b", "#d4b3e2", "#e9d39a", "#9fd0cf", "#e9a96f"];
@@ -1210,6 +1222,8 @@ const makeNewGame = (): GameState => ({
   lastPetBirthYears: {},
   lastBabyCareDays: {},
   babyCareStreaks: {},
+  petContestWins: 0,
+  petBonds: {},
   sickPetIds: [],
   lastPetIllnessAbsoluteDay: 0,
   missingPetId: null,
@@ -1260,17 +1274,24 @@ const staminaCost = (state: GameState, base: number) => {
 
 const villageSaveKey = (village: VillageId) => village === "maple" ? "qinghe-farm-save-maple" : "qinghe-farm-save";
 
-const reconcilePetFamilies = (records: PetRecord[] | undefined, savedBirthYears: Partial<Record<PetType, number>> | undefined, currentYear: number, currentDay: number) => {
-  const pets = (records ?? []).map((pet) => ({ ...pet, bornYear: Number.isFinite(pet.bornYear) ? pet.bornYear : 1, bornDay: Number.isFinite(pet.bornDay) ? pet.bornDay : 1 }));
+const reconcilePetFamilies = (records: PetRecord[] | undefined, savedBirthYears: Partial<Record<PetType, number>> | undefined, currentYear: number, currentSeason: number, currentDay: number) => {
+  const pets = (records ?? []).map((pet) => ({
+    ...pet,
+    bornYear: Number.isFinite(pet.bornYear) ? pet.bornYear : 1,
+    bornSeason: Number.isFinite(pet.bornSeason) ? pet.bornSeason : 0,
+    bornDay: Number.isFinite(pet.bornDay) ? pet.bornDay : 1,
+  }));
   const lastPetBirthYears = { ...(savedBirthYears ?? {}) };
   PET_CATALOG.forEach((kind, index) => {
     const sameType = pets.filter((pet) => pet.type === kind.id);
     const newestExistingBaby = Math.max(0, ...sameType.filter((pet) => pet.id.includes("-baby-")).map((pet) => pet.bornYear));
     if (!lastPetBirthYears[kind.id] && newestExistingBaby > 0) lastPetBirthYears[kind.id] = newestExistingBaby;
     const hasPair = sameType.some((pet) => pet.sex === "男生") && sameType.some((pet) => pet.sex === "女生");
-    const familyStartYear = lastPetBirthYears[kind.id] ?? Math.max(0, ...sameType.map((pet) => pet.bornYear));
-    if (!hasPair || currentYear - familyStartYear < 5) return;
-    pets.push({ id: `${kind.id}-baby-${currentYear}-restored-${index}`, type: kind.id, sex: (currentYear + index) % 2 ? "女生" : "男生", bornDay: currentDay, bornYear: currentYear });
+    const lastBirthYear = lastPetBirthYears[kind.id];
+    const familyStartYear = Math.max(0, ...sameType.filter((pet) => !pet.id.includes("-baby-")).map((pet) => pet.bornYear));
+    const yearsTogether = lastBirthYear ? currentYear - lastBirthYear : currentYear - familyStartYear + 1;
+    if (!hasPair || yearsTogether < 5) return;
+    pets.push({ id: `${kind.id}-baby-${currentYear}-restored-${index}`, type: kind.id, sex: (currentYear + index) % 2 ? "女生" : "男生", bornDay: currentDay, bornSeason: currentSeason, bornYear: currentYear });
     lastPetBirthYears[kind.id] = currentYear;
   });
   return { pets, lastPetBirthYears };
@@ -1282,7 +1303,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
   try {
     const parsed = JSON.parse(saved) as Partial<GameState>;
     if (!parsed.tiles || parsed.tiles.length < 32) return defaults;
-    const petFamily = reconcilePetFamilies(parsed.pets, parsed.lastPetBirthYears, parsed.year ?? 1, parsed.day ?? 1);
+    const petFamily = reconcilePetFamilies(parsed.pets, parsed.lastPetBirthYears, parsed.year ?? 1, parsed.season ?? 0, parsed.day ?? 1);
     return {
       ...defaults,
       ...parsed,
@@ -1505,6 +1526,12 @@ export default function FarmGame() {
   const [petHospitalOpen, setPetHospitalOpen] = useState(false);
   const [selectedPet, setSelectedPet] = useState<PetType>("cat");
   const [selectedPetSex, setSelectedPetSex] = useState<"男生" | "女生">("女生");
+  const [petContestOpen, setPetContestOpen] = useState(false);
+  const [selectedContestPet, setSelectedContestPet] = useState<string | null>(null);
+  const [selectedContestRival, setSelectedContestRival] = useState("安安");
+  const [petContest, setPetContest] = useState<PetContestState | null>(null);
+  const [petContestAim, setPetContestAim] = useState(7);
+  const [petContestPower, setPetContestPower] = useState(0);
   const [bedtimePhase, setBedtimePhase] = useState<"walkingHome" | "tuckedIn" | "waking" | null>(null);
   const [houseFloor, setHouseFloor] = useState<1 | 2>(1);
   const [stairTravel, setStairTravel] = useState<"up" | "down" | null>(null);
@@ -1609,6 +1636,8 @@ export default function FarmGame() {
   const babyCareWaterTimerRef = useRef<number | null>(null);
   const babyCareBrushLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const babyCareBrushDistanceRef = useRef(0);
+  const petContestAimDirectionRef = useRef(1);
+  const petContestPowerTimerRef = useRef<number | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const latestSaveRef = useRef<{ key: string; game: GameState } | null>(null);
   const beachRespawnTimersRef = useRef<number[]>([]);
@@ -1658,6 +1687,18 @@ export default function FarmGame() {
   }, [babyCare?.stage]);
 
   useEffect(() => {
+    if (!petContest || petContest.finished || petContest.round !== 0) return;
+    const timer = window.setInterval(() => {
+      setPetContestAim((current) => {
+        if (current >= 94) petContestAimDirectionRef.current = -1;
+        if (current <= 6) petContestAimDirectionRef.current = 1;
+        return current + petContestAimDirectionRef.current * 4;
+      });
+    }, 48);
+    return () => window.clearInterval(timer);
+  }, [petContest?.round, petContest?.finished]);
+
+  useEffect(() => {
     const splitVillage = new URLSearchParams(window.location.search).get("splitVillage");
     const isEmbedded = splitVillage === "qinghe" || splitVillage === "maple";
     const village = splitVillage === "maple" ? "maple" : "qinghe";
@@ -1671,7 +1712,7 @@ export default function FarmGame() {
         const parsed = JSON.parse(saved) as GameState;
         if (parsed.tiles?.length >= 32) {
           const defaults = makeNewGame();
-          const petFamily = reconcilePetFamilies(parsed.pets, parsed.lastPetBirthYears, parsed.year ?? 1, parsed.day ?? 1);
+          const petFamily = reconcilePetFamilies(parsed.pets, parsed.lastPetBirthYears, parsed.year ?? 1, parsed.season ?? 0, parsed.day ?? 1);
           setGame({
             ...defaults,
             ...parsed,
@@ -3733,6 +3774,10 @@ export default function FarmGame() {
   };
 
   const currentAbsoluteDay = () => (game.year - 1) * 112 + game.season * 28 + game.day;
+
+  const petAgeDays = (pet: PetRecord) => Math.max(0, currentAbsoluteDay() - ((pet.bornYear - 1) * 112 + (pet.bornSeason ?? 0) * 28 + pet.bornDay));
+
+  const isNurseryPet = (pet: PetRecord) => pet.id.includes("-baby-") && (petAgeDays(pet) < 28 || (game.babyCareStreaks[pet.id] ?? 0) < 4);
 
   const wishProgressNumbers = (state: GameState, person: string, progress: ResidentWishProgress) => {
     const definition = residentWishDefinition(person);
@@ -6367,8 +6412,10 @@ export default function FarmGame() {
     const petBirthTypes = PET_CATALOG.filter((pet) => {
       const sameType = game.pets.filter((ownedPet) => ownedPet.type === pet.id);
       const hasPair = sameType.some((ownedPet) => ownedPet.sex === "男生") && sameType.some((ownedPet) => ownedPet.sex === "女生");
-      const familyStartYear = game.lastPetBirthYears[pet.id] ?? Math.max(0, ...sameType.map((ownedPet) => ownedPet.bornYear ?? 1));
-      return hasPair && nextYear - familyStartYear >= 5;
+      const lastBirthYear = game.lastPetBirthYears[pet.id];
+      const familyStartYear = Math.max(0, ...sameType.filter((ownedPet) => !ownedPet.id.includes("-baby-")).map((ownedPet) => ownedPet.bornYear ?? 1));
+      const yearsTogether = lastBirthYear ? nextYear - lastBirthYear : nextYear - familyStartYear + 1;
+      return hasPair && yearsTogether >= 5;
     });
     const petBirthMessage = petBirthTypes.length ? ` 农舍旁传来小小的叫声：${petBirthTypes.map((pet) => pet.name).join("、")}家庭生活满五年，生下了一只小宝宝！` : "";
     const nextAbsoluteDay = (nextYear - 1) * 112 + nextSeason * 28 + nextDayNumber;
@@ -6478,7 +6525,7 @@ export default function FarmGame() {
       const lastPetBirthYears = { ...current.lastPetBirthYears };
       const pets = [...current.pets];
       petBirthTypes.forEach((pet, index) => {
-        pets.push({ id: `${pet.id}-baby-${nextYear}-${index}`, type: pet.id, sex: (nextYear + index) % 2 ? "女生" : "男生", bornDay: nextDayNumber, bornYear: nextYear });
+        pets.push({ id: `${pet.id}-baby-${nextYear}-${index}`, type: pet.id, sex: (nextYear + index) % 2 ? "女生" : "男生", bornDay: nextDayNumber, bornSeason: nextSeason, bornYear: nextYear });
         lastPetBirthYears[pet.id] = nextYear;
       });
       return {
@@ -8750,10 +8797,143 @@ export default function FarmGame() {
       playTone(210);
       return;
     }
-    const petRecord: PetRecord = { id: `${pet.id}-${Date.now()}`, type: pet.id, sex: selectedPetSex, bornDay: game.day, bornYear: game.year };
+    const petRecord: PetRecord = { id: `${pet.id}-${Date.now()}`, type: pet.id, sex: selectedPetSex, bornDay: game.day, bornSeason: game.season, bornYear: game.year };
     setGame((current) => ({ ...current, coins: current.coins - pet.price, pets: [...current.pets, petRecord] }));
     setMessage(`领养了${selectedPetSex}${pet.name}！它已经住进农舍旁的小宠物院。养到同种的一男一女，之后有机会生小宝宝。`);
     playTone(880);
+  };
+
+  const inspectPetNursery = () => {
+    const pairedFamilies = PET_CATALOG.flatMap((kind) => {
+      const sameType = game.pets.filter((pet) => pet.type === kind.id && !pet.id.includes("-baby-"));
+      const hasPair = sameType.some((pet) => pet.sex === "男生") && sameType.some((pet) => pet.sex === "女生");
+      if (!hasPair) return [];
+      const lastBirthYear = game.lastPetBirthYears[kind.id];
+      const familyStartYear = Math.max(1, ...sameType.map((pet) => pet.bornYear ?? 1));
+      const yearsTogether = lastBirthYear ? game.year - lastBirthYear : game.year - familyStartYear + 1;
+      return [{ kind, yearsTogether }];
+    });
+    const readyFamilies = pairedFamilies.filter((family) => family.yearsTogether >= 5);
+    if (readyFamilies.length) {
+      setGame((current) => {
+        const lastPetBirthYears = { ...current.lastPetBirthYears };
+        const newborns = readyFamilies.map(({ kind }, index): PetRecord => {
+          lastPetBirthYears[kind.id] = current.year;
+          return {
+            id: `${kind.id}-baby-${current.year}-${current.season}-${current.day}-${Date.now()}-${index}`,
+            type: kind.id,
+            sex: (current.day + current.season + index) % 2 ? "女生" : "男生",
+            bornDay: current.day,
+            bornSeason: current.season,
+            bornYear: current.year,
+          };
+        });
+        return { ...current, pets: [...current.pets, ...newborns], lastPetBirthYears };
+      });
+      setMessage(`${readyFamilies.map(({ kind }) => kind.name).join("、")}家庭的五年记录已经核对完成，宝宝现在就在小育幼垫上！`);
+      playTone(980);
+      return;
+    }
+    if (!pairedFamilies.length) {
+      setMessage("育幼垫还在等宝宝。需要同一种宠物各有一只男生和一只女生；只有不同种类，或者只有相同性别，都不会生宝宝。 ");
+      playTone(320);
+      return;
+    }
+    const soonest = pairedFamilies.reduce((best, family) => family.yearsTogether > best.yearsTogether ? family : best);
+    setMessage(`${soonest.kind.name}家庭已经一起生活 ${Math.max(1, soonest.yearsTogether)} 年，还要再过 ${Math.max(1, 5 - soonest.yearsTogether)} 年。达到第五年时，点育幼垫就会补生宝宝。`);
+    playTone(420);
+  };
+
+  const contestCueFor = (rival: string, exchange: number): PetContestCue => {
+    const code = [...rival].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), game.day + game.season * 3);
+    return (["left", "rush", "right"] as PetContestCue[])[(code + exchange * 2) % 3];
+  };
+
+  const startPetContest = () => {
+    const ownPet = game.pets.find((pet) => pet.id === selectedContestPet && !isNurseryPet(pet) && pet.id !== game.missingPetId);
+    if (!ownPet) {
+      setMessage(game.pets.length ? "请选择一只已经长大、现在没有走失的宠物上场。" : "家里还没有宠物。先去宠物之家领养一只，再来参加友谊赛。 ");
+      playTone(230);
+      return;
+    }
+    setPetContest({ ownPetId: ownPet.id, rival: selectedContestRival, round: 0, playerScore: 0, rivalScore: 0, exchanges: 0, boutWins: 0, boutLosses: 0, cue: contestCueFor(selectedContestRival, 0), finished: false });
+    setPetContestAim(7);
+    setPetContestPower(0);
+    petContestAimDirectionRef.current = 1;
+    setMessage("第一轮开始：彩带正在场中来回飘，看准它进入绿色区域时再让宠物扑过去！");
+    playTone(760);
+  };
+
+  const finishPetContest = (result: PetContestState) => {
+    const ownPet = game.pets.find((pet) => pet.id === result.ownPetId);
+    const ownName = PET_CATALOG.find((pet) => pet.id === ownPet?.type)?.name ?? "小宠物";
+    const rivalPet = residentPetProfile(result.rival);
+    const won = result.playerScore > result.rivalScore;
+    const tied = result.playerScore === result.rivalScore;
+    const reward = won ? 60 : tied ? 35 : 20;
+    const bond = won ? 8 : tied ? 5 : 3;
+    setGame((current) => withFriendship({
+      ...current,
+      coins: current.coins + reward,
+      petContestWins: current.petContestWins + (won ? 1 : 0),
+      petBonds: { ...current.petBonds, [result.ownPetId]: Math.min(100, (current.petBonds[result.ownPetId] ?? 0) + bond) },
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：${ownName}和${result.rival}的${rivalPet.nickname}完成三轮宠物友谊赛，比分 ${result.playerScore}:${result.rivalScore}。`, ...current.journalEntries].slice(0, 40),
+    }, result.rival, won ? 4 : 2));
+    setPetContest({ ...result, finished: true });
+    setMessage(won ? `${ownName}赢下了友谊赛！获得 ${reward} 金币，宠物默契 +${bond}，和${result.rival}的好感也提高了。` : tied ? `双方打成平手！各自认真完成了比赛，获得 ${reward} 金币和 ${bond} 点宠物默契。` : `${ownName}这次没有赢，但完整比赛并学会了新动作，获得 ${reward} 金币和 ${bond} 点宠物默契。`);
+    playTone(won ? 1040 : tied ? 820 : 620);
+  };
+
+  const catchContestRibbon = () => {
+    if (!petContest || petContest.finished || petContest.round !== 0) return;
+    const ownPet = game.pets.find((pet) => pet.id === petContest.ownPetId);
+    const agile = ownPet?.type === "rabbit" || ownPet?.type === "chick" || ownPet?.type === "cat";
+    const hit = petContestAim >= (agile ? 38 : 44) && petContestAim <= (agile ? 64 : 58);
+    const rivalCode = [...petContest.rival].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), game.day);
+    const rivalHit = rivalCode % 4 !== 0;
+    setPetContest({ ...petContest, round: 1, playerScore: petContest.playerScore + (hit ? 1 : 0), rivalScore: petContest.rivalScore + (rivalHit ? 1 : 0) });
+    setPetContestPower(0);
+    setMessage(hit ? "彩带抓到了！第二轮要推软球：按住蓄力，力量进入绿色刻度时松手。" : "扑早了，彩带从爪边飘走。比赛继续：按住推球键蓄力，到绿色刻度再松手。 ");
+    playTone(hit ? 850 : 330);
+  };
+
+  const startContestPush = () => {
+    if (!petContest || petContest.finished || petContest.round !== 1 || petContestPowerTimerRef.current !== null) return;
+    setPetContestPower(0);
+    petContestPowerTimerRef.current = window.setInterval(() => setPetContestPower((current) => Math.min(100, current + 2)), 42);
+    setMessage("宠物正抵住软球向前推，继续按住，注意力量刻度。 ");
+  };
+
+  const releaseContestPush = () => {
+    if (!petContest || petContest.finished || petContest.round !== 1 || petContestPowerTimerRef.current === null) return;
+    window.clearInterval(petContestPowerTimerRef.current);
+    petContestPowerTimerRef.current = null;
+    const ownPet = game.pets.find((pet) => pet.id === petContest.ownPetId);
+    const strong = ownPet?.type === "dog" || ownPet?.type === "duck" || ownPet?.type === "hamster";
+    const hit = petContestPower >= (strong ? 54 : 62) && petContestPower <= (strong ? 84 : 78);
+    const rivalCode = [...petContest.rival].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), game.year + game.day);
+    const rivalHit = rivalCode % 3 !== 0;
+    setPetContest({ ...petContest, round: 2, playerScore: petContest.playerScore + (hit ? 1 : 0), rivalScore: petContest.rivalScore + (rivalHit ? 1 : 0), cue: contestCueFor(petContest.rival, 0) });
+    setMessage(hit ? "软球稳稳推进终点！最后是三回合软垫对抗，先看对方动作，再选择正确的闪避或绕后轻推。" : "力气太小或太大，软球偏出了跑道。最后还有三回合软垫对抗，可以追回比分！");
+    playTone(hit ? 880 : 360);
+  };
+
+  const answerPetContestCue = (move: "dodgeLeft" | "dodgeRight" | "circle") => {
+    if (!petContest || petContest.finished || petContest.round !== 2) return;
+    const correctMove = petContest.cue === "left" ? "dodgeRight" : petContest.cue === "right" ? "dodgeLeft" : "circle";
+    const correct = move === correctMove;
+    const nextExchange = petContest.exchanges + 1;
+    const nextBoutWins = petContest.boutWins + (correct ? 1 : 0);
+    const nextBoutLosses = petContest.boutLosses + (correct ? 0 : 1);
+    if (nextExchange < 3) {
+      setPetContest({ ...petContest, exchanges: nextExchange, boutWins: nextBoutWins, boutLosses: nextBoutLosses, cue: contestCueFor(petContest.rival, nextExchange) });
+      setMessage(correct ? `躲开后轻轻碰到了对方的肩垫！还剩 ${3 - nextExchange} 回合，继续观察动作。` : `方向判断错了，对方先碰到你的肩垫。还剩 ${3 - nextExchange} 回合，可以追回来。`);
+      playTone(correct ? 820 : 310);
+      return;
+    }
+    const playerRoundPoint = nextBoutWins > nextBoutLosses ? 1 : 0;
+    const rivalRoundPoint = nextBoutWins > nextBoutLosses ? 0 : 1;
+    finishPetContest({ ...petContest, exchanges: nextExchange, boutWins: nextBoutWins, boutLosses: nextBoutLosses, playerScore: petContest.playerScore + playerRoundPoint, rivalScore: petContest.rivalScore + rivalRoundPoint, finished: true });
   };
 
   const sellPetToShop = (petRecord: PetRecord) => {
@@ -8764,7 +8944,7 @@ export default function FarmGame() {
       playTone(210);
       return;
     }
-    const isBaby = petRecord.id.includes("-baby-");
+    const isBaby = isNurseryPet(petRecord);
     if (!window.confirm(`要让宠物店接回这只${petRecord.sex}${pet.name}吗？店里会付给你 ${pet.price} 金币。`)) return;
     setGame((current) => ({
       ...current,
@@ -8788,6 +8968,11 @@ export default function FarmGame() {
 
   const beginBabyPetCare = (pet: PetRecord) => {
     const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name ?? "小宠物";
+    if (!isNurseryPet(pet)) {
+      setMessage(`${petName}已经长大了，现在会跟着小禾在外面跑动，不需要再住育幼垫。`);
+      playTone(650);
+      return;
+    }
     const dayKey = `${game.year}-${game.season}-${game.day}`;
     if (game.lastBabyCareDays[pet.id] === dayKey) {
       setMessage(`${petName}宝宝今天已经吃饱、喝好、梳过毛并玩过软球了。明天再进行下一次完整照顾。`);
@@ -8890,6 +9075,8 @@ export default function FarmGame() {
     const caredPet = game.pets.find((pet) => pet.id === babyCare.petId);
     const petName = PET_CATALOG.find((entry) => entry.id === caredPet?.type)?.name ?? "小宠物";
     const dayKey = `${game.year}-${game.season}-${game.day}`;
+    const nextCareCount = (game.babyCareStreaks[babyCare.petId] ?? 0) + 1;
+    const growsUpNow = Boolean(caredPet && petAgeDays(caredPet) >= 28 && nextCareCount >= 4);
     setGame((current) => ({
       ...current,
       lastBabyCareDays: { ...current.lastBabyCareDays, [babyCare.petId]: dayKey },
@@ -8897,7 +9084,7 @@ export default function FarmGame() {
       journalEntries: [`${SEASONS[current.season]}第${current.day}天：亲手给${petName}宝宝喂食、控水、梳毛并陪它接球。`, ...current.journalEntries].slice(0, 40),
     }));
     setBabyCare(null);
-    setMessage(`${petName}宝宝接住了软球，今天的照顾真正完成！它吃饱喝足、毛发整齐，也更信任你了。`);
+    setMessage(growsUpNow ? `${petName}宝宝完成了第四次照顾，也已经满一个季节，长大后跑到了小禾脚边！` : `${petName}宝宝接住了软球，今天的照顾真正完成！它吃饱喝足、毛发整齐，也更信任你了。`);
     playTone(1020);
   };
 
@@ -8942,10 +9129,11 @@ export default function FarmGame() {
     playTone(900);
   };
 
-  // Newborn pets stay on the nursery mat at home until they grow up. Keeping
-  // them out of the follower list also prevents a second baby chick appearing
-  // on the street while the same baby is being cared for inside the farmhouse.
-  const followingPets = game.pets.filter((pet) => pet.id !== game.missingPetId && !pet.id.includes("-baby-"));
+  // Newborn pets remain on the small nursery mat for their first season and
+  // until they have received four complete care sessions. After that they use
+  // the same real follower path as the older household pets.
+  const nurseryPets = game.pets.filter(isNurseryPet);
+  const followingPets = game.pets.filter((pet) => pet.id !== game.missingPetId && !isNurseryPet(pet));
   const farmAnimalEntries = ([("chicken" as FarmAnimalType), "cow", "sheep"] as FarmAnimalType[]).flatMap((type) => {
     const count = type === "chicken" ? game.chickens : type === "cow" ? game.cows : game.sheep;
     return Array.from({ length: count }, (_, index) => ({ type, index, id: farmAnimalId(type, index), name: farmAnimalName(type) }));
@@ -9191,6 +9379,15 @@ export default function FarmGame() {
       {cloneMission && !cloneWorkOpen && <button className="clone-mission-hud" onClick={() => setCloneWorkOpen(true)}><i>{cloneMission.icon}</i><span><strong>分身正在{cloneMission.label}</strong><small>{cloneMission.destination} · 你可以继续行动</small></span></button>}
 
       {cloneWorkOpen && <div className="clone-work-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="分身穿墙瞬移工作台"><header><div><span>七岁永久本领 · 主游戏可用</span><h2>分身穿墙瞬移工作台</h2></div><button onClick={() => { setCloneWorkOpen(false); setMessage(cloneMission ? "收起工作台；分身继续工作，小禾可以照常行动。 " : "收起分身工作台，回到游戏。 "); }} aria-label="关闭分身工作台">×</button></header><div className={`clone-live-route ${cloneMission ? "mission-running" : "mission-idle"}`}><div className="clone-original"><i /><b /><span>正在游玩的你</span></div><div className="clone-wall"><i /><i /><i /><strong>可穿越障碍</strong></div><div className="clone-worker"><i /><b /><span>{cloneMission ? cloneMission.label : "等待安排"}</span></div><div className="clone-portal" /><p>{cloneMission ? `分身已经穿墙瞬移到${cloneMission.destination}，成果完成后会自动加入游戏记录。` : "选择一件工作后，另一个小禾会出现并自动前往目标；原来的你仍能继续玩。"}</p></div><div className="clone-job-scroll"><section><h3>农田工作</h3><div className="clone-job-grid"><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("water")}><i>水</i><span>给作物浇水<small>最多 8 株</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("fertilize")}><i>肥</i><span>给作物施肥<small>提高照料值</small></span></button>{CROP_TYPES.map((crop) => <button key={`clone-${crop}`} disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("plant", crop)}><i>{CROP_INFO[crop].short}</i><span>播种{CROP_INFO[crop].name}<small>最多 4 格</small></span></button>)}</div></section><section><h3>山野与资源</h3><div className="clone-job-grid"><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("mineDiamond")}><i>◆</i><span>进山洞挖钻石<small>金铁镐会增产</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("chopWood")}><i>木</i><span>砍树<small>木头、树脂、松果</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("breakStone")}><i>石</i><span>敲碎石头<small>收集石材</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("gatherHerbs")}><i>药</i><span>采集药材<small>加入资源记录</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("fish")}><i>鱼</i><span>池塘钓鱼<small>鱼钩会落进水里</small></span></button></div></section><section><h3>帮助居民</h3><div className="clone-resident-grid">{CLONE_HELP_RESIDENTS.map((person) => <button key={`clone-help-${person}`} disabled={Boolean(cloneMission)} style={personClothesStyle(person)} onClick={() => dispatchCloneWork("helpResident", undefined, person)}><i /><b /><span>帮助{person}<small>完成委托 · 好感 +15</small></span></button>)}</div></section></div><footer><span>{message}</span><button onClick={() => setCloneWorkOpen(false)}>回到主游戏</button></footer></section></div>}
+
+      {petContestOpen && (() => {
+        const ownPet = game.pets.find((pet) => pet.id === petContest?.ownPetId);
+        const ownPetInfo = PET_CATALOG.find((pet) => pet.id === ownPet?.type);
+        const rivalPet = residentPetProfile(petContest?.rival ?? selectedContestRival);
+        const closeContest = () => { if (petContestPowerTimerRef.current !== null) window.clearInterval(petContestPowerTimerRef.current); petContestPowerTimerRef.current = null; setPetContestOpen(false); setPetContest(null); };
+        const cueText = petContest?.cue === "left" ? `${rivalPet.nickname}从左边扑向肩垫！` : petContest?.cue === "right" ? `${rivalPet.nickname}从右边扑向肩垫！` : `${rivalPet.nickname}低下身体向前冲！`;
+        return <div className="pet-contest-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="宠物友谊比赛"><header><div><span>中心广场 · 居民宠物友谊赛</span><h2>两只宠物真正上场比赛</h2><small>{petContest ? petContest.finished ? "比赛完成" : `第 ${petContest.round + 1}/3 轮 · 比分 ${petContest.playerScore}:${petContest.rivalScore}` : `累计胜场 ${game.petContestWins}`}</small></div><button onClick={closeContest} aria-label="离开宠物友谊赛场">×</button></header>{!petContest ? <div className="pet-contest-registration"><section><h3>1. 选择小禾的参赛宠物</h3><div className="contest-own-pets">{game.pets.filter((pet) => !isNurseryPet(pet) && pet.id !== game.missingPetId).map((pet) => { const info = PET_CATALOG.find((entry) => entry.id === pet.type)!; return <button key={`contest-own-${pet.id}`} className={`${selectedContestPet === pet.id ? "selected" : ""} pet-${pet.type}`} onClick={() => setSelectedContestPet(pet.id)}><span className="contest-pet-art"><i /><b /></span><strong>{pet.sex}{info.name}</strong><small>默契 {game.petBonds[pet.id] ?? 0}/100</small></button>; })}{!game.pets.some((pet) => !isNurseryPet(pet) && pet.id !== game.missingPetId) && <p>还没有能上场的成年宠物。宝宝长大以后也可以参赛。</p>}</div></section><section><h3>2. 选择居民和她/他的宠物</h3><div className="contest-rival-pets">{relationshipPeople.map((name) => { const profile = residentPetProfile(name); return <button key={`contest-rival-${name}`} className={`${selectedContestRival === name ? "selected" : ""} pet-${profile.id}`} onClick={() => setSelectedContestRival(name)}><span className="contest-pet-art"><i /><b /></span><span><strong>{name}和{profile.nickname}</strong><small>{profile.name} · {profile.strength}</small></span></button>; })}</div></section><button className="start-pet-contest" disabled={!selectedContestPet} onClick={startPetContest}>一起走进赛场，开始三轮比赛</button></div> : <div className={`pet-contest-stage contest-round-${petContest.round} ${petContest.finished ? "contest-finished" : ""}`}><div className="contest-scoreboard"><span><b>小禾队</b><strong>{petContest.playerScore}</strong></span><em>VS</em><span><b>{petContest.rival}队</b><strong>{petContest.rivalScore}</strong></span></div><div className="contest-pet-duo"><div className={`contest-live-pet own pet-${ownPet?.type ?? "cat"}`}><i /><b /><span>{ownPetInfo?.name ?? "小宠物"}</span></div><div className="contest-field-mark" /><div className={`contest-live-pet rival pet-${rivalPet.id} variant-${rivalPet.variant}`}><i /><b /><span>{rivalPet.nickname}</span></div></div>{!petContest.finished && petContest.round === 0 && <div className="contest-ribbon-game"><strong>抢彩带：看准飘动位置</strong><div className="contest-timing-track"><i /><b style={{ left: `${petContestAim}%` }}><em /></b></div><button onClick={catchContestRibbon}>现在扑向彩带</button><small>{ownPet && ["rabbit", "chick", "cat"].includes(ownPet.type) ? "这只宠物动作灵巧，绿色成功区更宽" : "彩带进入绿色区域才抓得到"}</small></div>}{!petContest.finished && petContest.round === 1 && <div className="contest-ball-game"><strong>推软球：按住蓄力，松手出发</strong><div className="contest-power-track"><i /><b style={{ width: `${petContestPower}%` }} /><em style={{ left: `${petContestPower}%` }} /></div><button onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); startContestPush(); }} onPointerUp={releaseContestPush} onPointerCancel={releaseContestPush}>按住推球 · 绿色时松手</button><small>当前力量 {petContestPower}% · 力量过小或过大都会让球偏出跑道</small></div>}{!petContest.finished && petContest.round === 2 && <div className="contest-soft-bout"><strong>软垫友谊对抗 · 第 {petContest.exchanges + 1}/3 回合</strong><div className={`contest-cue cue-${petContest.cue}`}><i /><span>{cueText}</span></div><div className="contest-counter-moves"><button onClick={() => answerPetContestCue("dodgeLeft")}>← 向左闪</button><button onClick={() => answerPetContestCue("circle")}>绕后轻推</button><button onClick={() => answerPetContestCue("dodgeRight")}>向右闪 →</button></div><small>观察对方从哪边来：躲开后再轻碰肩垫，不咬、不抓，也不会受伤</small></div>}{petContest.finished && <div className="contest-result"><i>{petContest.playerScore > petContest.rivalScore ? "🏆" : petContest.playerScore === petContest.rivalScore ? "🤝" : "★"}</i><strong>{petContest.playerScore > petContest.rivalScore ? "小禾队赢得友谊赛！" : petContest.playerScore === petContest.rivalScore ? "双方打成平手！" : "完整比赛，学会了新动作！"}</strong><p>{message}</p><div><button onClick={() => { setPetContest(null); setPetContestAim(7); setPetContestPower(0); }}>换对手再比一次</button><button onClick={closeContest}>带宠物离开赛场</button></div></div>}</div>}<footer><span>{message}</span><small>所有居民都有自己的宠物 · 比赛只用彩带、软球和厚软垫</small></footer></section></div>;
+      })()}
 
       {babyCare && (() => { const petRecord = game.pets.find((pet) => pet.id === babyCare.petId); const petName = PET_CATALOG.find((pet) => pet.id === petRecord?.type)?.name ?? "小宠物"; return <div className="baby-care-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label={`照顾${petName}宝宝`}><header><div><span>农舍里的新生小动物 · 真实照顾</span><h2>照顾{petName}宝宝</h2><small>第 {babyCare.stage + 1}/4 段 · 失误 {babyCare.mistakes} 次</small></div><button onClick={() => { if (babyCareWaterTimerRef.current !== null) window.clearInterval(babyCareWaterTimerRef.current); babyCareWaterTimerRef.current = null; setBabyCare(null); }} aria-label="暂时离开照顾">×</button></header><div className={`baby-care-stage baby-stage-${babyCare.stage} pet-${petRecord?.type ?? "cat"}`}><div className="baby-pet-art"><i /><b /><em /></div>{babyCare.stage === 0 && <div className="baby-feed-game"><strong>等宝宝的嘴对准食勺</strong><div className="baby-timing-track"><i className="baby-good-zone" /><b style={{ left: `${babyCareAim}%` }} /></div><button onClick={feedBabyAtRightMoment}>现在喂一勺</button><small>已经喂好 {babyCare.feedHits}/2 勺；光点进入绿色区域才算喂到</small></div>}{babyCare.stage === 1 && <div className="baby-water-game"><strong>按住水壶，在正确水位松手</strong><div className="baby-water-bowl"><i style={{ height: `${babyCareWater}%` }} /><b /></div><div className="baby-water-meter"><i className="baby-water-zone" /><b style={{ height: `${babyCareWater}%` }} /></div><button onPointerDown={startBabyWaterPour} onPointerUp={stopBabyWaterPour} onPointerLeave={stopBabyWaterPour} onPointerCancel={stopBabyWaterPour}>按住倒水 · 松手停下</button><small>水量 {babyCareWater}% · 少了喝不到，多了会溅出来</small></div>}{babyCare.stage === 2 && <div className="baby-brush-game"><strong>按住梳子，沿身体来回梳毛</strong><div className="baby-brush-surface" onPointerDown={brushBabyPet} onPointerMove={brushBabyPet} onPointerUp={() => { babyCareBrushLastPointRef.current = null; }} onPointerCancel={() => { babyCareBrushLastPointRef.current = null; }}><i className="baby-fur-lines" /><b className="baby-brush-tool" style={{ left: `${Math.min(88, 4 + babyCare.brushProgress * .82)}%` }} /></div><div className="baby-brush-meter"><i style={{ width: `${babyCare.brushProgress}%` }} /></div><small>梳理 {Math.round(babyCare.brushProgress)}% · 只点一下不会增加进度</small></div>}{babyCare.stage === 3 && <div className="baby-play-game"><strong>看准宝宝跑进绿色接球区再投球</strong><div className="baby-play-lane"><i className="baby-catch-zone" /><b className="baby-running-target" /><em className="baby-toy-marker" style={{ left: `${babyCareToyAim}%` }} /></div><button onClick={throwBabyToy}>把软球投出去</button><small>投偏不会完成；瞄准绿色范围再出手</small></div>}</div><div className="baby-care-progress">{["喂食", "控水", "梳毛", "陪玩"].map((label, index) => <i key={label} className={index < babyCare.stage ? "done" : index === babyCare.stage ? "active" : ""}><b>{index < babyCare.stage ? "✓" : index + 1}</b><span>{label}</span></i>)}</div><footer><span>{message}</span><button onClick={() => setBabyCare(null)}>暂时离开</button></footer></section></div>; })()}
 
@@ -9506,7 +9703,7 @@ export default function FarmGame() {
             {twilightLevel > 0 && <div className="night-sky" aria-hidden="true"><span className="moon" /><i /><i /><i /><i /><i /><i /></div>}
             {twilightLevel > 0 && <div className="twilight-layer" aria-hidden="true" />}
             {scene !== "farm" && <div className={`outdoor-lamps outdoor-lamps-${scene}`} aria-hidden="true"><i /><i /><i /><i /></div>}
-            {!activeBuilding && !neighborInterior && !residentHome && !friendHomeOpen && !(scene === "town" && todayResidentBirthday) && roamingResidents.length > 0 && <div className={`roaming-residents roaming-${scene}`} aria-label="按照当天作息来到这里的居民">{roamingResidents.map(({ name, schedule }, index) => <button key={`roaming-${name}`} className={`roaming-resident npc-activity-${schedule.key}`} style={{ ...personClothesStyle(name), "--roam-x": `${22 + (index % 6) * 11}%`, "--roam-y": `${42 + (index % 3) * 14}%` } as CSSProperties} onClick={(event) => { event.stopPropagation(); meetScheduledResident(name, schedule); }}><i /><b /><span>{name}<small>{schedule.label}</small>{schedule.invite && (game.friendship[name] ?? 0) >= 20 && <em>可能邀请小禾一起去玩</em>}</span></button>)}</div>}
+            {!activeBuilding && !neighborInterior && !residentHome && !friendHomeOpen && !(scene === "town" && todayResidentBirthday) && roamingResidents.length > 0 && <div className={`roaming-residents roaming-${scene}`} aria-label="按照当天作息来到这里的居民">{roamingResidents.map(({ name, schedule }, index) => { const companion = residentPetProfile(name); return <button key={`roaming-${name}`} className={`roaming-resident npc-activity-${schedule.key}`} style={{ ...personClothesStyle(name), "--roam-x": `${22 + (index % 6) * 11}%`, "--roam-y": `${42 + (index % 3) * 14}%` } as CSSProperties} onClick={(event) => { event.stopPropagation(); meetScheduledResident(name, schedule); }}><i /><b /><u className={`resident-companion-pet pet-${companion.id} resident-pet-variant-${companion.variant}`} title={`${name}的宠物${companion.nickname}`}><i /><b /></u><span>{name}<small>{schedule.label}</small><small className="resident-pet-name">宠物：{companion.nickname}</small>{schedule.invite && (game.friendship[name] ?? 0) >= 20 && <em>可能邀请小禾一起去玩</em>}</span></button>; })}</div>}
             {scene === "town" && !activeBuilding && todayResidentBirthday && <div className="resident-birthday-party" aria-label={`${todayResidentBirthday.name}正在中心广场举办生日会`} onClick={(event) => event.stopPropagation()}><div className="resident-party-bunting" aria-hidden="true"><i /><i /><i /><i /><i /></div><button className="resident-party-person" style={personClothesStyle(todayResidentBirthday.name)} onClick={() => interactWithPerson(todayResidentBirthday.name, `${todayResidentBirthday.name}：谢谢大家真的来陪我过生日！可以一起切蛋糕，也可以把举着的礼物送给我。`)}><i />{todayResidentBirthday.name === "安安" && <em className="anan-pigtails" />}<b /><span>寿星 · {todayResidentBirthday.name}</span></button><button className="resident-party-cake" onClick={() => beginResidentBirthdayCeremony(todayResidentBirthday.name)} aria-label={`和大家分享${todayResidentBirthday.name}的生日蛋糕`}><i /><b /><em /><span>开始生日仪式</span></button><div className="resident-party-guests">{BIRTHDAY_GUESTS.filter((name) => name !== todayResidentBirthday.name).slice(0, 5).map((name, index) => <button key={`resident-party-${name}`} className={`resident-party-guest party-guest-${index + 1}`} style={personClothesStyle(name)} onClick={() => interactWithPerson(name, `${name}：我们专门来到中心广场，等${todayResidentBirthday.name}吹完蜡烛就一起分蛋糕！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><strong>{SEASONS[game.season]}第 {game.day} 天 · {todayResidentBirthday.name}生日会</strong><small>这不是公告文字：现场可以聊天、送礼、唱歌和分享蛋糕</small></div>}
             {!activeBuilding && !neighborInterior && !residentHome && !friendHomeOpen && residentQuestsHere.length > 0 && <div className={`resident-quest-scene quest-scene-${scene}`} aria-label="当前地点的居民委托">{residentQuestsHere.map((quest, index) => <button key={`scene-quest-${quest.id}`} className={`resident-quest-object quest-${quest.id}`} style={{ "--quest-index": index } as CSSProperties} onClick={(event) => { event.stopPropagation(); completeResidentQuest(quest); }}><span className="quest-alert">!</span><i>{quest.icon}</i><div><small>{quest.giver}发布的任务</small><strong>{quest.title}</strong><p>{quest.action}</p><em>完成奖励：{quest.reward} 金币 · 好感 +5</em></div><b>动手完成</b></button>)}</div>}
             {selectedCraftItem && scene === "farm" && <div className="placement-controls" onClick={(event) => event.stopPropagation()}><strong>正在摆放：{CRAFT_RECIPES[selectedCraftItem].name}</strong>{(selectedCraftItem === "sign" || selectedCraftItem === "bench") && <div><button className={craftRotation === 0 ? "selected" : ""} onClick={() => setCraftRotation(0)}>横着</button><button className={craftRotation === 90 ? "selected" : ""} onClick={() => setCraftRotation(90)}>竖着</button><button className={craftRotation === 45 ? "selected" : ""} onClick={() => setCraftRotation(45)}>斜着</button></div>}<span>{selectedCraftItem === "fence" ? "点击农田四周的绿色位置，围栏会自动对齐" : "选好方向后，点击农场空地"}</span><button className="cancel-placement" onClick={() => setSelectedCraftItem(null)}>取消</button></div>}
@@ -9597,6 +9794,7 @@ export default function FarmGame() {
               <>
                 <div className="town-road road-horizontal" /><div className="town-road road-vertical" />
                 <div className="town-square"><span>✦</span><i /><i /><i /></div>
+                <button className="pet-contest-entry" onClick={(event) => { event.stopPropagation(); const availablePet = game.pets.find((pet) => !isNurseryPet(pet) && pet.id !== game.missingPetId); setSelectedContestPet(availablePet?.id ?? null); setSelectedContestRival("安安"); setPetContest(null); setPetContestOpen(true); setMessage(availablePet ? "来到宠物友谊赛场。先选自己的宠物和一位居民的宠物，再亲手完成三轮比赛。" : "来到宠物友谊赛场。每位居民都有自己的宠物；小禾需要先领养一只长大的宠物才能报名。 "); }} aria-label="进入宠物友谊赛场"><i /><b /><strong>宠物友谊赛场</strong><small>抢彩带 · 推软球 · 软垫对抗</small></button>
                 {currentFestival?.id === "spring" && <><div className="saturday-market" aria-label="周六春日集市"><strong>春日集市</strong><button onClick={tasteFestivalJam}>草莓果酱<small>恢复 25 体力</small></button><button onClick={() => { setFestivalDisplay("wood"); setMessage("鲁师傅把精雕细刻的木工作品摆到了展示台上。 "); }}>木工作品<small>点击看展品</small></button><button className={festivalMusicPlaying ? "music-playing" : ""} onClick={playValleyMusic}>山谷音乐<small>{festivalMusicPlaying ? "正在演奏♪" : "点击播放"}</small></button></div><div className="festival-crowd" aria-label="参加春日集市的居民">{FESTIVAL_GUESTS.map((name, index) => <button key={name} style={personClothesStyle(name)} className={`crowd-person crowd-${index + 1} ${isNpcSick(name) ? "sick-npc" : ""}`} onClick={() => interactWithPerson(name, `${name}：春日集市真热闹，大家都来到中心广场啦！`)}><i /><b /><span>{name}</span></button>)}</div></>}
                 {currentFestival && TRADITIONAL_FESTIVALS[currentFestival.id] && <><div className={`traditional-festival festival-${currentFestival.id}`}><i>{TRADITIONAL_FESTIVALS[currentFestival.id]?.symbol}</i><strong>{currentFestival.name}</strong><span>{currentFestival.description}</span><button onClick={claimTraditionalTreat}>免费领取{TRADITIONAL_FESTIVALS[currentFestival.id]?.treat}<small>恢复 20 体力</small></button></div><div className="festival-crowd traditional-festival-crowd" aria-label={`参加${currentFestival.name}的居民`}>{[...FESTIVAL_GUESTS, "安安"].map((name, index) => <button key={`traditional-${name}`} style={personClothesStyle(name)} className={`crowd-person crowd-${(index % 6) + 1} traditional-guest-${index + 1} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：${currentFestival.name}真热闹，大家都在广场上走走看看！`)}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div></>}
                 {currentFestival?.id === "lantern" && <div className="lantern-fair-ground" aria-label="摆在广场地面上的元宵花灯和灯谜摊">{LANTERN_RIDDLES.map((riddle, index) => <button key={`lantern-${index}`} className={`physical-lantern lantern-shape-${index + 1}`} onClick={() => { setLanternRiddle(index); setMessage(`走到第 ${index + 1} 盏花灯前，灯笼下面挂着一张灯谜。`); }}><i /><b /><span>点击猜灯谜</span></button>)}</div>}
@@ -9919,7 +10117,17 @@ export default function FarmGame() {
                     {houseFloor === 1 && game.firstFloorNightstandPlaced && <button className={`first-floor-nightstand ${selected === "axe" ? "dismantle-ready" : ""}`} onClick={(event) => { event.stopPropagation(); if (selected === "axe") { const woodBack = Math.max(1, Math.floor(CRAFT_RECIPES.nightstand.wood / 2)); setGame((current) => ({ ...current, firstFloorNightstandPlaced: false, wood: current.wood + woodBack, energy: Math.max(0, current.energy - staminaCost(current, 2)) })); setMessage(`拆掉了床边小柜，回收成 ${woodBack} 块木头。`); playTone(360); return; } setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) })); setMessage("从床边小柜拿起温水慢慢喝完，恢复 5 点体力。 "); playTone(610); }} aria-label={selected === "axe" ? "点击拆除床边小柜并回收木头" : "床边小柜，点击喝温水恢复体力"}><i /><b /><span>床边小柜</span></button>}
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && <div className={`sleeping-player-in-bed ${bedtimePhase}`} aria-label={bedtimePhase === "waking" ? "小禾第二天在床上醒来" : "小禾盖着被子睡觉"}><i className="sleep-head" /><b className="sleep-blanket" /><span>{bedtimePhase === "waking" ? "早上七点 · 点击房间起床" : "盖好被子睡觉中…"}</span></div>}
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && followingPets.length > 0 && <div className="sleeping-pet-cages" aria-label="睡觉时宠物们回到农舍里的小窝"><strong>宠物们的睡觉小窝</strong>{followingPets.slice(0, 6).map((pet) => <span key={`sleep-${pet.id}`} className={`sleep-pet-cage pet-${pet.type} ${game.sickPetIds.includes(pet.id) ? "sick-pet" : ""}`}><i /><b /><em /></span>)}</div>}
-                    {<div className="home-baby-pets" aria-label="出生在家里的小动物宝宝"><strong>小动物育幼垫<small>点击一只宝宝开始实际照顾</small></strong>{!game.pets.some((pet) => pet.id.includes("-baby-")) && <button className="empty-baby-nursery" onClick={(event) => { event.stopPropagation(); setMessage("这里是宝宝出生后住的育幼垫。需要同一种宠物一只男生、一只女生一起生活满五年，宝宝才会出生。 "); }}><i>？</i><span>还没有出生宝宝<small>同种一男一女 · 一起生活满五年</small></span></button>}{game.pets.filter((pet) => pet.id.includes("-baby-")).slice(0, 6).map((pet, index) => { const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name ?? "小宠物"; const caredToday = game.lastBabyCareDays[pet.id] === `${game.year}-${game.season}-${game.day}`; return <button key={`home-baby-${pet.id}`} className={`home-baby-pet baby-${index + 1} pet-${pet.type} ${caredToday ? "cared" : "needs-care"}`} onClick={(event) => { event.stopPropagation(); beginBabyPetCare(pet); }} aria-label={`${petName}宝宝，${caredToday ? "今天已经照顾" : "需要喂食、加水、梳毛和陪玩"}`}><i /><b /><em>{caredToday ? "✓" : "!"}</em><span>{petName}宝宝<small>{caredToday ? `连续照顾 ${game.babyCareStreaks[pet.id] ?? 1} 天` : "今天需要更多照顾"}</small></span></button>; })}</div>}
+                    <div className="home-baby-pets" aria-label="出生在家里的小动物宝宝">
+                      <strong>小育幼垫<small>{nurseryPets.length ? `${nurseryPets.length}只宝宝` : "点垫子核对"}</small></strong>
+                      {!nurseryPets.length && <button className="empty-baby-nursery" onClick={(event) => { event.stopPropagation(); inspectPetNursery(); }}><i>？</i><span>检查宝宝<small>满五年会立即补生</small></span></button>}
+                      {nurseryPets.slice(0, 4).map((pet, index) => {
+                        const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name ?? "小宠物";
+                        const caredToday = game.lastBabyCareDays[pet.id] === `${game.year}-${game.season}-${game.day}`;
+                        const careCount = game.babyCareStreaks[pet.id] ?? 0;
+                        const ageDays = petAgeDays(pet);
+                        return <button key={`home-baby-${pet.id}`} className={`home-baby-pet baby-${index + 1} pet-${pet.type} ${caredToday ? "cared" : "needs-care"}`} onClick={(event) => { event.stopPropagation(); beginBabyPetCare(pet); }} aria-label={`${petName}宝宝，${caredToday ? "今天已经照顾" : "需要喂食、加水、梳毛和陪玩"}`}><i /><b /><em>{caredToday ? "✓" : "!"}</em><span>{petName}宝宝<small>{caredToday ? `照顾 ${careCount}/4 次` : `出生 ${ageDays} 天 · 点击照顾`}</small></span></button>;
+                      })}
+                    </div>
                     <div className="house-table"><i /><i /></div>
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     {game.upgrades.house >= 1 && <button className={`house-equipment house-lamp ${game.equipment.lampOn ? "active" : ""}`} onClick={() => { setGame((current) => ({ ...current, equipment: { ...current.equipment, lampOn: !current.equipment.lampOn } })); setMessage(game.equipment.lampOn ? "关掉了暖光灯。" : "暖光灯亮起来，夜晚的房间变得明亮了！"); }}><i />暖光灯</button>}
