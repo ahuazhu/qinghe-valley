@@ -21,7 +21,7 @@ type CookingStep = "chop" | "heat" | "plate";
 type GuideTopicId = "start" | "farming" | "fishing" | "tools" | "town" | "friends" | "home" | "animals" | "weather" | "festival" | "multiplayer" | "save";
 type HiddenTripId = "hillsideTea" | "riverKitchen" | "oldBookCafe" | "forestPlayground";
 type TripHandsOnMode = "move" | "drag" | "gesture";
-type TripHandsOnState = { index: number; mode: TripHandsOnMode; progress: number; mistakes: number; heldPart: string | null };
+type TripHandsOnState = { index: number; mode: TripHandsOnMode; progress: number; mistakes: number; heldPart: string | null; x: number; y: number; facing: Facing };
 type ResidentSchedule = { key: string; label: string; scene: Scene; invite?: HiddenTripId };
 type MallItem = "redCoat" | "blueOutfit" | "umbrella" | "seedBox" | "animalRaincoat";
 type FarmAnimalType = "chicken" | "cow" | "sheep";
@@ -589,6 +589,12 @@ const TRIP_HANDS_ON_DETAILS: Record<HiddenTripId, Array<{ mode: TripHandsOnMode;
     { mode: "drag", instruction: "把座板、左绳和右绳依次拖到树枝下的接口，装成真正的秋千。", parts: ["座板", "左绳", "右绳"], gesture: "free" },
     { mode: "gesture", instruction: "按住捕蝶网在草丛里连续追动，网经过三只彩蝶才算找到它们。", gesture: "free" },
   ],
+};
+const TRIP_MOVE_CHECKPOINTS: Record<HiddenTripId, Array<{ x: number; y: number }>> = {
+  hillsideTea: [{ x: 23, y: 67 }, { x: 31, y: 48 }, { x: 45, y: 39 }, { x: 58, y: 59 }, { x: 72, y: 45 }, { x: 84, y: 29 }],
+  riverKitchen: [{ x: 22, y: 69 }, { x: 31, y: 48 }, { x: 45, y: 42 }, { x: 59, y: 53 }, { x: 72, y: 63 }, { x: 86, y: 39 }],
+  oldBookCafe: [{ x: 22, y: 39 }, { x: 34, y: 64 }, { x: 47, y: 34 }, { x: 60, y: 59 }, { x: 73, y: 31 }, { x: 86, y: 51 }],
+  forestPlayground: [{ x: 21, y: 66 }, { x: 34, y: 59 }, { x: 46, y: 47 }, { x: 59, y: 52 }, { x: 72, y: 42 }, { x: 86, y: 34 }],
 };
 const SCHOOL_LESSONS: Array<{ title: string; pages: [string, string, string, string] }> = [
   { title: "作物品质为什么不同", pages: ["同一种种子也会长出不同品质，因为土壤、水分和连续照料都会留下影响。", "只在最后一天浇水不能补回前面缺少的照料；每天稳定照料更容易出现银星和金星。", "下雨会给作物补水，但雷雨可能伤到田里的幼苗，所以不能只看见雨水的好处。", "金星作物放进大号售卖箱会明显加价，日记的收藏页会永久记录收获过的品质。"] },
@@ -1217,12 +1223,29 @@ const staminaCost = (state: GameState, base: number) => state.showerBuff ? Math.
 
 const villageSaveKey = (village: VillageId) => village === "maple" ? "qinghe-farm-save-maple" : "qinghe-farm-save";
 
+const reconcilePetFamilies = (records: PetRecord[] | undefined, savedBirthYears: Partial<Record<PetType, number>> | undefined, currentYear: number, currentDay: number) => {
+  const pets = (records ?? []).map((pet) => ({ ...pet, bornYear: Number.isFinite(pet.bornYear) ? pet.bornYear : 1, bornDay: Number.isFinite(pet.bornDay) ? pet.bornDay : 1 }));
+  const lastPetBirthYears = { ...(savedBirthYears ?? {}) };
+  PET_CATALOG.forEach((kind, index) => {
+    const sameType = pets.filter((pet) => pet.type === kind.id);
+    const newestExistingBaby = Math.max(0, ...sameType.filter((pet) => pet.id.includes("-baby-")).map((pet) => pet.bornYear));
+    if (!lastPetBirthYears[kind.id] && newestExistingBaby > 0) lastPetBirthYears[kind.id] = newestExistingBaby;
+    const hasPair = sameType.some((pet) => pet.sex === "男生") && sameType.some((pet) => pet.sex === "女生");
+    const familyStartYear = lastPetBirthYears[kind.id] ?? Math.max(0, ...sameType.map((pet) => pet.bornYear));
+    if (!hasPair || currentYear - familyStartYear < 5) return;
+    pets.push({ id: `${kind.id}-baby-${currentYear}-restored-${index}`, type: kind.id, sex: (currentYear + index) % 2 ? "女生" : "男生", bornDay: currentDay, bornYear: currentYear });
+    lastPetBirthYears[kind.id] = currentYear;
+  });
+  return { pets, lastPetBirthYears };
+};
+
 const restoreVillageGame = (saved: string | null): GameState => {
   const defaults = makeNewGame();
   if (!saved) return defaults;
   try {
     const parsed = JSON.parse(saved) as Partial<GameState>;
     if (!parsed.tiles || parsed.tiles.length < 32) return defaults;
+    const petFamily = reconcilePetFamilies(parsed.pets, parsed.lastPetBirthYears, parsed.year ?? 1, parsed.day ?? 1);
     return {
       ...defaults,
       ...parsed,
@@ -1260,6 +1283,8 @@ const restoreVillageGame = (saved: string | null): GameState => {
       sheep: parsed.sheep ?? 0,
       animalRaincoatAssignments: parsed.animalRaincoatAssignments ?? [],
       sickFarmAnimalIds: parsed.sickFarmAnimalIds ?? [],
+      pets: petFamily.pets,
+      lastPetBirthYears: petFamily.lastPetBirthYears,
       mallItems: { ...defaults.mallItems, ...(parsed.mallItems ?? {}) },
       lanternRiddlesSolved: parsed.lanternRiddlesSolved ?? [],
       festivalActivitiesCompleted: parsed.festivalActivitiesCompleted ?? [],
@@ -1350,6 +1375,9 @@ export default function FarmGame() {
   const [careSession, setCareSession] = useState<{ mode: "training" | "treatment"; illness: IllnessId; step: number; progress: number; selected: string[]; herbParts: number; waterParts: number } | null>(null);
   const [medicalThermometerPicked, setMedicalThermometerPicked] = useState(false);
   const [careHeldItem, setCareHeldItem] = useState<string | null>(null);
+  const [careMixValues, setCareMixValues] = useState({ medicine: 0, water: 0, warmth: 0 });
+  const [careHoldProgress, setCareHoldProgress] = useState(0);
+  const [careRecheckTemperature, setCareRecheckTemperature] = useState(35);
   const [schoolLesson, setSchoolLesson] = useState<{ title: string; pages: string[]; step: number; assembly: boolean; attendanceKey: string } | null>(null);
   const [townhallCalendarOpen, setTownhallCalendarOpen] = useState(false);
   const [festivalPreview, setFestivalPreview] = useState<FestivalPreview | null>(null);
@@ -1497,6 +1525,7 @@ export default function FarmGame() {
   const tripGestureActiveRef = useRef(false);
   const tripGestureLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const tripGestureDistanceRef = useRef(0);
+  const tripMoveHoldTimerRef = useRef<number | null>(null);
   const festivalActionCountRef = useRef(0);
   const festivalHoldTimerRef = useRef<number | null>(null);
   const festivalSweepActiveRef = useRef(false);
@@ -1509,6 +1538,11 @@ export default function FarmGame() {
   const coffeeWaterTimerRef = useRef<number | null>(null);
   const snowPushTimerRef = useRef<number | null>(null);
   const snowRollingFinishedRef = useRef(false);
+  const careGestureActiveRef = useRef(false);
+  const careGestureLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const careGestureDistanceRef = useRef(0);
+  const careHoldTimerRef = useRef<number | null>(null);
+  const careHoldFinishTimerRef = useRef<number | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const latestSaveRef = useRef<{ key: string; game: GameState } | null>(null);
   const beachRespawnTimersRef = useRef<number[]>([]);
@@ -1547,6 +1581,7 @@ export default function FarmGame() {
         const parsed = JSON.parse(saved) as GameState;
         if (parsed.tiles?.length >= 32) {
           const defaults = makeNewGame();
+          const petFamily = reconcilePetFamilies(parsed.pets, parsed.lastPetBirthYears, parsed.year ?? 1, parsed.day ?? 1);
           setGame({
             ...defaults,
             ...parsed,
@@ -1578,6 +1613,8 @@ export default function FarmGame() {
             sheep: parsed.sheep ?? 0,
             animalRaincoatAssignments: parsed.animalRaincoatAssignments ?? [],
             sickFarmAnimalIds: parsed.sickFarmAnimalIds ?? [],
+            pets: petFamily.pets,
+            lastPetBirthYears: petFamily.lastPetBirthYears,
             groundSupplies: defaults.groundSupplies.map((defaultVisible, index) => parsed.groundSupplies?.[index] ?? defaultVisible),
             treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
             plantedTrees: (parsed.plantedTrees ?? []).map((tree) => ({ ...tree, watered: tree.watered ?? false })),
@@ -1998,6 +2035,9 @@ export default function FarmGame() {
     if (fishingWaitTimerRef.current) window.clearTimeout(fishingWaitTimerRef.current);
     if (fishingBiteTimerRef.current) window.clearTimeout(fishingBiteTimerRef.current);
     if (fishingMarkerTimerRef.current) window.clearInterval(fishingMarkerTimerRef.current);
+    if (tripMoveHoldTimerRef.current !== null) window.clearInterval(tripMoveHoldTimerRef.current);
+    if (careHoldTimerRef.current !== null) window.clearInterval(careHoldTimerRef.current);
+    if (careHoldFinishTimerRef.current !== null) window.clearTimeout(careHoldFinishTimerRef.current);
     beachRespawnTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     beachRespawnTimersRef.current = [];
     bedtimeTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -3921,6 +3961,11 @@ export default function FarmGame() {
     playTone(900);
   };
 
+  const stopTripMove = () => {
+    if (tripMoveHoldTimerRef.current !== null) window.clearInterval(tripMoveHoldTimerRef.current);
+    tripMoveHoldTimerRef.current = null;
+  };
+
   const enjoyResidentOuting = () => {
     if (!residentOuting) return;
     if (outingActivitiesDone.length < HIDDEN_TRIP_ACTIVITIES[residentOuting.trip].length) {
@@ -3937,6 +3982,7 @@ export default function FarmGame() {
       coins: current.coins + (isBestFriend ? 120 : 0),
       journalEntries: [`${SEASONS[current.season]}第${current.day}天：和${person}把${HIDDEN_TRIPS[residentOuting.trip].name}的三项旅行体验全部完成。${isBestFriend ? "挚友还一起留下了专属旅行纪念。" : ""}`, ...current.journalEntries].slice(0, 40),
     }, person, 4));
+    stopTripMove();
     setResidentOuting(null);
     setTripHandsOn(null);
     setOutingActivitiesDone([]);
@@ -3960,7 +4006,7 @@ export default function FarmGame() {
       return;
     }
     const details = TRIP_HANDS_ON_DETAILS[residentOuting.trip][index];
-    setTripHandsOn({ index, mode: details.mode, progress: 0, mistakes: 0, heldPart: null });
+    setTripHandsOn({ index, mode: details.mode, progress: 0, mistakes: 0, heldPart: null, x: 10, y: 75, facing: "right" });
     tripGestureDistanceRef.current = 0;
     tripGestureActiveRef.current = false;
     setMessage(`开始“${activity.name}”：${details.instruction}`);
@@ -3968,6 +4014,7 @@ export default function FarmGame() {
   };
 
   const finishTripHandsOnActivity = (index: number) => {
+    stopTripMove();
     if (!residentOuting || outingActivitiesDone.includes(index)) {
       setTripHandsOn(null);
       return;
@@ -3982,24 +4029,33 @@ export default function FarmGame() {
   };
 
   const moveTripHandsOn = (direction: "up" | "down" | "left" | "right") => {
-    if (!tripHandsOn || !residentOuting || tripHandsOn.mode !== "move") return;
-    const details = TRIP_HANDS_ON_DETAILS[residentOuting.trip][tripHandsOn.index];
-    const route = details.route ?? [];
-    const expected = route[tripHandsOn.progress];
-    if (direction !== expected) {
-      setTripHandsOn({ ...tripHandsOn, progress: Math.max(0, tripHandsOn.progress - 1), mistakes: tripHandsOn.mistakes + 1 });
-      setMessage("走错了，回到上一处标记重新观察。不能连续乱按方向键。 ");
-      playTone(210);
-      return;
-    }
-    const next = tripHandsOn.progress + 1;
-    if (next >= route.length) {
-      finishTripHandsOnActivity(tripHandsOn.index);
-      return;
-    }
-    setTripHandsOn({ ...tripHandsOn, progress: next });
-    setMessage(`路线走对了 ${next}/${route.length} 段，继续看下一处发亮标记。`);
-    playTone(480 + next * 45);
+    if (!residentOuting) return;
+    const tripId = residentOuting.trip;
+    const vector = direction === "left" ? { x: -1.6, y: 0 } : direction === "right" ? { x: 1.6, y: 0 } : direction === "up" ? { x: 0, y: -1.6 } : { x: 0, y: 1.6 };
+    setTripHandsOn((current) => {
+      if (!current || current.mode !== "move") return current;
+      const x = Math.max(5, Math.min(95, current.x + vector.x));
+      const y = Math.max(18, Math.min(82, current.y + vector.y));
+      const checkpoints = TRIP_MOVE_CHECKPOINTS[tripId];
+      const checkpoint = checkpoints[current.progress];
+      if (!checkpoint || Math.hypot(x - checkpoint.x, y - checkpoint.y) > 6.5) return { ...current, x, y, facing: direction };
+      const next = current.progress + 1;
+      playTone(480 + next * 45);
+      if (next >= checkpoints.length) {
+        if (tripMoveHoldTimerRef.current !== null) window.clearInterval(tripMoveHoldTimerRef.current);
+        tripMoveHoldTimerRef.current = null;
+        window.setTimeout(() => finishTripHandsOnActivity(current.index), 80);
+        return { ...current, x, y, facing: direction, progress: next };
+      }
+      setMessage(`小禾真正走到了第 ${next} 个地点，场景里的东西已经收集或经过。继续移动到下一处发亮目标。`);
+      return { ...current, x, y, facing: direction, progress: next };
+    });
+  };
+
+  const startTripMove = (direction: "up" | "down" | "left" | "right") => {
+    stopTripMove();
+    moveTripHandsOn(direction);
+    tripMoveHoldTimerRef.current = window.setInterval(() => moveTripHandsOn(direction), 55);
   };
 
   const dropTripHandsOnPart = () => {
@@ -4059,6 +4115,7 @@ export default function FarmGame() {
   };
 
   const handleTripHandsOnPointerRelease = (event: ReactPointerEvent<HTMLElement>) => {
+    stopTripMove();
     stopTripGesture();
     if (!tripHandsOn || tripHandsOn.mode !== "drag" || !tripHandsOn.heldPart) return;
     const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
@@ -4860,6 +4917,9 @@ export default function FarmGame() {
     }
     setMedicalThermometerPicked(false);
     setCareHeldItem(null);
+    setCareMixValues({ medicine: 0, water: 0, warmth: 0 });
+    setCareHoldProgress(0);
+    setCareRecheckTemperature(35);
     setCareSession({ mode: "training", illness, step: 0, progress: 0, selected: [], herbParts: 0, waterParts: 0 });
     setMessage(`白医生拿出“${ILLNESSES[illness].name}”病例册。先观察三项症状，不能跳步骤。`);
     playTone(640);
@@ -4910,6 +4970,9 @@ export default function FarmGame() {
     }
     setMedicalThermometerPicked(false);
     setCareHeldItem(null);
+    setCareMixValues({ medicine: 0, water: 0, warmth: 0 });
+    setCareHoldProgress(0);
+    setCareRecheckTemperature(35);
     setCareSession({ mode: "treatment", illness: game.illness, step: 0, progress: 0, selected: [], herbParts: 0, waterParts: 0 });
     setMessage(`开始处理${illness.name}。必须依次完成观察、备物、消毒、配制、护理和复查。`);
   };
@@ -4981,13 +5044,14 @@ export default function FarmGame() {
     }));
     setCareSession(null);
     setCareHeldItem(null);
+    setCareHoldProgress(0);
     setMessage(`${illness.name}的六段流程全部完成。小禾恢复健康，但治疗很累，消耗了 35 点体力。`);
     playTone(980);
   };
 
   const performCareAction = (token: string) => {
     if (!careSession || careSession.selected.includes(token)) return;
-    const requiredByStep = [3, 4, 6, 5, 5, 4];
+    const requiredByStep = [3, 4, 6, 5, 5, 3];
     const nextSelected = [...careSession.selected, token];
     const required = requiredByStep[careSession.step] ?? 1;
     if (nextSelected.length < required) {
@@ -5002,8 +5066,110 @@ export default function FarmGame() {
     }
     setCareSession({ ...careSession, step: careSession.step + 1, progress: 0, selected: [], herbParts: 0, waterParts: 0 });
     setCareHeldItem(null);
+    setCareHoldProgress(0);
+    if (careSession.step === 2) setCareMixValues({ medicine: 0, water: 0, warmth: 0 });
+    if (careSession.step === 4) setCareRecheckTemperature(35);
     setMessage(`这一步完成，进入第 ${careSession.step + 2}/6 段。`);
     playTone(720);
+  };
+
+  const stopCareTimedHold = (cancelled = false) => {
+    if (careHoldTimerRef.current !== null) window.clearInterval(careHoldTimerRef.current);
+    if (careHoldFinishTimerRef.current !== null) window.clearTimeout(careHoldFinishTimerRef.current);
+    const wasRunning = careHoldFinishTimerRef.current !== null;
+    careHoldTimerRef.current = null;
+    careHoldFinishTimerRef.current = null;
+    if (cancelled && wasRunning) {
+      setCareHoldProgress(0);
+      setMessage("松手太早，护理动作还没完成。需要一直按住，等进度真正到满。 ");
+      playTone(220);
+    }
+  };
+
+  const beginCareTimedHold = (token: string, duration: number, label: string) => {
+    if (!careSession || careSession.selected.includes(token) || careHoldFinishTimerRef.current !== null) return;
+    stopCareTimedHold(false);
+    const startedAt = Date.now();
+    setCareHoldProgress(1);
+    setMessage(`正在${label}。手不要松开，还要保持一会儿。`);
+    careHoldTimerRef.current = window.setInterval(() => {
+      setCareHoldProgress(Math.min(96, ((Date.now() - startedAt) / duration) * 100));
+    }, 60);
+    careHoldFinishTimerRef.current = window.setTimeout(() => {
+      if (careHoldTimerRef.current !== null) window.clearInterval(careHoldTimerRef.current);
+      careHoldTimerRef.current = null;
+      careHoldFinishTimerRef.current = null;
+      setCareHoldProgress(100);
+      performCareAction(token);
+      playTone(760);
+    }, duration);
+  };
+
+  const beginCareGesture = (event: ReactPointerEvent<HTMLButtonElement>, instruction: string) => {
+    if (!careSession) return;
+    careGestureActiveRef.current = true;
+    careGestureLastPointRef.current = { x: event.clientX, y: event.clientY };
+    careGestureDistanceRef.current = 0;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setMessage(instruction);
+  };
+
+  const moveCareGesture = (event: ReactPointerEvent<HTMLButtonElement>, token: string, neededDistance: number) => {
+    if (!careSession || !careGestureActiveRef.current || !careGestureLastPointRef.current || careSession.selected.includes(token)) return;
+    const last = careGestureLastPointRef.current;
+    careGestureDistanceRef.current += Math.hypot(event.clientX - last.x, event.clientY - last.y);
+    careGestureLastPointRef.current = { x: event.clientX, y: event.clientY };
+    setCareHoldProgress(Math.min(96, (careGestureDistanceRef.current / neededDistance) * 100));
+    if (careGestureDistanceRef.current < neededDistance) return;
+    careGestureActiveRef.current = false;
+    careGestureLastPointRef.current = null;
+    careGestureDistanceRef.current = 0;
+    setCareHoldProgress(100);
+    performCareAction(token);
+    playTone(720);
+  };
+
+  const endCareGesture = () => {
+    if (careGestureActiveRef.current && careGestureDistanceRef.current > 0) {
+      setMessage("移动距离还不够，检查或擦拭没有做完整。请从亮起的位置重新按住操作。 ");
+      playTone(230);
+    }
+    careGestureActiveRef.current = false;
+    careGestureLastPointRef.current = null;
+    careGestureDistanceRef.current = 0;
+    setCareHoldProgress(0);
+  };
+
+  const careMixTarget = careSession ? (() => {
+    const index = ILLNESS_IDS.indexOf(careSession.illness);
+    return {
+      medicine: [2, 4, 1, 2, 3, 4, 3, 1][index] ?? 2,
+      water: [3, 1, 4, 2, 2, 1, 3, 4][index] ?? 3,
+      warmth: [2, 1, 4, 2, 3, 1, 3, 4][index] ?? 2,
+    };
+  })() : { medicine: 2, water: 3, warmth: 2 };
+
+  const verifyCareMix = () => {
+    if (!careSession || careSession.step !== 3 || careSession.selected.length > 0) return;
+    if (careMixValues.medicine !== careMixTarget.medicine || careMixValues.water !== careMixTarget.water || careMixValues.warmth !== careMixTarget.warmth) {
+      setMessage("配比没有通过检查：三项里至少有一项不符合病例卡。重新观察刻度和温度要求。 ");
+      playTone(210);
+      return;
+    }
+    setCareSession({ ...careSession, progress: 3, selected: ["药量刻度", "水量刻度", "温度刻度"] });
+    setMessage("三项配比正确。现在还不能喝：按住木勺沿着碗边完整绕两圈，把药真正调匀。 ");
+    playTone(700);
+  };
+
+  const lockCareRecheckTemperature = () => {
+    if (!careSession || careSession.step !== 5 || careSession.selected.includes("复测体温")) return;
+    if (careRecheckTemperature < 36.5 || careRecheckTemperature > 37.5) {
+      setMessage("温度计游标不在正常刻度区。仔细看绿色范围，把游标调进去再记录。 ");
+      playTone(210);
+      return;
+    }
+    performCareAction("复测体温");
+    setMessage("体温读数已经稳定在正常范围。下一步用听诊器沿胸口移动，确认呼吸。 ");
   };
 
   const placeMedicalThermometer = () => {
@@ -5140,63 +5306,57 @@ export default function FarmGame() {
         ["清洁双手", "双手", "hands"], ["擦净桌面", "操作桌", "table"], ["消毒杯口", "杯口", "cup"],
         ["消毒药勺", "药勺", "spoon"], ["清洁药罐", "药罐", "jar"], ["更换毛巾", "毛巾架", "towel"],
       ];
+      const currentTarget = targets[Math.min(selected.length, targets.length - 1)];
       return <div className="care-disinfection-room">
-        <div className="disinfection-supply">{careTool("消毒棉", "拿起消毒棉", "棉", "cotton-pad-tool")}<small>拿起后依次擦六处；触屏先点棉片，再点位置</small></div>
+        <div className="disinfection-supply"><div className="real-cotton-pad"><i /><b /></div><small>现在擦：<strong>{currentTarget?.[1]}</strong>。每一处都要按住棉片来回擦够距离，单点和短划都无效。</small></div>
         <div className="disinfection-stage">
           <i className="disinfection-patient"><b /><em /></i><i className="disinfection-table" />
-          {targets.map(([token, label, kind]) => <button key={token} type="button" data-care-drop="generic" data-care-expected="消毒棉" data-care-token={token} data-care-keep="true" className={`disinfection-target target-${kind} ${selected.includes(token) ? "cleaned" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem("消毒棉", token, true); }}><i>{selected.includes(token) ? "✓" : ""}</i><span>{label}</span></button>)}
+          {targets.map(([token, label, kind], index) => <button key={token} type="button" className={`disinfection-target care-scrub-target target-${kind} ${selected.includes(token) ? "cleaned" : index === selected.length ? "current" : "locked"}`} disabled={index !== selected.length} onPointerDown={(event) => beginCareGesture(event, `按住消毒棉，在${label}上左右来回擦；中途松手会重新计算。`)} onPointerMove={(event) => moveCareGesture(event, token, 165)} onPointerUp={endCareGesture} onPointerCancel={endCareGesture}><i>{selected.includes(token) ? "✓" : index === selected.length ? "擦" : "·"}</i><span>{label}</span></button>)}
         </div>
-        <strong className="disinfection-counter">已消毒 {selected.length}/6 处</strong>
+        <div className="care-live-meter"><i style={{ width: `${careHoldProgress}%` }} /><span>当前擦拭距离 {Math.round(careHoldProgress)}%</span></div><strong className="disinfection-counter">已消毒 {selected.length}/6 处</strong>
       </div>;
     }
 
     if (careSession.step === 3) {
-      const items = illness.method === "remedy"
-        ? [["菠萝块", "切好的菠萝块", "菠"], ["松子一", "第一粒松子", "松"], ["松子二", "第二粒松子", "松"], ["药材", "研碎药材", "药"], ["温水", "温水", "水"]]
-        : illness.method === "clinicOnly"
-          ? [["患者腕带", "核对患者腕带", "带"], ["处方单", "核对医生处方", "方"], ["密封药瓶", "检查密封药瓶", "瓶"], ["量杯", "量取处方剂量", "量"], ["用药时间卡", "填写用药时间", "时"]]
-          : illness.method === "baths"
-            ? [["冷水阀", "调节冷水阀", "冷"], ["热水阀", "调节热水阀", "热"], ["浴温度计", "测量浴水温度", "温"], ["干毛巾", "准备干毛巾", "巾"], ["洗浴记录卡", "填写洗浴记录", "记"]]
-            : [["药材", "称量一份药材", "药"], ["温水一", "第一杯温水", "水"], ["温水二", "第二杯温水", "水"], ["干净毛巾", "干净护理毛巾", "巾"], ["搅拌勺", "木质搅拌勺", "勺"]];
-      const placeTreatmentPart = () => {
-        if (!careHeldItem) { setMessage("先从左边拿起一样材料或器械，再放到中央操作台。 "); return; }
-        const valid = items.some(([id]) => id === careHeldItem);
-        if (!valid) { setMessage("这不是当前病种需要的材料。 "); return; }
-        performCareAction(careHeldItem);
-        setCareHeldItem(null);
-      };
-      return <div className={`care-treatment-lab method-${illness.method}`}>
-        <div className="treatment-recipe-note"><i>配</i><div><strong>{illness.name}这一段怎么合到一起</strong><span>{illness.method === "remedy" ? "先点左边的一样材料把它拿起来，再点中间的大碗放进去。菠萝、两粒松子、药材和温水要逐个放完，碗里会真的一项项增加。" : illness.method === "baths" ? "逐个拿起浴室用品放到浴盆旁：先调冷热水，再测温、放毛巾并填写记录。" : illness.method === "clinicOnly" ? "腕带、处方、药瓶、量杯和时间卡要逐件放上护理车核对，不能把药随便混在一起。" : "逐个拿起药材、两杯温水、毛巾和搅拌勺，放到中间的温敷盆里。"}</span></div></div>
-        <div className="treatment-material-rack"><strong>{illness.method === "baths" ? "浴室备品架" : illness.method === "clinicOnly" ? "处方核对台" : "病种材料架"}</strong>{items.map(([id, label, icon]) => careTool(id, label, icon))}</div>
-        <button type="button" data-care-drop="treatment" className={`treatment-work-target ${careHeldItem ? "ready" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); placeTreatmentPart(); }}>
-          <i className="treatment-vessel"><b /></i><strong>{illness.method === "remedy" ? "研磨调配碗" : illness.method === "baths" ? "恒温浴盆" : illness.method === "clinicOnly" ? "处方护理车" : "温敷调配盆"}</strong>
-          <span>{selected.length}/5</span><div>{items.filter(([id]) => selected.includes(id)).map(([id, label]) => <b key={id}>{label}</b>)}</div>
-          <small>必须把五件实物逐个放入并完成操作</small>
-        </button>
+      const methodNames: Record<TreatmentMethod, string> = { remedy: "草药调和饮", clinicOnly: "处方护理液", baths: "恒温复温水", selfCare: "温热护理液" };
+      return <div className={`care-treatment-lab care-dose-lab method-${illness.method}`}>
+        <div className="treatment-recipe-note"><i>配</i><div><strong>{illness.name} · {methodNames[illness.method]}</strong><span>病例卡要求：药量 {careMixTarget.medicine} 格、水量 {careMixTarget.water} 格、温度 {careMixTarget.warmth} 格。三条刻度都必须准确，乱配不会通过。</span></div></div>
+        {selected.length < 3 ? <>
+          <div className="care-dose-controls">
+            {(["medicine", "water", "warmth"] as const).map((kind) => <label key={kind}><strong>{kind === "medicine" ? "药材研磨量" : kind === "water" ? "刻度杯水量" : "温热程度"}</strong><span>{careMixValues[kind]} 格</span><input type="range" min="0" max="4" step="1" value={careMixValues[kind]} onChange={(event) => setCareMixValues((current) => ({ ...current, [kind]: Number(event.target.value) }))} /><i><b style={{ width: `${careMixValues[kind] * 25}%` }} /></i></label>)}
+            <button type="button" className="care-dose-check" onClick={verifyCareMix}>核对三项配比</button>
+          </div>
+          <div className="care-dose-vessel"><i /><b /><em style={{ height: `${Math.max(careMixValues.medicine, careMixValues.water) * 18}%` }} /><span>量杯会随着刻度真实变化</span></div>
+        </> : <div className="care-mixing-stage">
+          <div className={`care-mixing-bowl mixed-${selected.length - 3}`}><i /><b /><em /></div>
+          <button type="button" className="care-circular-spoon" onPointerDown={(event) => beginCareGesture(event, `按住木勺沿着碗边绕第 ${selected.length - 2}/2 圈，不能只左右拖一下。`)} onPointerMove={(event) => moveCareGesture(event, selected.length === 3 ? "完整搅拌第一圈" : "完整搅拌第二圈", 310)} onPointerUp={endCareGesture} onPointerCancel={endCareGesture}><i /><span>按住木勺，沿圆形碗边完整绕动</span></button>
+          <div className="care-circle-guide"><i /><i /><i /><i /></div>
+          <div className="care-live-meter"><i style={{ width: `${careHoldProgress}%` }} /><span>本圈移动轨迹 {Math.round(careHoldProgress)}%</span></div>
+        </div>}
       </div>;
     }
 
     if (careSession.step === 4) {
       const procedures = [
-        ["热敷毛巾", "额头热敷", "温热毛巾", "巾", "forehead"], ["温水杯", "分次补水", "温水杯", "杯", "mouth"],
-        ["靠枕", "调整坐姿", "柔软靠枕", "枕", "back"], ["薄毯", "身体保暖", "干净薄毯", "毯", "body"], ["计时钟", "安静休息", "五分钟计时钟", "时", "clock"],
-      ];
-      return <div className="care-bedside-room">
-        <div className="bedside-tool-cart"><strong>床边护理车</strong>{procedures.map(([tool, , label, icon]) => careTool(tool, label, icon))}</div>
+        ["额头热敷", "温热毛巾", "巾", "forehead", 1500], ["分次补水", "让病人慢慢喝水", "杯", "mouth", 1100],
+        ["调整坐姿", "扶住肩背调好靠枕", "枕", "back", 1300], ["身体保暖", "把薄毯平整盖好", "毯", "body", 1200], ["安静休息", "保持安静并观察呼吸", "时", "clock", 1900],
+      ] as const;
+      const current = procedures[Math.min(selected.length, procedures.length - 1)];
+      return <div className="care-bedside-room timed-care-room">
+        <div className="bedside-tool-cart"><strong>五段护理顺序</strong>{procedures.map(([token, label, icon], index) => <div key={token} className={selected.includes(token) ? "done" : index === selected.length ? "current" : "locked"}><i>{selected.includes(token) ? "✓" : icon}</i><span>{label}</span></div>)}</div>
         <div className="care-bed-scene"><i className="care-bed-patient"><b className="bed-patient-head" /><b className="bed-patient-body" /></i><i className="care-real-bed" />
-          {procedures.map(([tool, token, label, , kind]) => <button key={token} type="button" data-care-drop="generic" data-care-expected={tool} data-care-token={token} className={`bedside-care-target target-${kind} ${selected.includes(token) ? "done" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem(tool, token); }}><i>{selected.includes(token) ? "✓" : "＋"}</i><span>{label}</span></button>)}
+          <button type="button" className={`bedside-care-hold target-${current[3]}`} onPointerDown={() => beginCareTimedHold(current[0], current[4], current[1])} onPointerUp={() => stopCareTimedHold(true)} onPointerLeave={() => stopCareTimedHold(true)} onPointerCancel={() => stopCareTimedHold(true)}><i>{current[2]}</i><strong>{current[1]}</strong><span>一直按住，不要松手</span><b><em style={{ width: `${careHoldProgress}%` }} /></b></button>
         </div>
+        <small className="timed-care-tip">每一段需要的保持时间都不同；过早松手会从这一段重新开始，病人也会逐渐恢复脸色。</small>
       </div>;
     }
 
-    const checks = [
-      ["复查温度计", "复测体温", "温度计", "温", "temperature"], ["听诊器", "复查呼吸", "听诊器", "听", "breathing"],
-      ["小手电", "确认精神", "检查瞳孔的小手电", "灯", "eyes"], ["记录笔", "写下结束时间", "记录笔", "笔", "chart"],
-    ];
-    return <div className="care-recheck-room">
-      <div className="recheck-instruments"><strong>复查器械</strong>{checks.map(([tool, , label, icon]) => careTool(tool, label, icon))}</div>
-      <div className="recheck-patient-stage"><i className="recheck-patient"><b /><em /></i><i className="recheck-chart"><b>复查记录</b>{selected.map((item) => <span key={item}>✓ {item}</span>)}</i>
-        {checks.map(([tool, token, label, , kind]) => <button key={token} type="button" data-care-drop="generic" data-care-expected={tool} data-care-token={token} className={`recheck-target target-${kind} ${selected.includes(token) ? "done" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem(tool, token); }}><i>{selected.includes(token) ? "✓" : ""}</i><span>{label}</span></button>)}
+    return <div className="care-recheck-room difficult-recheck-room">
+      <div className="recheck-instruments"><strong>复查不是把器具拖一遍</strong><p>先读温度计刻度，再沿胸口听诊，最后根据两项结果决定能否结束治疗。</p><div className="recheck-results">{selected.map((item) => <span key={item}>✓ {item}</span>)}</div></div>
+      <div className="recheck-patient-stage"><i className="recheck-patient"><b /><em /></i>
+        {!selected.includes("复测体温") && <div className="care-temperature-reader"><strong>移动温度计游标到绿色正常区</strong><input type="range" min="35" max="40" step="0.5" value={careRecheckTemperature} onChange={(event) => setCareRecheckTemperature(Number(event.target.value))} /><span>{careRecheckTemperature.toFixed(1)}℃</span><button type="button" onClick={lockCareRecheckTemperature}>锁定并记录读数</button></div>}
+        {selected.includes("复测体温") && !selected.includes("复查呼吸") && <button type="button" className="care-recheck-stethoscope" onPointerDown={(event) => beginCareGesture(event, "按住听诊头，沿胸口从左到右、再从右到左移动完整一遍。 ")} onPointerMove={(event) => moveCareGesture(event, "复查呼吸", 240)} onPointerUp={endCareGesture} onPointerCancel={endCareGesture}><i /><strong>按住听诊器沿胸口来回移动</strong><span>{Math.round(careHoldProgress)}%</span></button>}
+        {selected.includes("复查呼吸") && <div className="care-final-assessment"><strong>根据刚才的体温与呼吸选择结论</strong><button onClick={() => { setMessage("体温已经回到正常区，不能记录为仍在高热。 "); playTone(210); }}>仍在高热，需要立刻结束全部观察</button><button onClick={() => performCareAction("恢复记录正确")}>体温正常、呼吸平稳，可以完成恢复记录</button><button onClick={() => { setMessage("复查不能省略休息，也不能继续劳动。请选择符合两项读数的记录。 "); playTone(210); }}>马上继续干重活，不需要休息</button></div>}
       </div>
     </div>;
   };
@@ -6022,12 +6182,12 @@ export default function FarmGame() {
         ? " 一只小动物跑进农田吃掉了 1 株幼苗；围满 8 段栅栏或修建石墙就能挡住它。"
         : "";
     const lightningMessage = lightningCropIndex >= 0 ? " 昨夜一道雷落进田里，劈坏了 1 株作物；雷雨天的这种情况并不常见。" : "";
-    const petBirthTypes = nextYear > game.year ? PET_CATALOG.filter((pet) => {
+    const petBirthTypes = PET_CATALOG.filter((pet) => {
       const sameType = game.pets.filter((ownedPet) => ownedPet.type === pet.id);
       const hasPair = sameType.some((ownedPet) => ownedPet.sex === "男生") && sameType.some((ownedPet) => ownedPet.sex === "女生");
-      const familyStartYear = game.lastPetBirthYears[pet.id] ?? Math.max(0, ...sameType.map((ownedPet) => ownedPet.bornYear ?? game.year));
+      const familyStartYear = game.lastPetBirthYears[pet.id] ?? Math.max(0, ...sameType.map((ownedPet) => ownedPet.bornYear ?? 1));
       return hasPair && nextYear - familyStartYear >= 5;
-    }) : [];
+    });
     const petBirthMessage = petBirthTypes.length ? ` 农舍旁传来小小的叫声：${petBirthTypes.map((pet) => pet.name).join("、")}家庭生活满五年，生下了一只小宝宝！` : "";
     const nextAbsoluteDay = (nextYear - 1) * 112 + nextSeason * 28 + nextDayNumber;
     const nextUrgentEvent: UrgentEventKind | null = nextAbsoluteDay % 31 === 9
@@ -7473,7 +7633,7 @@ export default function FarmGame() {
       const notes = ["♪", "♫", "♩", "♪", "♫", "♩"]; return <div className="spring-music-workshop"><strong>跟着乐手听完整段旋律 · {festivalActionCount}/6</strong><div className="festival-musicians"><i /><i /><i /></div><div className="music-note-path">{notes.map((note, index) => <button key={`market-note-${index}`} disabled={index !== festivalActionCount} className={index < festivalActionCount ? "heard" : index === festivalActionCount ? "playing" : ""} onClick={performFestivalDetailAction}>{index < festivalActionCount ? "✓" : note}</button>)}</div><small>音符会一颗一颗亮起，完整听完六拍才结束。</small></div>;
     }
     if (festivalProcess.id === "springFestival") {
-      if (festivalProcess.step === 0) return <div className="lion-ribbon-workshop"><strong>把红绸和铃铛拖到实体狮头上系好</strong><button draggable className={`lion-red-ribbon ${festivalDragging ? "picked" : ""}`} onDragStart={() => { setFestivalDragging(true); setMessage("拿起红绸和铃铛，拖到右边狮头的额头上。 "); }} onClick={() => { setFestivalDragging(true); setMessage("红绸已经拿起，再点击狮头就能系上。 "); }}><i /><b /><span>红绸与铃铛</span></button><button className="festival-lion-head" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(); }} onClick={dropFestivalObject}><i /><b /><em /><span>狮头 · 系在这里</span></button></div>;
+      if (festivalProcess.step === 0) return <div className="lion-ribbon-workshop"><strong>把红绸和铃铛拖到实体狮头上系好</strong><button draggable className={`lion-red-ribbon ${festivalDragging ? "picked" : ""}`} onDragStart={() => beginFestivalDrag("拿起红绸和铃铛，拖到右边狮头的额头上。 ")} onPointerDown={() => beginFestivalDrag("手指按住红绸不要松开，移动到右边狮头额头上再松手。 ")}><i /><b /><span>红绸与铃铛</span></button><button data-festival-drop="correct" className="festival-lion-head" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropFestivalObject(true); }}><i /><b /><em /><span>狮头 · 系在这里</span></button><small>平板上按住左边红绸，手指一直不松开，拖到右边整颗狮头区域再松手。</small></div>;
       if (festivalProcess.step === 1) { const beats = ["咚", "咚", "锵", "咚", "锵", "咚", "咚", "锵"]; return <div className="lion-drum-workshop"><strong>看准鼓谱，亲手敲完八拍 · {festivalActionCount}/8</strong><div className="lion-drum-score">{beats.map((beat, index) => <i key={`lion-beat-${index}`} className={index < festivalActionCount ? "done" : index === festivalActionCount ? "current" : ""}>{beat}</i>)}</div><button className="physical-festival-drum" onClick={performFestivalDetailAction}><i /><b /><span>{beats[festivalActionCount] ?? "完成"}！敲鼓</span></button><small>鼓面每敲一次都会震动，舞狮队会按节拍抬头、摆尾。</small></div>; }
       const route = ["↑", "→", "↓", "←", "↑", "→"]; return <div className="lion-parade-workshop"><strong>跟着舞狮沿广场路线走完六个路口</strong><div className="parade-map"><i className="parade-lion" style={{ left: `${14 + festivalActionCount * 12}%`, top: `${festivalActionCount % 2 ? 53 : 26}%` }} /><span /></div><div className="parade-route-controls">{route.map((direction, index) => <button key={`parade-turn-${index}`} disabled={index !== festivalActionCount} className={index < festivalActionCount ? "done" : index === festivalActionCount ? "current" : ""} onClick={performFestivalDetailAction}>{index < festivalActionCount ? "✓" : direction}</button>)}</div><small>按亮起的下一个方向，狮子会在地图上真实走到对应路口。</small></div>;
     }
@@ -7657,7 +7817,10 @@ export default function FarmGame() {
     }
     setTownhallCalendarOpen(false);
     setFestivalProcess(null);
-    setFestivalProcessStep(0);
+    festivalActionCountRef.current = 0;
+    setFestivalActionCount(0);
+    festivalDragReadyRef.current = false;
+    setFestivalDragging(false);
     goToFestival(festival);
     setMessage(`正在体验${SEASONS[festival.season]}第 ${festival.day} 天的${festival.name}。右上角的 × 可以随时退出并回到原来的日期和位置。`);
     playTone(900);
@@ -7686,7 +7849,10 @@ export default function FarmGame() {
     setActiveBuilding(returning.returnActiveBuilding);
     setFestivalPreview(null);
     setFestivalProcess(null);
-    setFestivalProcessStep(0);
+    festivalActionCountRef.current = 0;
+    setFestivalActionCount(0);
+    festivalDragReadyRef.current = false;
+    setFestivalDragging(false);
     setDragonBoatOpen(false);
     setDragonBoatTraveling(false);
     setLanternRiddle(null);
@@ -8235,16 +8401,15 @@ export default function FarmGame() {
       {tripHandsOn && residentOuting && (() => {
         const activity = HIDDEN_TRIP_ACTIVITIES[residentOuting.trip][tripHandsOn.index];
         const details = TRIP_HANDS_ON_DETAILS[residentOuting.trip][tripHandsOn.index];
-        const route = details.route ?? [];
+        const checkpoints = TRIP_MOVE_CHECKPOINTS[residentOuting.trip];
         const parts = details.parts ?? [];
-        const currentDirection = route[tripHandsOn.progress];
         return <div className={`trip-hands-on-overlay trip-game-${residentOuting.trip} trip-mode-${tripHandsOn.mode}`} role="presentation" onPointerUpCapture={handleTripHandsOnPointerRelease}>
           <section role="dialog" aria-modal="true" aria-label={`${activity.name}实际操作`}>
-            <header><div><span>{HIDDEN_TRIPS[residentOuting.trip].name} · 第 {tripHandsOn.index + 1}/3 项</span><h2>{activity.name}</h2><small>{details.instruction}</small></div><button onClick={() => { setTripHandsOn(null); stopTripGesture(); setMessage(`暂时离开“${activity.name}”，它还没有算完成。走近后可以重新开始。`); }} aria-label="退出当前旅行玩法">×</button></header>
+            <header><div><span>{HIDDEN_TRIPS[residentOuting.trip].name} · 第 {tripHandsOn.index + 1}/3 项</span><h2>{activity.name}</h2><small>{tripHandsOn.mode === "move" ? "按住方向键让小禾在场地里连续走，亲自靠近每个发亮物件；松手就会停下。" : details.instruction}</small></div><button onClick={() => { stopTripMove(); setTripHandsOn(null); stopTripGesture(); setMessage(`暂时离开“${activity.name}”，它还没有算完成。走近后可以重新开始。`); }} aria-label="退出当前旅行玩法">×</button></header>
             <main>
               {tripHandsOn.mode === "move" && <div className="trip-move-game">
-                <div className={`trip-route-world route-${residentOuting.trip}`}><i className="trip-route-water" /><i className="trip-route-bridge" /><div className="trip-route-marks">{route.map((direction, index) => <i key={`route-${index}`} className={`${index < tripHandsOn.progress ? "passed" : index === tripHandsOn.progress ? "current" : ""} direction-${direction}`} />)}</div><div className="trip-route-player" style={{ left: `${12 + tripHandsOn.progress * 12}%`, top: `${68 - (tripHandsOn.progress % 3) * 17}%` }}><PlayerSprite facing={currentDirection ?? "right"} sick={false} /></div><div className="trip-route-goal"><i>{activity.icon}</i><span>{tripHandsOn.progress}/{route.length}</span></div></div>
-                <div className="trip-direction-controls"><button onClick={() => moveTripHandsOn("up")}>↑<small>向上</small></button><button onClick={() => moveTripHandsOn("left")}>←<small>向左</small></button><button onClick={() => moveTripHandsOn("down")}>↓<small>向下</small></button><button onClick={() => moveTripHandsOn("right")}>→<small>向右</small></button></div>
+                <div className={`trip-route-world route-${residentOuting.trip}`}><i className="trip-route-water" /><i className="trip-route-bridge" /><div className="trip-route-marks">{checkpoints.map((point, index) => <i key={`route-${index}`} aria-label={`第 ${index + 1} 个场景目标`} style={{ left: `${point.x}%`, top: `${point.y}%` }} className={`trip-checkpoint ${index < tripHandsOn.progress ? "passed" : index === tripHandsOn.progress ? "current" : ""}`}><b /></i>)}</div><div className="trip-route-player" style={{ left: `${tripHandsOn.x}%`, top: `${tripHandsOn.y}%` }}><PlayerSprite facing={tripHandsOn.facing} sick={false} /></div><div className="trip-route-goal"><i>{activity.icon}</i><span>{tripHandsOn.progress}/{checkpoints.length}</span></div><p className="trip-move-hint">走到发亮物件旁边会自动互动</p></div>
+                <div className="trip-direction-controls" aria-label="按住方向键连续移动"><button onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); startTripMove("up"); }} onPointerUp={stopTripMove} onPointerCancel={stopTripMove}>↑<small>按住向上走</small></button><button onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); startTripMove("left"); }} onPointerUp={stopTripMove} onPointerCancel={stopTripMove}>←<small>按住向左走</small></button><button onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); startTripMove("down"); }} onPointerUp={stopTripMove} onPointerCancel={stopTripMove}>↓<small>按住向下走</small></button><button onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); startTripMove("right"); }} onPointerUp={stopTripMove} onPointerCancel={stopTripMove}>→<small>按住向右走</small></button></div>
               </div>}
               {tripHandsOn.mode === "drag" && <div className="trip-drag-game"><div className="trip-part-tray"><strong>零件托盘</strong>{parts.map((part, index) => { const placed = index < tripHandsOn.progress; return <button key={part} disabled={placed} draggable={!placed} className={`${placed ? "placed" : ""} ${tripHandsOn.heldPart === part ? "held" : ""}`} onDragStart={() => setTripHandsOn({ ...tripHandsOn, heldPart: part })} onPointerDown={() => { if (!placed) { setTripHandsOn({ ...tripHandsOn, heldPart: part }); setMessage(`按住“${part}”，拖到右侧发光位置再松手。`); } }}><i>{placed ? "✓" : part.slice(0, 1)}</i><span>{part}</span></button>; })}</div><div className="trip-assembly-scene"><div className={`trip-assembled-object object-${residentOuting.trip} stage-${tripHandsOn.progress}`}><i /><b /><em /><span>{activity.name}</span></div><div data-trip-part-target className="trip-part-target" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropTripHandsOnPart(); }}><i /><strong>本轮需要</strong><span>{parts[tripHandsOn.progress]}</span></div></div></div>}
               {tripHandsOn.mode === "gesture" && <div className="trip-gesture-game"><div className={`trip-gesture-scene gesture-${residentOuting.trip}`} onPointerDown={startTripGesture} onPointerMove={moveTripGesture} onPointerUp={stopTripGesture} onPointerCancel={stopTripGesture}><i className="gesture-prop prop-one" /><i className="gesture-prop prop-two" /><i className="gesture-prop prop-three" /><b style={{ left: `${12 + tripHandsOn.progress * .76}%`, top: `${residentOuting.trip === "hillsideTea" ? 17 + (tripHandsOn.progress % 18) : residentOuting.trip === "riverKitchen" ? 56 : 22 + (tripHandsOn.progress % 48)}%` }} /><span>按住场景拖动 · {tripHandsOn.progress}%</span></div><div className="trip-gesture-progress"><i style={{ width: `${tripHandsOn.progress}%` }} /><span>{details.gesture === "horizontal" ? "保持横向平稳移动" : details.gesture === "vertical" ? "上下反复拉动" : "沿场景路线连续拖动"}</span></div></div>}
@@ -8723,24 +8888,23 @@ export default function FarmGame() {
 
             {careSession && (() => {
               const illness = ILLNESSES[careSession.illness];
-              const stepTitles = ["观察三项症状", "准备四样干净器具", "依次完成六处消毒", "按病种执行专属处理", "完成五段护理", "复查四项记录"];
+              const casePatientIndex = ILLNESS_IDS.indexOf(careSession.illness) % 3;
+              const symptomChoices = ["发热并且呼吸急促", "体温偏低并持续发冷", "体温正常但眼鼻受刺激"];
+              const caseChoiceIndex = ILLNESS_IDS.indexOf(careSession.illness) % symptomChoices.length;
+              const stepTitles = ["找出异常并完成三种检查", "从真假器具中准备护理盘", "亲手擦净六处操作区", "调准病种配比并绕圈混合", "连续完成五段床边护理", "读刻度、听诊并判断恢复结果"];
               return <div className="care-session-overlay" role="presentation">
                 <section className={`care-session-panel care-${illness.method}`} role="dialog" aria-modal="true" aria-label={`${illness.name}${careSession.mode === "training" ? "实习" : "自我治疗"}`} onPointerUpCapture={handleCarePointerRelease} onPointerCancel={() => { setCareHeldItem(null); setMedicalThermometerPicked(false); }}>
-                  <header><div><span>{careSession.mode === "training" ? "医疗节 · 病例实习" : "已确诊 · 复杂自我治疗"}</span><h2>{illness.name}</h2><small>第 {careSession.step + 1}/6 段 · 总治疗会消耗 35 点体力</small></div><button onClick={() => setCareSession(null)}>×</button></header>
+                  <header><div><span>{careSession.mode === "training" ? "医疗节 · 病例实习" : "已确诊 · 复杂自我治疗"}</span><h2>{illness.name}</h2><small>第 {careSession.step + 1}/6 段 · 总治疗会消耗 35 点体力</small></div><button onClick={() => { stopCareTimedHold(false); endCareGesture(); setCareSession(null); }}>×</button></header>
                   <div className="care-case-file"><i>诊</i><div><strong>{stepTitles[careSession.step]}</strong><p>{careSession.step === 3 ? illness.advice : `${illness.cause}。当前这段必须把所有操作完成，不能直接跳到痊愈。`}</p></div></div>
-                  {careSession.step === 0 ? <div className="medical-observation-room">
-                    <div className="medical-step-guide"><span className={careSession.selected.includes("观察喘气") ? "done" : "active"}><i>1</i>把观察镜拖到胸口</span><span className={careSession.selected.includes("测量体温") ? "done" : ""}><i>2</i>把温度计拖到脸旁</span><span className={careSession.selected.includes("记录呼吸频率") ? "done" : ""}><i>3</i>把记录笔拖到病历卡</span></div>
-                    <div className="breathing-patient-row">{["一号病人", "二号病人", "三号病人"].map((patient, index) => <div key={patient} className={`breathing-patient patient-${index + 1} ${careSession.selected.includes("观察喘气") ? "observed" : ""}`}><i className="patient-head"><b className="strained-mouth" /></i><i className="patient-chest" /><em className="breath-cloud breath-one" /><em className="breath-cloud breath-two" /><span>{patient}<small>{careSession.selected.includes("观察喘气") ? "已经观察胸口起伏" : "正在急促呼吸"}</small></span>{index === 0 && <><button type="button" data-care-drop="generic" data-care-expected="观察镜" data-care-token="观察喘气" className={`patient-chest-target ${careSession.selected.includes("观察喘气") ? "measured" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem("观察镜", "观察喘气"); }}>{careSession.selected.includes("观察喘气") ? "呼吸已观察" : "观察镜放这里"}</button><button type="button" data-care-drop="thermometer" className={`patient-face-target ${careSession.selected.includes("测量体温") ? "measured" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); placeMedicalThermometer(); }}><i />{careSession.selected.includes("测量体温") ? "体温已读出" : "温度计放这里"}</button></>}</div>)}</div>
-                    <div className="medical-instrument-tray">
-                      <button type="button" draggable className={`care-physical-tool observation-lens-tool ${careHeldItem === "观察镜" ? "held" : ""}`} onDragStart={() => pickCareItem("观察镜")} onPointerDown={() => pickCareItem("观察镜")}><i>镜</i><span>按住观察镜<br />拖到胸口</span></button>
-                      <button type="button" draggable className={`real-medical-thermometer ${medicalThermometerPicked ? "picked" : ""}`} onDragStart={() => { setMedicalThermometerPicked(true); setMessage("按住温度计，把它拖到一号病人脸旁闪光的黄色区域以后再松手。 "); }} onPointerDown={() => { setMedicalThermometerPicked(true); setMessage("按住温度计不要松手，拖到病人脸旁的黄色区再松开。 "); }}><i /><b /><span>按住温度计<br />拖到脸旁</span></button>
-                      <button type="button" draggable className={`care-physical-tool medical-record-pen ${careHeldItem === "记录笔" ? "held" : ""}`} onDragStart={() => pickCareItem("记录笔")} onPointerDown={() => pickCareItem("记录笔")}><i>笔</i><span>按住记录笔<br />拖到病历卡</span></button>
-                      <button type="button" data-care-drop="generic" data-care-expected="记录笔" data-care-token="记录呼吸频率" className={`medical-record-card ${careSession.selected.includes("记录呼吸频率") ? "done" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); applyCareItem("记录笔", "记录呼吸频率"); }}><i>卡</i><span>{careSession.selected.includes("记录呼吸频率") ? "体温和呼吸已写好" : "病历卡 · 把笔拖来书写"}</span></button>
-                    </div>
-                    <small>这里不接受连续单点：按住器具移动，看到目标发光后再松手。放错位置会被退回。</small>
+                  {careSession.step === 0 ? <div className="medical-observation-room difficult-exam">
+                    <div className="medical-step-guide"><span className={careSession.selected.includes("观察喘气") ? "done" : "active"}><i>1</i>在三个人中找出异常呼吸</span><span className={careSession.selected.includes("测量体温") ? "done" : careSession.selected.includes("观察喘气") ? "active" : ""}><i>2</i>按住温度计直到读数稳定</span><span className={careSession.selected.includes("记录呼吸频率") ? "done" : careSession.selected.includes("测量体温") ? "active" : ""}><i>3</i>根据表现选对症状卡</span></div>
+                    <div className="breathing-patient-row">{["一号病人", "二号病人", "三号病人"].map((patient, index) => <div key={patient} className={`breathing-patient patient-${index + 1} case-pattern-${caseChoiceIndex} ${index === casePatientIndex ? "case-patient" : "decoy-patient"} ${careSession.selected.includes("观察喘气") && index === casePatientIndex ? "observed" : ""}`}><i className="patient-head"><b className="strained-mouth" /></i><i className="patient-chest" /><em className="breath-cloud breath-one" /><em className="breath-cloud breath-two" /><span>{patient}<small>{index === casePatientIndex ? "呼吸节奏和另外两人不同" : "呼吸较平稳"}</small></span>{!careSession.selected.includes("观察喘气") && <button type="button" className="care-chest-scan" onPointerDown={(event) => index === casePatientIndex ? beginCareGesture(event, "按住听诊器，在这个人的胸口来回移动，移动够一整段距离才会听清。 ") : setMessage("这个人的呼吸比较平稳。继续观察另外两个人，不要急着下结论。 ")} onPointerMove={(event) => { if (index === casePatientIndex) moveCareGesture(event, "观察喘气", 180); }} onPointerUp={endCareGesture} onPointerCancel={endCareGesture}>按住听诊器来回检查</button>}{careSession.selected.includes("观察喘气") && index === casePatientIndex && !careSession.selected.includes("测量体温") && <button type="button" className="care-temperature-hold" onPointerDown={() => beginCareTimedHold("测量体温", 1600, "把温度计稳稳放在脸旁测温")} onPointerUp={() => stopCareTimedHold(true)} onPointerLeave={() => stopCareTimedHold(true)} onPointerCancel={() => stopCareTimedHold(true)}><i style={{ height: `${careHoldProgress}%` }} />一直按住测温 {Math.round(careHoldProgress)}%</button>}</div>)}</div>
+                    {careSession.selected.includes("测量体温") && <div className="care-symptom-choice"><strong>观察身体表现，选出与病人相符的记录</strong>{symptomChoices.map((choice, index) => <button key={choice} onClick={() => { if (index !== caseChoiceIndex) { setMessage("这张症状卡与刚才看到的呼吸和体温不一致，再仔细比较。 "); playTone(210); return; } performCareAction("记录呼吸频率"); }}>{choice}</button>)}</div>}
+                    <div className="care-live-meter"><i style={{ width: `${careHoldProgress}%` }} /><span>{careSession.selected.length === 0 ? "听诊移动距离" : careSession.selected.length === 1 ? "温度计稳定时间" : "判断病例"}</span></div>
+                    <small>这一步不是拖三件东西：先辨认真正异常的人，再完成听诊移动、持续测温和病例判断。</small>
                   </div> : renderDetailedCareStep()}
                   <div className="care-long-progress">{[0, 1, 2, 3, 4, 5].map((step) => <i key={step} className={step < careSession.step ? "done" : step === careSession.step ? "active" : ""}>{step < careSession.step ? "✓" : step + 1}</i>)}</div>
-                  <footer><span>{message}</span><button onClick={() => setCareSession(null)}>暂停并离开</button></footer>
+                  <footer><span>{message}</span><button onClick={() => { stopCareTimedHold(false); endCareGesture(); setCareSession(null); }}>暂停并离开</button></footer>
                 </section>
               </div>;
             })()}
@@ -8864,7 +9028,7 @@ export default function FarmGame() {
                 <section className={`farm-special-panel ${farmInterior}-interior-panel ${interiorFireLit ? "interior-fire-lit" : ""}`} role="dialog" aria-modal="true" aria-labelledby="farm-special-title">
                   <header><div><span>{farmInterior === "cave" ? "青禾农场西侧" : "溪边露营地"}</span><h2 id="farm-special-title">{farmInterior === "cave" ? "青禾山洞内部" : "双顶帐篷内部"}</h2></div><button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); }} aria-label="离开这里">×</button></header>
                   <div className="farm-special-scene" onClick={walkInsidePointer}>
-                    {farmInterior === "cave" ? <><i className="cave-rock cave-rock-one" /><i className="cave-rock cave-rock-two" />{game.caveDiamondSpots.map((spotIndex, index) => { const diamond = CAVE_DIAMOND_SPOTS[spotIndex]; const echoRevealed = diamond.hidden && game.ageSkillsLearned.includes("echo") && game.caveDiamondStates[index]; return <button key={`cave-diamond-${index}-${spotIndex}`} className={`cave-diamond-mine cave-diamond-${index + 1} ${diamond.hidden ? "diamond-partly-hidden" : ""} ${echoRevealed ? "echo-revealed-diamond" : ""} ${game.caveDiamondStates[index] ? "" : "mined"}`} style={{ left: `${diamond.x}%`, top: `${diamond.y}%` }} onClick={(event) => { event.stopPropagation(); mineCaveDiamond(index); }} aria-label={game.caveDiamondStates[index] ? `${diamond.hidden ? "岩石后露出尖角的" : "地面上的"}钻石矿，使用镐子挖掘` : `第 ${index + 1} 处钻石矿已经挖完`}><i /><b>{game.caveDiamondStates[index] ? echoRevealed ? "回声定位 · 晶尖" : diamond.hidden ? "露出的晶尖" : "钻石矿" : "碎矿"}</b></button>; })}<span className="cave-path" /><b className="cave-fire" />{currentCaveWorkers.map((order, index) => <button key={`cave-worker-${order.person}`} className={`resident-cave-worker cave-worker-${index + 1}`} style={personClothesStyle(order.person)} onClick={(event) => { event.stopPropagation(); interactWithPerson(order.person, `${order.person}：${order.result}，钻石和石材已经放进你的资源记录。`, true); }}><i /><b /><em>⚒</em><span>{order.person}<small>{order.result}</small></span></button>)}</> : <><button className="camp-bed" onClick={(event) => { event.stopPropagation(); nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进帐篷睡铺住了一晚。早上七点，在帐篷里醒来了。 "); }} aria-label="点击帐篷睡铺住到第二天" /><i className="camp-bag" /><i className="camp-table" /><span className="camp-lantern" /><b className="camp-window" />{wildFriendVisit === "camp" && <button style={personClothesStyle("安安")} className="camp-resident anan-character" onClick={() => interactWithPerson("安安", "安安：今晚风很轻，我们可以住在帐篷里听着溪水声睡觉。 ")}><i /><em className="anan-pigtails" /><b /><span>安安住在帐篷里</span></button>}</>}
+                    {farmInterior === "cave" ? <><i className="cave-rock cave-rock-one" /><i className="cave-rock cave-rock-two" />{game.caveDiamondSpots.map((spotIndex, index) => { const diamond = CAVE_DIAMOND_SPOTS[spotIndex]; const echoRevealed = diamond.hidden && game.ageSkillsLearned.includes("echo") && game.caveDiamondStates[index]; return <button key={`cave-diamond-${index}-${spotIndex}`} className={`cave-diamond-mine cave-diamond-${index + 1} ${diamond.hidden ? "diamond-partly-hidden" : ""} ${echoRevealed ? "echo-revealed-diamond" : ""} ${game.caveDiamondStates[index] ? "" : "mined"}`} style={{ left: `${diamond.x}%`, top: `${diamond.y}%` }} onClick={(event) => { event.stopPropagation(); mineCaveDiamond(index); }} aria-label={game.caveDiamondStates[index] ? `${diamond.hidden ? "岩石后露出尖角的" : "地面上的"}钻石矿，使用镐子挖掘` : `第 ${index + 1} 处钻石矿已经挖完`}><i /><b>{game.caveDiamondStates[index] ? echoRevealed ? "回声定位 · 晶尖" : diamond.hidden ? "露出的晶尖" : "钻石矿" : "碎矿"}</b></button>; })}<span className="cave-path" /><b className="cave-fire" />{currentCaveWorkers.map((order, index) => <button key={`cave-worker-${order.person}`} className={`resident-cave-worker cave-worker-${index + 1}`} style={personClothesStyle(order.person)} onClick={(event) => { event.stopPropagation(); interactWithPerson(order.person, `${order.person}：${order.result}，钻石和石材已经放进你的资源记录。`, true); }}><i /><b /><em>⚒</em><span>{order.person}<small>{order.result}</small></span></button>)}</> : <><button className="camp-bed" onClick={(event) => { event.stopPropagation(); nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进睡袋，盖好条纹毯住了一晚。早上七点，在帐篷睡袋里醒来了。 "); }} aria-label="睡进帐篷睡袋并住到第二天"><i className="camp-pillow" /><b className="camp-blanket" /><span>帐篷睡袋<small>点击盖好毯子睡到明早</small></span></button><i className="camp-bag" /><i className="camp-table" /><span className="camp-lantern" /><b className="camp-window" />{wildFriendVisit === "camp" && <button style={personClothesStyle("安安")} className="camp-resident anan-character" onClick={() => interactWithPerson("安安", "安安：今晚风很轻，我们可以住在帐篷里听着溪水声睡觉。 ")}><i /><em className="anan-pigtails" /><b /><span>安安住在帐篷里</span></button>}</>}
                     {wildFriendVisit === farmInterior && <button style={personClothesStyle("安安")} className="wild-friend-visitor anan-character" onClick={() => interactWithPerson("安安", farmInterior === "cave" ? "安安：这里的水晶真漂亮！我们点亮火柴，再一起找找通往深处的小路吧。" : "安安：今晚风很轻，我们可以在帐篷里讲山谷探险的故事。") }><i /><em className="anan-pigtails" /><b /><span>安安<small>来陪你玩</small></span></button>}
                     {farmInterior === "cave" && game.missingPetId && (() => { const lostPet = game.pets.find((pet) => pet.id === game.missingPetId); if (!lostPet) return null; const petName = PET_CATALOG.find((pet) => pet.id === lostPet.type)?.name; return <button className={`lost-pet-in-cave pet-${lostPet.type}`} onClick={() => { setGame((current) => ({ ...current, missingPetId: null })); setMessage(`在岩石后面找到了${petName}，小禾把它轻轻抱起来带回家，它又会跟着你了！`); playTone(900); }}><i /><b /><span>{petName}躲在洞里<small>点击抱回家</small></span></button>; })()}
                     {farmInterior === "cave" && dailyNews.kind === "cave" && <button className="cave-prospector" style={personClothesStyle("阿木")} onClick={(event) => { event.stopPropagation(); setMessage("山洞勘探员阿木：新闻是真的。今天三处矿脉的位置已经重新标记，留意岩石后露出的小尖角。"); playTone(680); }}><i /><b /><em className="prospector-helmet" /><span>勘探员阿木<small>点击询问矿脉</small></span></button>}
@@ -8872,7 +9036,7 @@ export default function FarmGame() {
                     <div className={`player indoor-player farm-special-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}><span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     {!interiorFireLit && <div className="special-darkness"><span>{farmInterior === "cave" ? "山洞里很暗" : "帐篷里还没点灯"}</span></div>}
                   </div>
-                  <div className="farm-special-actions"><button onClick={igniteWithMatches} disabled={interiorFireLit}>{interiorFireLit ? "火光已经点亮" : `使用火柴照明 · 剩 ${game.crafted.matches}`}</button>{farmInterior === "cave" && <button className={selected === "pickaxe" ? "active-special-tool" : ""} onClick={() => { setSelected("pickaxe"); setMessage(game.toolUpgrades.pickaxe ? "拿出了金铁镐子。每处矿脉能挖到 3 颗钻石。 " : "拿出了镐子。点击地面走到钻石矿旁，再点击钻石矿挖掘。 "); }}>{game.toolUpgrades.pickaxe ? `拿出金铁镐子 · 剩 ${game.toolUpgradeDays.pickaxe} 天` : "拿出镐子"} · 已有 {game.diamonds} 钻石</button>}<button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); setMessage(farmInterior === "cave" ? "从山洞回到大农场。" : "从帐篷回到露营地。 "); }}>从入口出去</button></div>
+                  <div className="farm-special-actions"><button onClick={igniteWithMatches} disabled={interiorFireLit}>{interiorFireLit ? "火光已经点亮" : `使用火柴照明 · 剩 ${game.crafted.matches}`}</button>{farmInterior === "cave" && <button className={selected === "pickaxe" ? "active-special-tool" : ""} onClick={() => { setSelected("pickaxe"); setMessage(game.toolUpgrades.pickaxe ? "拿出了金铁镐子。每处矿脉能挖到 3 颗钻石。 " : "拿出了镐子。点击地面走到钻石矿旁，再点击钻石矿挖掘。 "); }}>{game.toolUpgrades.pickaxe ? `拿出金铁镐子 · 剩 ${game.toolUpgradeDays.pickaxe} 天` : "拿出镐子"} · 已有 {game.diamonds} 钻石</button>}{farmInterior === "camp" && <button className="camp-sleep-action" onClick={() => { nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进睡袋，盖好毯子睡了一夜。第二天早上仍在帐篷里醒来。 "); }}>钻进睡袋 · 睡到明早</button>}<button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); setMessage(farmInterior === "cave" ? "从山洞回到大农场。" : "从帐篷回到露营地。 "); }}>从入口出去</button></div>
                 </section>
               </div>
             )}
