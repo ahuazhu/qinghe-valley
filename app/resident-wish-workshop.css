@@ -1,0 +1,115 @@
+.wish-workshop-overlay {
+  position: fixed;
+  z-index: 460;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  background: rgba(35, 43, 34, .78);
+  backdrop-filter: blur(5px);
+}
+.wish-workshop-overlay > section {
+  width: min(1040px, 97vw);
+  max-height: 96dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 7px solid #5e4938;
+  border-radius: 20px;
+  background: #f4e6bd;
+  box-shadow: 0 22px 55px rgba(31, 24, 20, .5), inset 0 0 0 4px #d6b779;
+}
+.wish-workshop-overlay header {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 15px;
+  color: #fff1c4;
+  background: linear-gradient(90deg, #58744e, #7b8f59);
+}
+.wish-workshop-overlay header span,.wish-workshop-overlay header h2 { display: block; margin: 0; }
+.wish-workshop-overlay header span { font-size: 7px; }
+.wish-workshop-overlay header h2 { margin-top: 3px; font-size: 16px; }
+.wish-workshop-overlay header > button {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border: 4px solid #60463a;
+  border-radius: 50%;
+  color: #67473a;
+  background: #ffe7a2;
+  font-size: 22px;
+  font-weight: 1000;
+}
+.wish-workshop-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px 12px; background: #d8bf84; }
+.wish-workshop-steps span { padding: 6px; border: 3px solid #8b7654; border-radius: 8px; color: #78694f; background: #e8dab1; font-size: 7px; font-weight: 1000; text-align: center; }
+.wish-workshop-steps span.active { color: #fff; border-color: #794e39; background: #bd7049; box-shadow: 0 0 0 3px #ffe080; }
+.wish-workshop-steps span.done { color: #fff; border-color: #476444; background: #71975d; }
+.wish-workshop-overlay main { display: grid; grid-template-columns: 180px minmax(440px, 1fr) 180px; gap: 10px; min-height: 500px; padding: 12px; }
+.wish-material-tray,.wish-resident-helper { padding: 9px; border: 5px solid #7c6047; border-radius: 14px; background: #eed49a; }
+.wish-material-tray > strong,.wish-material-tray > small { display: block; text-align: center; }
+.wish-material-tray > strong { color: #5e493a; font-size: 11px; }
+.wish-material-tray > small { margin: 4px 0 8px; color: #79664f; font-size: 6px; }
+.wish-material-tray > button { display: grid; grid-template-columns: 36px 1fr; align-items: center; gap: 6px; width: 100%; margin: 6px 0; padding: 6px; touch-action: none; border: 4px solid #77543d; border-radius: 9px; color: #554237; background: #fff0be; box-shadow: 0 4px #916d45; text-align: left; }
+.wish-material-tray > button > i { display: grid; place-items: center; width: 34px; height: 34px; border: 3px solid #4f6847; border-radius: 8px; color: #fff; background: #789866; font-style: normal; font-weight: 1000; }
+.wish-material-tray button span,.wish-material-tray button b,.wish-material-tray button small { display: block; }
+.wish-material-tray button span { font-size: 8px; font-weight: 1000; }.wish-material-tray button b { color: #9b543e; }.wish-material-tray button small { color: #81705a; font-size: 5px; }
+.wish-material-tray button.held { outline: 5px solid #ffe067; animation: wishHeld .55s steps(2, end) infinite; }
+.wish-material-tray button.placed { opacity: .58; box-shadow: none; }
+.wish-build-bench { position: relative; min-height: 480px; overflow: hidden; border: 7px solid #614836; border-radius: 16px; background: linear-gradient(#99c8d0 0 28%, #85ad6a 29% 52%, #9a6845 53%); box-shadow: inset 0 -36px rgba(86, 50, 32, .22); }
+.wish-material-target { position: absolute; z-index: 8; left: 4%; right: 4%; top: 12px; display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 72px; padding: 8px; border: 5px dashed #5fa05d; border-radius: 13px; outline: 7px solid rgba(104, 194, 88, .25); background: rgba(233, 247, 188, .94); }
+.wish-material-target > span { margin-right: 8px; color: #476445; font-size: 7px; font-weight: 1000; }
+.wish-material-target > i { display: grid; place-items: center; width: 31px; height: 31px; border: 3px dashed #779174; border-radius: 7px; color: #fff; background: rgba(110, 145, 92, .22); font-size: 7px; font-style: normal; font-weight: 1000; }
+.wish-material-target > i.filled { border-style: solid; background: #76935d; }.wish-material-target.filled { border-style: solid; outline-color: rgba(255, 220, 95, .35); }
+.wish-product-object { position: absolute; z-index: 5; left: 50%; top: 46%; width: 245px; height: 180px; translate: -50% -50%; opacity: .55; filter: saturate(.72); }
+.wish-product-object > i,.wish-product-object > b,.wish-product-object > em,.wish-product-object > u,.wish-product-object > s { position: absolute; opacity: .2; transition: opacity .25s, transform .25s; }
+.wish-product-object > i { inset: 24px 20px 12px; border: 9px solid #634633; border-radius: 12px; background: #c18a54; box-shadow: inset 0 -28px #98633e; }
+.wish-product-object > b { left: 38px; right: 38px; top: 4px; height: 63px; border: 8px solid #5e4433; background: #e2b968; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.wish-product-object > em { left: 61px; bottom: 31px; width: 46px; height: 65px; border: 7px solid #604536; background: #7fb5bc; }
+.wish-product-object > u { right: 55px; bottom: 43px; width: 52px; height: 45px; border: 7px solid #66503b; border-radius: 50%; background: #e8d793; }
+.wish-product-object > s { left: 50%; bottom: 12px; width: 8px; height: 112px; background: #604536; transform: rotate(90deg); }
+.wish-product-object > span { position: absolute; left: 50%; bottom: -17px; translate: -50% 0; width: max-content; max-width: 260px; padding: 4px 8px; border-radius: 7px; color: #fff6d7; background: #60483a; font-size: 8px; font-weight: 1000; }
+.wish-product-object.built-1 > i,.wish-product-object.built-2 > i,.wish-product-object.built-3 > i,.wish-product-object.built-4 > i,.wish-product-object.built-5 > i,.wish-product-object.built-6 > i { opacity: 1; }
+.wish-product-object.built-2 > b,.wish-product-object.built-3 > b,.wish-product-object.built-4 > b,.wish-product-object.built-5 > b,.wish-product-object.built-6 > b { opacity: 1; }
+.wish-product-object.built-3 > em,.wish-product-object.built-4 > em,.wish-product-object.built-5 > em,.wish-product-object.built-6 > em { opacity: 1; }
+.wish-product-object.built-4 > u,.wish-product-object.built-5 > u,.wish-product-object.built-6 > u,.wish-product-object.built-5 > s,.wish-product-object.built-6 > s { opacity: 1; }
+.wish-product-object.finished-shape { opacity: 1; filter: none; animation: wishProductReady 1.2s ease-in-out infinite alternate; }
+.wish-product-tea > i,.wish-product-menu > i { border-radius: 50%; background: #d9b268; }.wish-product-tea > u { background: #b15945; box-shadow: -55px 4px #e5c975; }
+.wish-product-book > i,.wish-product-adventure > i,.wish-product-lesson > i { background: linear-gradient(90deg,#f4e0a4 0 48%,#74503a 49% 52%,#f4e0a4 53%); }.wish-product-book > b,.wish-product-adventure > b,.wish-product-lesson > b { clip-path: none; top: 37px; left: 46px; right: 46px; height: 8px; box-shadow: 0 24px #87634a,0 48px #87634a; }
+.wish-product-medicine > i { border-radius: 40% 40% 12px 12px; background: #c7e3d0; }.wish-product-medicine > em { left: 50%; translate: -50% 0; border-radius: 50% 50% 12px 12px; background: #6cae91; }
+.wish-product-bridge > i,.wish-product-pond > i { border-radius: 50%; background: #72b8ca; }.wish-product-bridge > b,.wish-product-pond > b { top: 70px; clip-path: none; height: 26px; background: repeating-linear-gradient(90deg,#b27a4c 0 22px,#704b35 23px 28px); }
+.wish-product-museum > i { background: #b9a47b; }.wish-product-museum > em { background: #75cfe0; clip-path: polygon(50% 0,100% 45%,75% 100%,22% 100%,0 45%); }
+.wish-product-seeds > i,.wish-product-measure > i { background: #ddc183; }.wish-product-seeds > u { border-radius: 12px; background: radial-gradient(circle,#6f9b54 0 6px,transparent 7px),#eee1a9; }
+.wish-assembly-surface { position: absolute; z-index: 12; left: 8%; right: 8%; bottom: 22px; height: 85px; touch-action: none; overflow: hidden; border: 6px solid #654737; border-radius: 13px; background: repeating-linear-gradient(0deg,#d09b62 0 19px,#a96e46 20px 25px); box-shadow: inset 0 0 0 4px rgba(255, 229, 157, .3); cursor: ew-resize; }
+.wish-assembly-surface .wish-grain { position: absolute; left: 7%; right: 7%; height: 4px; border-radius: 50%; background: #6f4935; }.wish-assembly-surface .grain-one { top: 20px; }.wish-assembly-surface .grain-two { top: 39px; }.wish-assembly-surface .grain-three { top: 58px; }
+.wish-assembly-surface > b { position: absolute; z-index: 2; inset: 0 auto 0 0; opacity: .42; background: #8ade85; box-shadow: 0 0 14px #95ec8d; pointer-events: none; }
+.wish-assembly-surface > span { position: absolute; z-index: 3; left: 50%; top: 50%; translate: -50% -50%; width: max-content; max-width: 94%; padding: 4px 8px; border-radius: 8px; color: #fff; background: rgba(74, 51, 39, .86); font-size: 7px; font-weight: 1000; text-align: center; pointer-events: none; }
+.wish-assembly-surface.complete { cursor: default; filter: saturate(1.25); }
+.wish-seal-target { position: absolute; z-index: 18; left: 50%; top: 47%; display: grid; place-items: center; width: 112px; height: 74px; translate: -50% -50%; border: 6px dashed #f4d95d; border-radius: 50%; color: #fff9be; background: rgba(83, 100, 63, .68); box-shadow: 0 0 20px #ffe56e; animation: wishSealPulse .8s ease-in-out infinite alternate; }
+.wish-seal-target i { width: 31px; height: 31px; border: 4px solid #ffe18d; border-radius: 50%; }.wish-seal-target span { font-size: 6px; font-weight: 1000; }
+.wish-resident-helper { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.wish-helper-person { position: relative; width: 75px; height: 108px; margin-top: 8px; }.wish-helper-person > i { position: absolute; z-index: 2; left: 20px; top: 0; width: 37px; height: 39px; border: 5px solid #523b31; border-radius: 48%; background: var(--npc-skin,#efb890); box-shadow: inset 0 13px var(--npc-hair,#65432f); }.wish-helper-person > b { position: absolute; left: 13px; top: 37px; width: 52px; height: 58px; border: 5px solid #523b31; border-radius: 12px 12px 7px 7px; background: var(--npc-clothes,#6c8d61); box-shadow: inset 0 -13px rgba(52,46,36,.18); }
+.wish-resident-helper > strong { color: #634735; font-size: 12px; }.wish-resident-helper > p { min-height: 82px; color: #705b47; font-size: 7px; line-height: 1.6; }
+.wish-resident-helper > button { display: grid; grid-template-columns: 38px 1fr; align-items: center; gap: 6px; width: 100%; margin-top: auto; padding: 7px; touch-action: none; border: 4px solid #72473c; border-radius: 10px; color: #5d4136; background: #f1b875; box-shadow: 0 5px #8b5741; }
+.wish-resident-helper > button:disabled { opacity: .45; box-shadow: none; }.wish-resident-helper > button.held { outline: 5px solid #ffe36f; animation: wishHeld .55s steps(2,end) infinite; }
+.wish-resident-helper > button > i { display: grid; place-items: center; width: 36px; height: 36px; border: 4px solid #984947; border-radius: 50%; color: #9d443f; background: #ffe1a2; font-style: normal; font-weight: 1000; }.wish-resident-helper > button span,.wish-resident-helper > button small { display: block; }.wish-resident-helper > button span { font-size: 7px; font-weight: 1000; }.wish-resident-helper > button small { margin-top: 3px; font-size: 5px; }
+.wish-workshop-overlay footer { position: sticky; z-index: 20; bottom: 0; display: flex; justify-content: space-between; gap: 12px; padding: 9px 13px; color: #fff3c8; background: #566f4f; }.wish-workshop-overlay footer span { font-size: 8px; font-weight: 900; }.wish-workshop-overlay footer small { font-size: 6px; }
+@keyframes wishHeld { 50% { transform: translateY(-3px) rotate(-1deg); } }
+@keyframes wishProductReady { to { transform: translateY(-4px); filter: drop-shadow(0 0 11px #ffe78b); } }
+@keyframes wishSealPulse { to { scale: 1.05; } }
+
+@media (max-width: 760px), (any-pointer: coarse) {
+  .wish-workshop-overlay { padding: 3px; }
+  .wish-workshop-overlay > section { width: 100%; max-height: 98dvh; border-width: 4px; }
+  .wish-workshop-overlay header { padding: 8px 10px; }.wish-workshop-overlay header h2 { font-size: 13px; }
+  .wish-workshop-overlay main { grid-template-columns: 128px minmax(330px,1fr) 128px; min-width: 610px; min-height: 430px; padding: 7px; }
+  .wish-material-tray,.wish-resident-helper { padding: 5px; border-width: 3px; }
+  .wish-material-tray > button { grid-template-columns: 28px 1fr; padding: 4px; border-width: 3px; }.wish-material-tray > button > i { width: 27px; height: 27px; }
+  .wish-build-bench { min-height: 416px; border-width: 4px; }
+  .wish-product-object { scale: .8; }.wish-assembly-surface { left: 4%; right: 4%; bottom: 12px; }
+  .wish-helper-person { scale: .82; margin-bottom: -12px; }.wish-resident-helper > p { min-height: 65px; }
+  .wish-workshop-overlay footer span { font-size: 6px; }
+}

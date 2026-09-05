@@ -20,6 +20,8 @@ type CookingFood = "crabs" | "shrimp";
 type CookingStep = "chop" | "heat" | "plate";
 type GuideTopicId = "start" | "farming" | "fishing" | "tools" | "town" | "friends" | "home" | "animals" | "weather" | "festival" | "multiplayer" | "save";
 type HiddenTripId = "hillsideTea" | "riverKitchen" | "oldBookCafe" | "forestPlayground";
+type TripHandsOnMode = "move" | "drag" | "gesture";
+type TripHandsOnState = { index: number; mode: TripHandsOnMode; progress: number; mistakes: number; heldPart: string | null };
 type ResidentSchedule = { key: string; label: string; scene: Scene; invite?: HiddenTripId };
 type MallItem = "redCoat" | "blueOutfit" | "umbrella" | "seedBox" | "animalRaincoat";
 type FarmAnimalType = "chicken" | "cow" | "sheep";
@@ -53,6 +55,7 @@ type WishMaterial = "wood" | "stone" | "resin" | "herbs" | "pinecones" | "pineNu
 type ResidentWorkJob = "water" | "plantFruit" | "fertilize" | "mineDiamond" | "chopWood" | "gatherHerbs";
 type ResidentWorkOrder = { person: string; job: ResidentWorkJob; absoluteDay: number; amount: number; result: string };
 type ResidentWishProgress = { startedDay: number; firstBaseline: number; secondBaseline: number; completed: boolean };
+type ResidentWishWorkshopState = { person: string; placed: WishMaterial[]; assemblyProgress: number; mistakes: number };
 type ResidentWishDefinition = {
   title: string;
   story: string;
@@ -565,6 +568,28 @@ const HIDDEN_TRIP_ACTIVITIES: Record<HiddenTripId, Array<{ name: string; detail:
     { name: "追三只彩蝴蝶", detail: "在草丛间跑动，靠近三只不同的蝴蝶", icon: "蝶", x: 84, y: 27 },
   ],
 };
+const TRIP_HANDS_ON_DETAILS: Record<HiddenTripId, Array<{ mode: TripHandsOnMode; instruction: string; route?: Array<"up" | "down" | "left" | "right">; parts?: string[]; gesture: "horizontal" | "vertical" | "free" }>> = {
+  hillsideTea: [
+    { mode: "move", instruction: "看发亮的山莓方向，用方向键穿过灌木，靠近后会自动采进篮子。", route: ["right", "up", "right", "down", "right", "up"], gesture: "free" },
+    { mode: "drag", instruction: "按配方次序把山莓、茶叶和热水拖进茶壶，放错会退回托盘。", parts: ["山莓", "茶叶", "热水"], gesture: "free" },
+    { mode: "gesture", instruction: "按住风铃绳上下拉动，让三枚铃片依次响起来。", gesture: "vertical" },
+  ],
+  riverKitchen: [
+    { mode: "move", instruction: "用方向键操纵小木船绕开浅滩，沿水面航标划到对岸。", route: ["right", "up", "right", "right", "down", "right"], gesture: "free" },
+    { mode: "drag", instruction: "依次把火绒、细枝和木柴拖进灶膛，顺序不对火就点不稳。", parts: ["火绒", "细枝", "木柴"], gesture: "free" },
+    { mode: "gesture", instruction: "按住热面托盘，沿着发亮的横向路线平稳送到河边桌上。", gesture: "horizontal" },
+  ],
+  oldBookCafe: [
+    { mode: "move", instruction: "按书脊旁的叶片线索在书架之间移动，逐层找到夹页旧书。", route: ["up", "right", "down", "right", "up", "left"], gesture: "free" },
+    { mode: "drag", instruction: "依次把印泥、藏书章和压纸板拖到摊开的书页中央。", parts: ["印泥", "藏书章", "压纸板"], gesture: "free" },
+    { mode: "gesture", instruction: "按住细绳沿书签上的孔来回穿线，走完一整条叶脉。", gesture: "free" },
+  ],
+  forestPlayground: [
+    { mode: "move", instruction: "看桥板的方向一步一步移动，踩错方向会退回上一块桥板。", route: ["right", "right", "up", "right", "down", "right"], gesture: "free" },
+    { mode: "drag", instruction: "把座板、左绳和右绳依次拖到树枝下的接口，装成真正的秋千。", parts: ["座板", "左绳", "右绳"], gesture: "free" },
+    { mode: "gesture", instruction: "按住捕蝶网在草丛里连续追动，网经过三只彩蝶才算找到它们。", gesture: "free" },
+  ],
+};
 const SCHOOL_LESSONS: Array<{ title: string; pages: [string, string, string, string] }> = [
   { title: "作物品质为什么不同", pages: ["同一种种子也会长出不同品质，因为土壤、水分和连续照料都会留下影响。", "只在最后一天浇水不能补回前面缺少的照料；每天稳定照料更容易出现银星和金星。", "下雨会给作物补水，但雷雨可能伤到田里的幼苗，所以不能只看见雨水的好处。", "金星作物放进大号售卖箱会明显加价，日记的收藏页会永久记录收获过的品质。"] },
   { title: "围栏、门与农田保护", pages: ["围栏不仅挡住小动物，也会挡住小禾，所以完整围栏中间必须留一扇门。", "点击围栏门可以打开或关闭；门关着时，小动物进不去，小禾也不能穿过去。", "一个稻草人会大幅减少乌鸦，两个稻草人能把乌鸦完全赶走。", "作物还是幼苗时最容易被偷吃，成熟以后就不会再被小动物当成嫩芽。"] },
@@ -667,6 +692,11 @@ const suitableSeasonPlantings = (state: GameState) => [
 ].reduce((total, [season, crop]) => total + (state.wishPlantingRecords[`season:${season}:${crop}`] ?? 0), 0);
 
 const WISH_MATERIAL_INFO: Record<WishMaterial, string> = { wood: "木头", stone: "石材", resin: "树脂", herbs: "药材", pinecones: "松果", pineNuts: "松子", diamonds: "钻石" };
+const WISH_MATERIAL_ICONS: Record<WishMaterial, string> = { wood: "木", stone: "石", resin: "脂", herbs: "药", pinecones: "果", pineNuts: "仁", diamonds: "钻" };
+const WISH_PRODUCT_VISUAL: Record<string, string> = {
+  林婶: "tea", 鲁师傅: "house", 叶老师: "book", 白医生: "medicine", 阿麦: "menu", 周镇长: "bridge", 沈馆长: "museum", 许老师: "lesson", 安安: "adventure",
+  诊所助手: "medicine", 小玲: "book", 豆豆: "pond", 小满: "seeds", 阿禾: "book", 小芽: "measure", 小石: "pond",
+};
 
 const RESIDENT_WISH_DEFINITIONS: Record<string, ResidentWishDefinition> = {
   林婶: { title: "四季果园茶会", story: "林婶想用晴天长出的星级水果办茶会，普通作物还不够甜。", firstLabel: "晴天播种草莓、蓝莓、西瓜或菠萝", firstNeed: 4, firstMetric: sunnyFruitPlantings, firstAbsolute: true, secondLabel: "收获银星或金星水果", secondNeed: 4, secondMetric: (state) => starHarvestCount(state, ["strawberry", "blueberry", "watermelon", "pineapple"]), secondAbsolute: true, finalPlace: "带齐配料去东郊果园找林婶煮茶", finalProduct: "四季星果茶宴", finalCost: { herbs: 2, pineNuts: 3, resin: 1 } },
@@ -1306,7 +1336,11 @@ export default function FarmGame() {
   const [residentOuting, setResidentOuting] = useState<{ person: string; trip: HiddenTripId; travelMode?: "walk" | "car" } | null>(null);
   const [outingPlayer, setOutingPlayer] = useState({ x: 47, y: 69 });
   const [outingActivitiesDone, setOutingActivitiesDone] = useState<number[]>([]);
+  const [tripHandsOn, setTripHandsOn] = useState<TripHandsOnState | null>(null);
   const [residentSpeech, setResidentSpeech] = useState<{ person: string; text: string } | null>(null);
+  const [residentWishWorkshop, setResidentWishWorkshop] = useState<ResidentWishWorkshopState | null>(null);
+  const [heldWishMaterial, setHeldWishMaterial] = useState<WishMaterial | null>(null);
+  const [heldWishSeal, setHeldWishSeal] = useState(false);
   const [birthdayCeremony, setBirthdayCeremony] = useState<BirthdayCeremonyState | null>(null);
   const [ageBookOpen, setAgeBookOpen] = useState(false);
   const [ageTraining, setAgeTraining] = useState<AgeTrainingState | null>(null);
@@ -1455,6 +1489,14 @@ export default function FarmGame() {
   const festivalRiddleCorrectRef = useRef<boolean | null>(null);
   const ageEchoDirectionRef = useRef(1);
   const ageCampDropLockRef = useRef(false);
+  const wishWorkshopDropLockRef = useRef(false);
+  const wishAssemblyActiveRef = useRef(false);
+  const wishAssemblyLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const wishAssemblyDistanceRef = useRef(0);
+  const tripDropLockRef = useRef(false);
+  const tripGestureActiveRef = useRef(false);
+  const tripGestureLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const tripGestureDistanceRef = useRef(0);
   const festivalActionCountRef = useRef(0);
   const festivalHoldTimerRef = useRef<number | null>(null);
   const festivalSweepActiveRef = useRef(false);
@@ -3550,6 +3592,28 @@ export default function FarmGame() {
       speakResident(person, text);
       return;
     }
+    setResidentWishWorkshop({ person, placed: [], assemblyProgress: 0, mistakes: 0 });
+    setHeldWishMaterial(null);
+    setHeldWishSeal(false);
+    wishAssemblyDistanceRef.current = 0;
+    wishAssemblyActiveRef.current = false;
+    setResidentSpeech(null);
+    setWorkMenuPerson(null);
+    setMessage(`材料和调查都准备好了。现在要和${person}亲手制作“${definition.finalProduct}”：先逐包拖入材料，再沿工作台纹理来回加工。`);
+    playTone(720);
+  };
+
+  const completeResidentWishWorkshop = () => {
+    if (!residentWishWorkshop) return;
+    const { person } = residentWishWorkshop;
+    const definition = residentWishDefinition(person);
+    if (!hasWishMaterials(game, definition)) {
+      setResidentWishWorkshop(null);
+      setHeldWishSeal(false);
+      setMessage(`制作前材料发生了变化，已经安全退出，没有扣除任何东西。重新准备${wishCostText(definition)}后再找${person}。`);
+      playTone(220);
+      return;
+    }
     setGame((current) => withFriendship({
       ...current,
       wood: current.wood - (definition.finalCost.wood ?? 0),
@@ -3561,13 +3625,96 @@ export default function FarmGame() {
       diamonds: current.diamonds - (definition.finalCost.diamonds ?? 0),
       coins: current.coins + 260,
       residentWishes: { ...current.residentWishes, [person]: { ...current.residentWishes[person], completed: true } },
-      journalEntries: [`${SEASONS[current.season]}第${current.day}天：把${wishCostText(definition)}当面交给${person}，一起完成了“${definition.finalProduct}”，获得 260 金币。`, ...current.journalEntries].slice(0, 40),
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：亲手把${wishCostText(definition)}逐包放上工作台，沿纹理加工并装上落款，和${person}完成了“${definition.finalProduct}”，获得 260 金币。`, ...current.journalEntries].slice(0, 40),
     }, person, 30));
-    const text = `材料都对上了！我们一起做好了“${definition.finalProduct}”。谢谢你真的花了好几天准备。`;
+    const text = `真的做好了！每份材料、加工痕迹和最后的落款都是我们一起完成的。谢谢你实现我的愿望。`;
     setResidentSpeech({ person, text });
-    setMessage(`${person}收下材料，和小禾一起完成“${definition.finalProduct}”。获得 260 金币，好感 +30！`);
+    setResidentWishWorkshop(null);
+    setHeldWishMaterial(null);
+    setHeldWishSeal(false);
+    setMessage(`“${definition.finalProduct}”制作完成！获得 260 金币，${person}好感 +30。`);
     speakResident(person, text);
     playTone(980);
+  };
+
+  const dropWishWorkshopMaterial = () => {
+    if (wishWorkshopDropLockRef.current || !residentWishWorkshop || !heldWishMaterial) return;
+    wishWorkshopDropLockRef.current = true;
+    window.setTimeout(() => { wishWorkshopDropLockRef.current = false; }, 0);
+    const definition = residentWishDefinition(residentWishWorkshop.person);
+    const needed = wishCostEntries(definition).map(([material]) => material);
+    if (!needed.includes(heldWishMaterial) || residentWishWorkshop.placed.includes(heldWishMaterial)) {
+      setHeldWishMaterial(null);
+      setMessage("这包材料已经放过，或不是这件成品需要的材料。它已经回到材料盘。 ");
+      playTone(210);
+      return;
+    }
+    const placed = [...residentWishWorkshop.placed, heldWishMaterial];
+    setResidentWishWorkshop({ ...residentWishWorkshop, placed });
+    setHeldWishMaterial(null);
+    setMessage(placed.length === needed.length ? "材料全部按配方放好了。现在按住工作台，沿着发亮的横向木纹来回拖动，把接缝加工到 100%。" : `放入了一包材料（${placed.length}/${needed.length}）。继续把剩余材料拖到中央工作台。`);
+    playTone(520 + placed.length * 55);
+  };
+
+  const startWishAssembly = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!residentWishWorkshop) return;
+    const needed = wishCostEntries(residentWishDefinition(residentWishWorkshop.person)).length;
+    if (residentWishWorkshop.placed.length < needed) {
+      setMessage("材料还没放齐，先把左边剩余的材料包拖到中央工作台。 ");
+      return;
+    }
+    wishAssemblyActiveRef.current = true;
+    wishAssemblyLastPointRef.current = { x: event.clientX, y: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveWishAssembly = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!wishAssemblyActiveRef.current || !residentWishWorkshop || residentWishWorkshop.assemblyProgress >= 100) return;
+    const previous = wishAssemblyLastPointRef.current;
+    wishAssemblyLastPointRef.current = { x: event.clientX, y: event.clientY };
+    if (!previous) return;
+    const dx = event.clientX - previous.x;
+    const dy = event.clientY - previous.y;
+    const distance = Math.hypot(dx, dy);
+    if (Math.abs(dx) < Math.abs(dy) * .7) return;
+    wishAssemblyDistanceRef.current += distance;
+    const nextProgress = Math.min(100, Math.round(wishAssemblyDistanceRef.current / 4));
+    if (nextProgress === residentWishWorkshop.assemblyProgress) return;
+    setResidentWishWorkshop({ ...residentWishWorkshop, assemblyProgress: nextProgress });
+    if (nextProgress >= 100) {
+      wishAssemblyActiveRef.current = false;
+      setMessage("接缝已经沿纹理加工平整。最后按住右侧的落款牌，把它拖到成品正中的发光位置。 ");
+      playTone(850);
+    }
+  };
+
+  const stopWishAssembly = () => {
+    wishAssemblyActiveRef.current = false;
+    wishAssemblyLastPointRef.current = null;
+  };
+
+  const handleWishWorkshopPointerRelease = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!residentWishWorkshop) return;
+    stopWishAssembly();
+    const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    if (heldWishMaterial) {
+      if (element?.closest("[data-wish-material-target]")) dropWishWorkshopMaterial();
+      else {
+        setResidentWishWorkshop({ ...residentWishWorkshop, mistakes: residentWishWorkshop.mistakes + 1 });
+        setHeldWishMaterial(null);
+        setMessage("材料没有放到工作台的发光区域，已经回到材料盘。 ");
+        playTone(210);
+      }
+      return;
+    }
+    if (heldWishSeal) {
+      if (element?.closest("[data-wish-seal-target]") && residentWishWorkshop.assemblyProgress >= 100) completeResidentWishWorkshop();
+      else {
+        setHeldWishSeal(false);
+        setMessage("落款牌没有对准成品中央，已经回到右侧。再拖一次。 ");
+        playTone(210);
+      }
+    }
   };
 
   const requestResidentWork = (person: string, job: ResidentWorkJob) => {
@@ -3791,6 +3938,7 @@ export default function FarmGame() {
       journalEntries: [`${SEASONS[current.season]}第${current.day}天：和${person}把${HIDDEN_TRIPS[residentOuting.trip].name}的三项旅行体验全部完成。${isBestFriend ? "挚友还一起留下了专属旅行纪念。" : ""}`, ...current.journalEntries].slice(0, 40),
     }, person, 4));
     setResidentOuting(null);
+    setTripHandsOn(null);
     setOutingActivitiesDone([]);
     setMessage(`${person}和小禾完成了三项旅行玩法，再${trip.action}。${trip.reward}${isBestFriend ? "；挚友合作还获得了 120 金币的旅行纪念奖励" : ""}。`);
     playTone(860);
@@ -3807,15 +3955,119 @@ export default function FarmGame() {
     const distance = Math.hypot(outingPlayer.x - activity.x, outingPlayer.y - activity.y);
     if (distance > 13) {
       setOutingPlayer({ x: activity.x > 50 ? activity.x - 7 : activity.x + 7, y: Math.min(74, activity.y + 8) });
-      setMessage(`小禾走到了“${activity.name}”旁边。再点一次，和${residentOuting.person}亲手完成：${activity.detail}。`);
+      setMessage(`小禾走到了“${activity.name}”旁边。再点一次会进入专门的实际操作场景，不会直接算完成。`);
       playTone(520);
       return;
     }
+    const details = TRIP_HANDS_ON_DETAILS[residentOuting.trip][index];
+    setTripHandsOn({ index, mode: details.mode, progress: 0, mistakes: 0, heldPart: null });
+    tripGestureDistanceRef.current = 0;
+    tripGestureActiveRef.current = false;
+    setMessage(`开始“${activity.name}”：${details.instruction}`);
+    playTone(650);
+  };
+
+  const finishTripHandsOnActivity = (index: number) => {
+    if (!residentOuting || outingActivitiesDone.includes(index)) {
+      setTripHandsOn(null);
+      return;
+    }
+    const activity = HIDDEN_TRIP_ACTIVITIES[residentOuting.trip][index];
     const nextDone = [...outingActivitiesDone, index];
     setOutingActivitiesDone(nextDone);
+    setTripHandsOn(null);
     setGame((current) => ({ ...current, energy: Math.min(100, current.energy + ((current.friendship[residentOuting.person] ?? 0) >= 100 ? 5 : 3)) }));
-    setMessage(`完成“${activity.name}”：${activity.detail}。旅行进度 ${nextDone.length}/3${nextDone.length === 3 ? "，现在可以完成整趟旅行了！" : "。"}`);
-    playTone(nextDone.length === 3 ? 920 : 720);
+    setMessage(`亲手完成“${activity.name}”：${activity.detail}。旅行进度 ${nextDone.length}/3${nextDone.length === 3 ? "，三项都完成，可以和朋友一起收尾了！" : "。"}`);
+    playTone(nextDone.length === 3 ? 920 : 760);
+  };
+
+  const moveTripHandsOn = (direction: "up" | "down" | "left" | "right") => {
+    if (!tripHandsOn || !residentOuting || tripHandsOn.mode !== "move") return;
+    const details = TRIP_HANDS_ON_DETAILS[residentOuting.trip][tripHandsOn.index];
+    const route = details.route ?? [];
+    const expected = route[tripHandsOn.progress];
+    if (direction !== expected) {
+      setTripHandsOn({ ...tripHandsOn, progress: Math.max(0, tripHandsOn.progress - 1), mistakes: tripHandsOn.mistakes + 1 });
+      setMessage("走错了，回到上一处标记重新观察。不能连续乱按方向键。 ");
+      playTone(210);
+      return;
+    }
+    const next = tripHandsOn.progress + 1;
+    if (next >= route.length) {
+      finishTripHandsOnActivity(tripHandsOn.index);
+      return;
+    }
+    setTripHandsOn({ ...tripHandsOn, progress: next });
+    setMessage(`路线走对了 ${next}/${route.length} 段，继续看下一处发亮标记。`);
+    playTone(480 + next * 45);
+  };
+
+  const dropTripHandsOnPart = () => {
+    if (tripDropLockRef.current || !tripHandsOn || !residentOuting || tripHandsOn.mode !== "drag" || !tripHandsOn.heldPart) return;
+    tripDropLockRef.current = true;
+    window.setTimeout(() => { tripDropLockRef.current = false; }, 0);
+    const details = TRIP_HANDS_ON_DETAILS[residentOuting.trip][tripHandsOn.index];
+    const parts = details.parts ?? [];
+    const expected = parts[tripHandsOn.progress];
+    if (tripHandsOn.heldPart !== expected) {
+      setTripHandsOn({ ...tripHandsOn, heldPart: null, mistakes: tripHandsOn.mistakes + 1 });
+      setMessage(`这一步需要“${expected}”，刚才的“${tripHandsOn.heldPart}”顺序不对，已经放回托盘。`);
+      playTone(210);
+      return;
+    }
+    const next = tripHandsOn.progress + 1;
+    if (next >= parts.length) {
+      finishTripHandsOnActivity(tripHandsOn.index);
+      return;
+    }
+    setTripHandsOn({ ...tripHandsOn, progress: next, heldPart: null });
+    setMessage(`“${expected}”已经装好（${next}/${parts.length}）。下一步需要“${parts[next]}”。`);
+    playTone(590 + next * 70);
+  };
+
+  const startTripGesture = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!tripHandsOn || tripHandsOn.mode !== "gesture") return;
+    tripGestureActiveRef.current = true;
+    tripGestureLastPointRef.current = { x: event.clientX, y: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveTripGesture = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!tripGestureActiveRef.current || !tripHandsOn || !residentOuting || tripHandsOn.mode !== "gesture") return;
+    const previous = tripGestureLastPointRef.current;
+    tripGestureLastPointRef.current = { x: event.clientX, y: event.clientY };
+    if (!previous) return;
+    const dx = event.clientX - previous.x;
+    const dy = event.clientY - previous.y;
+    const details = TRIP_HANDS_ON_DETAILS[residentOuting.trip][tripHandsOn.index];
+    const valid = details.gesture === "free" || (details.gesture === "horizontal" ? Math.abs(dx) >= Math.abs(dy) * 1.3 : Math.abs(dy) >= Math.abs(dx) * 1.3);
+    if (!valid) return;
+    tripGestureDistanceRef.current += Math.hypot(dx, dy);
+    const next = Math.min(100, Math.round(tripGestureDistanceRef.current / 4.5));
+    if (next === tripHandsOn.progress) return;
+    if (next >= 100) {
+      tripGestureActiveRef.current = false;
+      finishTripHandsOnActivity(tripHandsOn.index);
+      return;
+    }
+    setTripHandsOn({ ...tripHandsOn, progress: next });
+  };
+
+  const stopTripGesture = () => {
+    tripGestureActiveRef.current = false;
+    tripGestureLastPointRef.current = null;
+  };
+
+  const handleTripHandsOnPointerRelease = (event: ReactPointerEvent<HTMLElement>) => {
+    stopTripGesture();
+    if (!tripHandsOn || tripHandsOn.mode !== "drag" || !tripHandsOn.heldPart) return;
+    const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    if (element?.closest("[data-trip-part-target]")) dropTripHandsOnPart();
+    else {
+      setTripHandsOn({ ...tripHandsOn, heldPart: null, mistakes: tripHandsOn.mistakes + 1 });
+      setMessage("零件没有放进发光目标，已经回到托盘。 ");
+      playTone(210);
+    }
   };
 
   const progressForestStoryWithAnan = () => {
@@ -7980,6 +8232,27 @@ export default function FarmGame() {
 
       {residentOuting && <div className={`resident-outing-overlay outing-${residentOuting.trip}`} role="presentation"><section role="dialog" aria-modal="true" aria-label={HIDDEN_TRIPS[residentOuting.trip].name}><header><div><span>朋友专属旅行 · 比节日更自由</span><h2>{HIDDEN_TRIPS[residentOuting.trip].name}</h2><small>{residentOuting.travelMode === "car" ? `坐着${residentOuting.person}的车来到这里` : `只有跟着${residentOuting.person}才能来到这里`} · 已体验 {outingActivitiesDone.length}/3</small></div><button onClick={() => { setResidentOuting(null); setOutingActivitiesDone([]); setMessage(`小禾跟着${residentOuting.person}沿原路回到了${sceneLabel}。`); }}>×</button></header><div className="hidden-trip-scene" onClick={(event) => { if (event.target !== event.currentTarget) return; const bounds = event.currentTarget.getBoundingClientRect(); setOutingPlayer({ x: Math.max(8, Math.min(92, ((event.clientX - bounds.left) / bounds.width) * 100)), y: Math.max(28, Math.min(76, ((event.clientY - bounds.top) / bounds.height) * 100)) }); }}><div className="trip-sky"><i /><i /></div><div className="trip-land"><i /><i /><b /></div><div className="trip-building"><i /><b /></div>{residentOuting.travelMode === "car" && <div className="outing-parked-car"><i /><b /><em /></div>}{HIDDEN_TRIP_ACTIVITIES[residentOuting.trip].map((activity, index) => <button key={`${residentOuting.trip}-${activity.name}`} className={`trip-activity ${outingActivitiesDone.includes(index) ? "done" : ""}`} style={{ left: `${activity.x}%`, top: `${activity.y}%` }} onClick={() => playOutingActivity(index)}><i>{outingActivitiesDone.includes(index) ? "✓" : activity.icon}</i><span><strong>{activity.name}</strong><small>{outingActivitiesDone.includes(index) ? "已经亲手完成" : "走近后再点一次"}</small></span></button>)}<button className="trip-resident" style={personClothesStyle(residentOuting.person)} onClick={() => setMessage(`${residentOuting.person}：先在这里自由走一走，靠近三个有名字的玩法，再点一次就能和我一起动手。`)}><i /><b /><span>{residentOuting.person}</span></button><div className="trip-player" style={{ left: `${outingPlayer.x}%`, top: `${outingPlayer.y}%` }}><PlayerSprite facing="right" sick={game.sick} /><span>{displayName}</span></div><p>{HIDDEN_TRIPS[residentOuting.trip].description}</p></div><footer><span>点空地自由走动 · 靠近玩法再亲手完成</span><button disabled={outingActivitiesDone.length < 3} onClick={enjoyResidentOuting}>{outingActivitiesDone.length < 3 ? `还差 ${3 - outingActivitiesDone.length} 项` : `完成旅行 · ${HIDDEN_TRIPS[residentOuting.trip].action}`}</button><button onClick={() => { setResidentOuting(null); setOutingActivitiesDone([]); setMessage(`小禾跟着${residentOuting.person}沿原路回来了。`); }}>{residentOuting.travelMode === "car" ? "坐居民的车回去" : "跟着居民回去"}</button></footer></section></div>}
 
+      {tripHandsOn && residentOuting && (() => {
+        const activity = HIDDEN_TRIP_ACTIVITIES[residentOuting.trip][tripHandsOn.index];
+        const details = TRIP_HANDS_ON_DETAILS[residentOuting.trip][tripHandsOn.index];
+        const route = details.route ?? [];
+        const parts = details.parts ?? [];
+        const currentDirection = route[tripHandsOn.progress];
+        return <div className={`trip-hands-on-overlay trip-game-${residentOuting.trip} trip-mode-${tripHandsOn.mode}`} role="presentation" onPointerUpCapture={handleTripHandsOnPointerRelease}>
+          <section role="dialog" aria-modal="true" aria-label={`${activity.name}实际操作`}>
+            <header><div><span>{HIDDEN_TRIPS[residentOuting.trip].name} · 第 {tripHandsOn.index + 1}/3 项</span><h2>{activity.name}</h2><small>{details.instruction}</small></div><button onClick={() => { setTripHandsOn(null); stopTripGesture(); setMessage(`暂时离开“${activity.name}”，它还没有算完成。走近后可以重新开始。`); }} aria-label="退出当前旅行玩法">×</button></header>
+            <main>
+              {tripHandsOn.mode === "move" && <div className="trip-move-game">
+                <div className={`trip-route-world route-${residentOuting.trip}`}><i className="trip-route-water" /><i className="trip-route-bridge" /><div className="trip-route-marks">{route.map((direction, index) => <i key={`route-${index}`} className={`${index < tripHandsOn.progress ? "passed" : index === tripHandsOn.progress ? "current" : ""} direction-${direction}`} />)}</div><div className="trip-route-player" style={{ left: `${12 + tripHandsOn.progress * 12}%`, top: `${68 - (tripHandsOn.progress % 3) * 17}%` }}><PlayerSprite facing={currentDirection ?? "right"} sick={false} /></div><div className="trip-route-goal"><i>{activity.icon}</i><span>{tripHandsOn.progress}/{route.length}</span></div></div>
+                <div className="trip-direction-controls"><button onClick={() => moveTripHandsOn("up")}>↑<small>向上</small></button><button onClick={() => moveTripHandsOn("left")}>←<small>向左</small></button><button onClick={() => moveTripHandsOn("down")}>↓<small>向下</small></button><button onClick={() => moveTripHandsOn("right")}>→<small>向右</small></button></div>
+              </div>}
+              {tripHandsOn.mode === "drag" && <div className="trip-drag-game"><div className="trip-part-tray"><strong>零件托盘</strong>{parts.map((part, index) => { const placed = index < tripHandsOn.progress; return <button key={part} disabled={placed} draggable={!placed} className={`${placed ? "placed" : ""} ${tripHandsOn.heldPart === part ? "held" : ""}`} onDragStart={() => setTripHandsOn({ ...tripHandsOn, heldPart: part })} onPointerDown={() => { if (!placed) { setTripHandsOn({ ...tripHandsOn, heldPart: part }); setMessage(`按住“${part}”，拖到右侧发光位置再松手。`); } }}><i>{placed ? "✓" : part.slice(0, 1)}</i><span>{part}</span></button>; })}</div><div className="trip-assembly-scene"><div className={`trip-assembled-object object-${residentOuting.trip} stage-${tripHandsOn.progress}`}><i /><b /><em /><span>{activity.name}</span></div><div data-trip-part-target className="trip-part-target" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropTripHandsOnPart(); }}><i /><strong>本轮需要</strong><span>{parts[tripHandsOn.progress]}</span></div></div></div>}
+              {tripHandsOn.mode === "gesture" && <div className="trip-gesture-game"><div className={`trip-gesture-scene gesture-${residentOuting.trip}`} onPointerDown={startTripGesture} onPointerMove={moveTripGesture} onPointerUp={stopTripGesture} onPointerCancel={stopTripGesture}><i className="gesture-prop prop-one" /><i className="gesture-prop prop-two" /><i className="gesture-prop prop-three" /><b style={{ left: `${12 + tripHandsOn.progress * .76}%`, top: `${residentOuting.trip === "hillsideTea" ? 17 + (tripHandsOn.progress % 18) : residentOuting.trip === "riverKitchen" ? 56 : 22 + (tripHandsOn.progress % 48)}%` }} /><span>按住场景拖动 · {tripHandsOn.progress}%</span></div><div className="trip-gesture-progress"><i style={{ width: `${tripHandsOn.progress}%` }} /><span>{details.gesture === "horizontal" ? "保持横向平稳移动" : details.gesture === "vertical" ? "上下反复拉动" : "沿场景路线连续拖动"}</span></div></div>}
+            </main>
+            <footer><span>{message}</span><small>失误 {tripHandsOn.mistakes} 次 · 只有亲手完成才会记录旅行进度</small></footer>
+          </section>
+        </div>;
+      })()}
       {guideOpen && <div className="game-guide-overlay" role="presentation">
         <section className="game-guide-panel" role="dialog" aria-modal="true" aria-labelledby="game-guide-title">
           <header><div><span>青禾谷新手手册 · 动画教学</span><h2 id="game-guide-title">游戏说明</h2><small>从第一次走路到多人游戏，没玩过也能一步一步学会</small></div><button onClick={() => setGuideOpen(false)} aria-label="关闭游戏说明">×</button></header>
@@ -8005,6 +8278,34 @@ export default function FarmGame() {
         </section>
       </div>}
 
+      {residentWishWorkshop && (() => {
+        const definition = residentWishDefinition(residentWishWorkshop.person);
+        const materials = wishCostEntries(definition);
+        const allMaterialsPlaced = residentWishWorkshop.placed.length === materials.length;
+        const assemblyDone = residentWishWorkshop.assemblyProgress >= 100;
+        const visual = WISH_PRODUCT_VISUAL[residentWishWorkshop.person] ?? "memory";
+        return <div className="wish-workshop-overlay" role="presentation" onPointerUpCapture={handleWishWorkshopPointerRelease}>
+          <section role="dialog" aria-modal="true" aria-label={`${residentWishWorkshop.person}的愿望共同制作台`}>
+            <header><div><span>不是一键交付 · 要亲手完成三段制作</span><h2>{residentWishWorkshop.person}和小禾制作“{definition.finalProduct}”</h2></div><button onClick={() => { setResidentWishWorkshop(null); setHeldWishMaterial(null); setHeldWishSeal(false); stopWishAssembly(); setMessage("暂时离开共同制作台。材料没有扣除，下次找到居民还可以接着重新做。 "); }} aria-label="关闭愿望制作台">×</button></header>
+            <div className="wish-workshop-steps"><span className={allMaterialsPlaced ? "done" : "active"}>1 拖入材料</span><span className={assemblyDone ? "done" : allMaterialsPlaced ? "active" : ""}>2 沿纹理加工</span><span className={assemblyDone ? "active" : ""}>3 拖入落款</span></div>
+            <main>
+              <aside className="wish-material-tray"><strong>材料盘</strong><small>按住一包，拖到中间发光工作台</small>{materials.map(([material, amount]) => { const placed = residentWishWorkshop.placed.includes(material); return <button key={material} disabled={placed} draggable={!placed} className={`${placed ? "placed" : ""} ${heldWishMaterial === material ? "held" : ""}`} onDragStart={() => { setHeldWishMaterial(material); setMessage(`拿起了${WISH_MATERIAL_INFO[material]}材料包，拖到中间工作台再松手。`); }} onPointerDown={() => { setHeldWishMaterial(material); setMessage(`按住${WISH_MATERIAL_INFO[material]}材料包，拖到中间发光区域再松手。`); }}><i>{placed ? "✓" : WISH_MATERIAL_ICONS[material]}</i><span>{WISH_MATERIAL_INFO[material]}<b>× {amount}</b><small>{placed ? "已摆上工作台" : `现有 ${game[material]}`}</small></span></button>; })}</aside>
+              <div className="wish-build-bench">
+                <div data-wish-material-target className={`wish-material-target ${allMaterialsPlaced ? "filled" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropWishWorkshopMaterial(); }}><span>{allMaterialsPlaced ? "材料已经放齐" : `把材料拖到这里 · ${residentWishWorkshop.placed.length}/${materials.length}`}</span>{materials.map(([material]) => <i key={`slot-${material}`} className={residentWishWorkshop.placed.includes(material) ? `material-${material} filled` : `material-${material}`}>{residentWishWorkshop.placed.includes(material) ? WISH_MATERIAL_ICONS[material] : ""}</i>)}</div>
+                <div className={`wish-product-object wish-product-${visual} built-${residentWishWorkshop.placed.length} ${assemblyDone ? "finished-shape" : ""}`}><i /><b /><em /><u /><s /><span>{definition.finalProduct}</span></div>
+                {allMaterialsPlaced && <div className={`wish-assembly-surface ${assemblyDone ? "complete" : ""}`} onPointerDown={startWishAssembly} onPointerMove={moveWishAssembly} onPointerUp={stopWishAssembly} onPointerCancel={stopWishAssembly}>
+                  <i className="wish-grain grain-one" /><i className="wish-grain grain-two" /><i className="wish-grain grain-three" />
+                  <b style={{ width: `${residentWishWorkshop.assemblyProgress}%` }} />
+                  <span>{assemblyDone ? "接缝平整 · 等待落款" : `按住这里，沿横向纹理来回拖动 ${residentWishWorkshop.assemblyProgress}%`}</span>
+                </div>}
+                {assemblyDone && <div data-wish-seal-target className="wish-seal-target" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (heldWishSeal) completeResidentWishWorkshop(); }}><i /><span>把右边落款拖到这里</span></div>}
+              </div>
+              <aside className="wish-resident-helper" style={personClothesStyle(residentWishWorkshop.person)}><div className="wish-helper-person"><i /><b /></div><strong>{residentWishWorkshop.person}</strong><p>{assemblyDone ? "最后一步不能替你完成：把我们的落款牌拖到成品中央吧。" : allMaterialsPlaced ? "顺着发亮的横纹来回加工，竖着乱划不会增加进度。" : "我扶住工作台，你把每一包配方材料亲手放上来。"}</p><button disabled={!assemblyDone} draggable={assemblyDone} className={heldWishSeal ? "held" : ""} onDragStart={() => { setHeldWishSeal(true); setMessage("拿起共同落款牌，拖到成品中央的发光位置。 "); }} onPointerDown={() => { if (!assemblyDone) return; setHeldWishSeal(true); setMessage("按住共同落款牌，拖到成品中央的发光位置再松手。 "); }}><i>印</i><span>{residentWishWorkshop.person} × 小禾<small>{assemblyDone ? "按住拖动" : "加工完成后才能使用"}</small></span></button></aside>
+            </main>
+            <footer><span>{message}</span><small>失误 {residentWishWorkshop.mistakes} 次 · 中途退出不会扣材料</small></footer>
+          </section>
+        </div>;
+      })()}
       {journalOpen && <div className="valley-journal-overlay" role="presentation">
         <section className="valley-journal-panel" role="dialog" aria-modal="true" aria-labelledby="valley-journal-title">
           <header><div><span>小禾的生活记录</span><h2 id="valley-journal-title">山谷日记与收藏册</h2></div><button onClick={() => setJournalOpen(false)} aria-label="关闭山谷日记">×</button></header>
