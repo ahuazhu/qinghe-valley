@@ -8461,7 +8461,10 @@ export default function FarmGame() {
     playTone(900);
   };
 
-  const followingPets = game.pets.filter((pet) => pet.id !== game.missingPetId);
+  // Newborn pets stay on the nursery mat at home until they grow up. Keeping
+  // them out of the follower list also prevents a second baby chick appearing
+  // on the street while the same baby is being cared for inside the farmhouse.
+  const followingPets = game.pets.filter((pet) => pet.id !== game.missingPetId && !pet.id.includes("-baby-"));
   const farmAnimalEntries = ([("chicken" as FarmAnimalType), "cow", "sheep"] as FarmAnimalType[]).flatMap((type) => {
     const count = type === "chicken" ? game.chickens : type === "cow" ? game.cows : game.sheep;
     return Array.from({ length: count }, (_, index) => ({ type, index, id: farmAnimalId(type, index), name: farmAnimalName(type) }));
