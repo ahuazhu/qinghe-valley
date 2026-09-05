@@ -32,8 +32,9 @@ type FestivalId = "seeds" | "fishing" | "spring" | "coffee" | "craft" | "springF
 type WorkshopSeedId = "strawberry" | "watermelon" | "corn" | "pumpkin";
 type WorkshopSeason = "春" | "夏" | "秋" | "冬";
 type SnowBuildState = { playerX: number; bodyX: number; bodySize: number; bodyPlaced: boolean; headX: number; headSize: number; headRolled: boolean; headStacked: boolean };
+type WaterFestivalState = { installedPipes: boolean[]; heldPipe: number | null; bucketFill: number[]; playerX: number; hits: number; soaked: number };
 type BirthdayCeremonyState = { person: string; own: boolean; step: 0 | 1 | 2; songTaps: number; blowTaps: number; cutProgress: number };
-type AgeSkillId = "trail" | "shelter" | "hybrid" | "echo" | "clone";
+type AgeSkillId = "trail" | "shelter" | "hybrid" | "echo" | "clone" | "teleport";
 type AgeTrainingState = { skill: AgeSkillId; progress: number; mistakes: number };
 type TrailDirection = "up" | "down" | "left" | "right";
 type TrailExpeditionState = { routeIndex: number; step: number; mistakes: number };
@@ -229,7 +230,7 @@ type GameState = {
   urgentEventDay: number;
   urgentEventResolved: boolean;
   mallItems: Record<MallItem, number>;
-  equippedOutfit: "default" | "redCoat" | "blueOutfit";
+  equippedOutfit: "default" | "redCoat" | "blueOutfit" | "pajamas";
   umbrellaOpen: boolean;
   showeredBeforeBed: boolean;
   showerBuff: boolean;
@@ -621,11 +622,11 @@ const SCHOOL_LESSONS: Array<{ title: string; pages: [string, string, string, str
   { title: "存档和两个村庄", pages: ["青禾村与枫叶村是两个独立账号，各自保存农田、背包、围栏和房屋进度。", "切换村庄前游戏会保存当前村庄，不会把青禾村的围栏复制到枫叶村。", "游戏正常游玩时会自动保存，睡觉和切换村庄也会保存。", "无痕浏览可能无法长期保留设备存档，换设备时要使用网页版转移功能。"] },
 ];
 const GUIDE_TOPICS: Array<{ id: GuideTopicId; title: string; icon: string; summary: string; steps: string[]; tip: string }> = [
-  { id: "start", title: "第一次进入游戏", icon: "走", summary: "用方向键、WASD 或点击地面移动小禾。走到场景最边缘，才会前往相邻地点。", steps: ["方向键或 WASD：一步一步走", "鼠标或手指点击地面：自动走过去", "左上角叶子菜单：打开说明、地图、制作和日记", "下方工具栏：选择当前要使用的工具"], tip: "游戏里半分钟约等于一小时；每天早上七点醒来。" },
+  { id: "start", title: "第一次进入游戏", icon: "走", summary: "用方向键、WASD 或点击地面移动小禾。走到场景最边缘，才会前往相邻地点。", steps: ["方向键或 WASD：一步一步走", "鼠标或手指点击地面：自动走过去", "左上角叶子菜单：打开说明、瞬移、制作和日记", "下方工具栏：选择当前要使用的工具"], tip: "游戏里半分钟约等于一小时；每天早上七点醒来。" },
   { id: "farming", title: "种地与作物品质", icon: "苗", summary: "锄地、播种、浇水、等待成长，成熟后再用手收获。", steps: ["先选锄头，走近土地后点击一格草地", "选择种子并点击松好的土", "每天走近作物，用洒水壶浇水", "长到第三阶段后选择收获", "连续照料会得到银星或金星品质，卖价更高"], tip: "下雨会自动浇水；保温室和手动浇水一起使用时成长更快。" },
   { id: "fishing", title: "钓鱼", icon: "鱼", summary: "拿出鱼竿走到鱼塘边，等待问号出现后及时提竿，再完成收线小游戏。", steps: ["在工具栏选择鱼竿", "走到鱼塘附近并点击水面", "等待浮标上方出现问号", "及时点击提竿", "控制游标停在绿色区域，把鱼拉上来"], tip: "幸运鱼竿咬钩更快，也可能钓到钻石、袜子或饮料。" },
   { id: "tools", title: "砍树、挖矿与制作", icon: "斧", summary: "斧头砍树和敲农场石头，镐子挖山洞钻石；材料会进入资源记录。", steps: ["选择斧头，再靠近树木或农场石头", "选择镐子并带火柴进入山洞", "点击左上角叶子，再打开制作", "材料足够时制作，成品进入背包", "选中家具后点击绿色位置摆放"], tip: "砍树会得到木头、树脂、松子和松果；松果可以重新种树。" },
-  { id: "town", title: "小镇、商店与地图", icon: "镇", summary: "从农场右侧前往中心街，再走向文化街、住宅坡和居民家。", steps: ["走到道路最边缘切换地点", "点击建筑门进入室内", "超市购买种子和补给", "诊所检查身体并购买药物", "地图可以快速查看道路与建筑位置"], tip: "远方新区需要驾照、汽车和修好的道路才能前往。" },
+  { id: "town", title: "小镇、商店与瞬移", icon: "镇", summary: "从农场右侧前往中心街，再走向文化街、住宅坡和居民家。", steps: ["走到道路最边缘切换地点", "点击建筑门进入室内", "超市购买种子和补给", "诊所检查身体并购买药物", "八岁学会本人瞬移后，可以点开目的地图直接到达"], tip: "远方新区需要驾照、汽车和修好的道路才能前往。" },
   { id: "friends", title: "居民、送礼与好感", icon: "心", summary: "居民每天有自己的行程。聊天和送喜欢的礼物会增加好感，解锁新的相处事件。", steps: ["点击居民进行当天第一次聊天", "双击物品把它举到头顶", "点击居民把礼物送出去", "打开山谷日记查看好感星级", "好感提高后，居民会来家里、回礼或邀请一起活动"], tip: "同一个人每天第一次聊天会增加好感；生日送礼效果最好。" },
   { id: "home", title: "农舍、睡觉与做饭", icon: "家", summary: "农舍可以睡觉、开灯、点火、摆家具；扩建厨房后能亲手做饭。", steps: ["点击农舍门进入家中", "点击床盖好被子并进入第二天", "二楼厨房先切食材，再控制火候并装盘", "熟食会进入资源记录，不会立刻吃掉", "睡前洗澡，第二天体力消耗更慢"], tip: "在餐桌前吃熟食会恢复更多体力。" },
   { id: "animals", title: "动物与宠物", icon: "宠", summary: "牧场动物每天产蛋、奶和羊毛；小宠物会跟随小禾，需要食物，也可能带回礼物。", steps: ["先建动物围栏，再去牧场购买鸡、牛、羊", "每天点击动物收取产品", "去远方新区宠物店领养宠物", "每天准备足够宠物粮", "雨天给跟随宠物穿黄色小雨衣"], tip: "鸡、牛、羊不使用宠物生病规则；生病的是跟在脚边的小宠物。" },
@@ -935,11 +936,12 @@ const LANTERN_RIDDLES = [
 ] as const;
 
 const AGE_SKILLS: Array<{ id: AgeSkillId; age: number; name: string; kind: string; description: string; benefit: string; required: number }> = [
-  { id: "trail", age: 2, name: "林间循迹", kind: "生活本领", description: "观察地上的脚印，再亲自沿正确方向走过六段林路。", benefit: "学会后找到 3 份药材和 2 颗松果。", required: 6 },
-  { id: "shelter", age: 3, name: "独立搭营", kind: "野外本领", description: "辨认六件营地材料，把正确零件逐件拖进帐篷骨架。", benefit: "学会后得到结实的野营毯；需要 12 木头、6 石头、2 树脂。", required: 6 },
-  { id: "hybrid", age: 4, name: "四季育种观察", kind: "农场研究", description: "根据天气观察卡，从三种种子中完成四轮正确配对。", benefit: "学会后精心照料的作物更容易长成星级品质，并获得四季种子。", required: 4 },
+  { id: "trail", age: 2, name: "灵巧采集", kind: "采集本领", description: "辨认六段不同方向的野外物资路线，练习怎样完整带回每一份发现。", benefit: "永久生效：双击捡地上的种子、药材或食物时，每次获得双份。", required: 6 },
+  { id: "shelter", age: 3, name: "省力农具", kind: "农活本领", description: "辨认六件农具养护零件，按顺序装好一整套省力工具带。", benefit: "永久生效：锄地、播种、浇水、收获、砍树和挖矿都少消耗 1 点体力。", required: 6 },
+  { id: "hybrid", age: 4, name: "丰收巧手", kind: "农场本领", description: "根据四季天气判断作物状态，完成四轮真正的丰收观察。", benefit: "永久生效：每次收获多得 1 份作物，并多返还 1 颗同类种子。", required: 4 },
   { id: "echo", age: 5, name: "听石寻晶", kind: "稀奇能力", description: "听岩石回声，在光点进入绿色区域的一瞬间完成四次定位。", benefit: "学会后找到 1 颗真正的钻石，并能听出隐藏矿脉。", required: 4 },
   { id: "clone", age: 7, name: "分身穿墙瞬移", kind: "七岁稀奇本领", description: "在五种不同障碍前辨认正确落点，让分身穿过墙壁并安全瞬移到工作地点。", benefit: "学会后可以随时召出一个分身，自己继续行动，分身会自动去农田、树林、山洞或居民家完成工作。", required: 5 },
+  { id: "teleport", age: 8, name: "本人地图瞬移", kind: "八岁稀奇本领", description: "亲自完成五段目的地与落点辨认，学会让自己的身体安全到达地图位置。", benefit: "学会后原来的小地图入口会变成瞬移；点开地图，再点任意地点就能让本人直接到达。", required: 5 },
 ];
 const AGE_TRAIL_ROUTE = ["right", "up", "right", "down", "right", "up"] as const;
 const AGE_WORLD_TRAIL_ROUTES: readonly (readonly TrailDirection[])[] = [
@@ -949,7 +951,7 @@ const AGE_WORLD_TRAIL_ROUTES: readonly (readonly TrailDirection[])[] = [
   ["up", "right", "down", "right", "up"],
 ];
 const HYBRID_WEATHER_BALANCE: Record<Weather, number> = { sunny: 67, cloudy: 54, rain: 42, thunder: 34 };
-const AGE_CAMP_PARTS = ["长木杆", "短木杆", "平整石块", "树脂接头", "防水布", "固定绳"] as const;
+const AGE_CAMP_PARTS = ["磨刀石", "结实木柄", "铁制卡扣", "润滑树脂", "擦拭软布", "省力工具带"] as const;
 const AGE_HYBRID_ROUNDS = [
   { weather: "春日细雨", answers: ["草莓种子", "南瓜种子", "玉米种子"], correct: "草莓种子" },
   { weather: "夏日烈阳", answers: ["西瓜种子", "土豆种子", "蓝莓种子"], correct: "西瓜种子" },
@@ -1251,7 +1253,10 @@ const makeNewGame = (): GameState => ({
   recipesDiscovered: [],
 });
 
-const staminaCost = (state: GameState, base: number) => state.showerBuff ? Math.max(1, Math.ceil(base * .7)) : base;
+const staminaCost = (state: GameState, base: number) => {
+  const showerAdjusted = state.showerBuff ? Math.max(1, Math.ceil(base * .7)) : base;
+  return state.ageSkillsLearned.includes("shelter") ? Math.max(0, showerAdjusted - 1) : showerAdjusted;
+};
 
 const villageSaveKey = (village: VillageId) => village === "maple" ? "qinghe-farm-save-maple" : "qinghe-farm-save";
 
@@ -1464,6 +1469,7 @@ export default function FarmGame() {
   const [festivalActionCount, setFestivalActionCount] = useState(0);
   const [festivalDragging, setFestivalDragging] = useState(false);
   const [snowBuild, setSnowBuild] = useState<SnowBuildState>({ playerX: 5, bodyX: 14, bodySize: 24, bodyPlaced: false, headX: 14, headSize: 19, headRolled: false, headStacked: false });
+  const [waterFestival, setWaterFestival] = useState<WaterFestivalState>({ installedPipes: [false, false, false, false], heldPipe: null, bucketFill: [0, 0, 0, 0], playerX: 10, hits: 0, soaked: 0 });
   const [craftWoodChoice, setCraftWoodChoice] = useState<number | null>(null);
   const [craftCarveProgress, setCraftCarveProgress] = useState(0);
   const [craftWrongCarves, setCraftWrongCarves] = useState(0);
@@ -1588,6 +1594,10 @@ export default function FarmGame() {
   const coffeeWaterTimerRef = useRef<number | null>(null);
   const snowPushTimerRef = useRef<number | null>(null);
   const snowRollingFinishedRef = useRef(false);
+  const waterFestivalRef = useRef<WaterFestivalState>({ installedPipes: [false, false, false, false], heldPipe: null, bucketFill: [0, 0, 0, 0], playerX: 10, hits: 0, soaked: 0 });
+  const waterFillTimerRef = useRef<number | null>(null);
+  const waterMoveTimerRef = useRef<number | null>(null);
+  const waterPipeDropLockRef = useRef(false);
   const careGestureActiveRef = useRef(false);
   const careGestureLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const careGestureDistanceRef = useRef(0);
@@ -1610,6 +1620,10 @@ export default function FarmGame() {
   useEffect(() => {
     festivalActionCountRef.current = festivalActionCount;
   }, [festivalActionCount]);
+
+  useEffect(() => {
+    waterFestivalRef.current = waterFestival;
+  }, [waterFestival]);
 
   useEffect(() => {
     if (ageTraining?.skill !== "echo" && !echoSurvey) return;
@@ -3462,10 +3476,11 @@ export default function FarmGame() {
     const supply = GROUND_SUPPLIES[supplyId];
     if (!supply || !game.groundSupplies[supplyId]) return;
     setGame((current) => {
+      const pickupAmount = "amount" in supply ? supply.amount * (current.ageSkillsLearned.includes("trail") ? 2 : 1) : 0;
       const next = { ...current, groundSupplies: current.groundSupplies.map((visible, index) => index === supplyId ? false : visible) };
-      if (supply.kind === "seed") return { ...next, [supply.field]: current[supply.field] + supply.amount };
-      if (supply.kind === "food") return { ...next, energy: Math.min(100, current.energy + supply.amount) };
-      if (supply.kind === "herb") return { ...next, herbs: current.herbs + supply.amount };
+      if (supply.kind === "seed") return { ...next, [supply.field]: current[supply.field] + pickupAmount };
+      if (supply.kind === "food") return { ...next, energy: Math.min(100, current.energy + pickupAmount) };
+      if (supply.kind === "herb") return { ...next, herbs: current.herbs + pickupAmount };
       if (supply.tool === "water" && current.toolUpgrades.water) return { ...next, coins: current.coins + 20 };
       return {
         ...next,
@@ -3476,7 +3491,8 @@ export default function FarmGame() {
     });
     const alreadyOwned = supply.kind === "tool" && supply.tool === "water" && game.toolUpgrades.water;
     const temporaryTool = supply.kind === "tool" && supply.tool !== "water";
-    setMessage(alreadyOwned ? `捡起了${supply.name}，工具已经升级过，于是换成了 20 枚金币。` : temporaryTool ? `捡起了${supply.name}！从今天起可使用 7 天，再次捡到可以重新续满 7 天。` : `捡起了${supply.name}！${supply.description}`);
+    const doubled = game.ageSkillsLearned.includes("trail") && supply.kind !== "tool";
+    setMessage(alreadyOwned ? `捡起了${supply.name}，工具已经升级过，于是换成了 20 枚金币。` : temporaryTool ? `捡起了${supply.name}！从今天起可使用 7 天，再次捡到可以重新续满 7 天。` : doubled ? `灵巧采集生效：捡起${supply.name}时把散落的另一份也找到了，获得双份！` : `捡起了${supply.name}！${supply.description}`);
     playTone(supply.kind === "tool" ? 920 : supply.kind === "food" ? 760 : supply.kind === "herb" ? 820 : 660);
   };
 
@@ -3484,7 +3500,7 @@ export default function FarmGame() {
   const carriedItemClass = heldItem ? heldItem.kind === "material" ? heldItem.id : heldItem.kind === "forest" ? heldItem.id : heldItem.kind === "resource" ? heldItem.id : heldItem.kind === "seed" ? `${heldItem.id}-seeds` : heldItem.kind === "herb" ? "herb" : heldItem.kind === "resin" ? "resin" : heldItem.kind === "matches" ? "matches" : heldItem.kind === "product" ? heldItem.id : heldItem.kind === "petGift" ? heldItem.id : heldItem.kind === "book" ? "book" : "artifact" : "";
   const renderCarriedItem = () => heldItem ? <span className={`held-overhead held-${carriedItemClass}`} title={carriedItemName} aria-label={`举着${carriedItemName}`}><i className="held-pixel-object" aria-hidden="true" /><span className="held-item-name">{carriedItemName}</span></span> : null;
   const renderIndoorRoofRain = () => (game.weather === "rain" || game.weather === "thunder") ? <div className="indoor-roof-rain" aria-hidden="true">{Array.from({ length: 14 }, (_, index) => <i key={`roof-rain-${index}`} />)}</div> : null;
-  const renderWearables = () => <>{game.equippedOutfit !== "default" && <span className={`worn-outfit worn-${game.equippedOutfit}`} aria-label={game.equippedOutfit === "redCoat" ? "穿着红色节日外套" : "穿着蓝色旅行套装"} />}{game.umbrellaOpen && <span className="player-umbrella" aria-label="撑着彩色雨伞"><i /></span>}</>;
+  const renderWearables = () => <>{game.equippedOutfit !== "default" && <span className={`worn-outfit worn-${game.equippedOutfit}`} aria-label={game.equippedOutfit === "redCoat" ? "穿着红色节日外套" : game.equippedOutfit === "blueOutfit" ? "穿着蓝色旅行套装" : "穿着星月睡衣"} />}{game.umbrellaOpen && <span className="player-umbrella" aria-label="撑着彩色雨伞"><i /></span>}</>;
 
   const withFriendship = (state: GameState, person: string, points: number, journal?: string): GameState => ({
     ...state,
@@ -5801,12 +5817,10 @@ export default function FarmGame() {
         target.state = "crop";
         target.stage = 0;
         target.watered = false;
-        const usesHybridSeed = current.ageSkillsLearned.includes("hybrid") && current.hybridSeedCharges > 0;
-        target.care = usesHybridSeed ? 2 : 0;
-        target.hybrid = usesHybridSeed;
+        target.care = 0;
+        target.hybrid = false;
         target.cropType = selectedCrop;
         next[cropDetails.seedField] -= 1;
-        if (usesHybridSeed) next.hybridSeedCharges = Math.max(0, current.hybridSeedCharges - 1);
         next.energy = Math.max(0, current.energy - staminaCost(current, 2));
         next.planted += 1;
         next.wishPlantingRecords = {
@@ -5815,9 +5829,7 @@ export default function FarmGame() {
           [`season:${current.season}:${selectedCrop}`]: (current.wishPlantingRecords[`season:${current.season}:${selectedCrop}`] ?? 0) + 1,
         };
         next.daily = { ...current.daily, planted: current.daily.planted + 1 };
-        feedback = usesHybridSeed
-          ? `把四季育种粉裹在${cropDetails.name}种子外面，再亲手播进土里。它已经有 2 点育种照料，更容易长成金星品质；育种粉还剩 ${Math.max(0, current.hybridSeedCharges - 1)} 份。`
-          : `${cropDetails.name}种子睡进土里了。记得浇水！`;
+        feedback = `${cropDetails.name}种子睡进土里了。记得浇水！`;
         tone = 480;
       } else if (selected === "water") {
         if (current.water <= 0) {
@@ -5853,17 +5865,19 @@ export default function FarmGame() {
         const cropDetails = CROP_INFO[cropType];
         const effectiveCare = (tile.care ?? 0) + (current.ageSkillsLearned.includes("hybrid") ? 1 : 0);
         const quality: CropQuality = effectiveCare >= 3 ? "gold" : effectiveCare >= 2 ? "silver" : "normal";
+        const harvestAmount = current.ageSkillsLearned.includes("hybrid") ? 2 : 1;
+        const returnedSeeds = current.ageSkillsLearned.includes("hybrid") ? 3 : 2;
         target.cropType = undefined;
         target.care = 0;
-        next[cropDetails.seedField] += 2;
+        next[cropDetails.seedField] += returnedSeeds;
         next.energy = Math.max(0, current.energy - staminaCost(current, 1));
-        next.harvested += 1;
-        next.daily = { ...current.daily, harvested: current.daily.harvested + 1 };
-        next.inventory = { ...current.inventory, [cropType]: current.inventory[cropType] + 1 };
+        next.harvested += harvestAmount;
+        next.daily = { ...current.daily, harvested: current.daily.harvested + harvestAmount };
+        next.inventory = { ...current.inventory, [cropType]: current.inventory[cropType] + harvestAmount };
         next.cropQualityHarvests = mergeCropQualityRecord(current.cropQualityHarvests);
-        next.cropQualityHarvests[cropType] = { ...next.cropQualityHarvests[cropType], [quality]: next.cropQualityHarvests[cropType][quality] + 1 };
-        if (quality !== "normal") next.cropQualityStock = addCropQuality(current.cropQualityStock, cropType, { silver: quality === "silver" ? 1 : 0, gold: quality === "gold" ? 1 : 0 });
-        feedback = `收获 1 个${quality === "gold" ? "金星" : quality === "silver" ? "银星" : "普通"}${cropDetails.name}！${quality === "gold" ? "连续精心浇水，售价提高 80%。" : quality === "silver" ? "照料得很好，售价提高 35%。" : "继续每天浇水，就更容易得到星级品质。"}${current.ageSkillsLearned.includes("hybrid") ? "四季育种观察让品质额外提高了一档。" : ""}并获得 2 颗同类种子。`;
+        next.cropQualityHarvests[cropType] = { ...next.cropQualityHarvests[cropType], [quality]: next.cropQualityHarvests[cropType][quality] + harvestAmount };
+        if (quality !== "normal") next.cropQualityStock = addCropQuality(current.cropQualityStock, cropType, { silver: quality === "silver" ? harvestAmount : 0, gold: quality === "gold" ? harvestAmount : 0 });
+        feedback = `收获 ${harvestAmount} 个${quality === "gold" ? "金星" : quality === "silver" ? "银星" : "普通"}${cropDetails.name}！${quality === "gold" ? "连续精心浇水，售价提高 80%。" : quality === "silver" ? "照料得很好，售价提高 35%。" : "继续每天浇水，就更容易得到星级品质。"}${current.ageSkillsLearned.includes("hybrid") ? "丰收巧手让作物和返还种子都多了 1 份。" : ""}并获得 ${returnedSeeds} 颗同类种子。`;
         tone = 760;
       } else {
         feedback = selected === "rod" ? "鱼竿要在左侧的钓鱼池使用。" : "斧头要对着农场里的树木使用。";
@@ -6125,6 +6139,11 @@ export default function FarmGame() {
   };
 
   const travelFromMap = (destination: Scene, position: { x: number; y: number }, destinationName: string) => {
+    if (!game.ageSkillsLearned.includes("teleport")) {
+      setMessage("这张图现在只能查看道路。小禾要到八岁并完成“本人地图瞬移”训练，才能点击地点直接瞬移。 ");
+      playTone(230);
+      return;
+    }
     cancelFishing();
     setActiveBuilding(null);
     setNeighborInterior(null);
@@ -6137,8 +6156,8 @@ export default function FarmGame() {
     setBrandMenuOpen(false);
     setScene(destination);
     setPlayer(position);
-    setMessage(`打开小地图，来到了${destinationName}。`);
-    playTone(620);
+    setMessage(`八岁本领发动：小禾本人沿着地图光点，瞬移到了${destinationName}。`);
+    playTone(920);
   };
 
   const useBuildingService = (building: Exclude<BuildingId, "supermarket" | "farmhouse">) => {
@@ -6641,18 +6660,16 @@ export default function FarmGame() {
         journalEntries: [`${SEASONS[current.season]}第${current.day}天：${current.playerAge}岁的小禾经过完整练习，学会了“${skill.name}”。`, ...current.journalEntries].slice(0, 40),
       };
       if (skillId === "trail") {
-        next.herbs += 3;
+        next.herbs += 2;
         next.pinecones += 2;
       } else if (skillId === "shelter") {
-        next.wood = Math.max(0, next.wood - 12);
-        next.stone = Math.max(0, next.stone - 6);
-        next.resin = Math.max(0, next.resin - 2);
-        next.crafted = { ...next.crafted, blanket: next.crafted.blanket + 1 };
+        next.energy = 100;
+        next.water = next.toolUpgrades.water ? 18 : 9;
       } else if (skillId === "hybrid") {
-        next.strawberrySeeds += 3;
-        next.watermelonSeeds += 3;
-        next.cornSeeds += 3;
-        next.pumpkinSeeds += 3;
+        next.strawberrySeeds += 1;
+        next.watermelonSeeds += 1;
+        next.cornSeeds += 1;
+        next.pumpkinSeeds += 1;
       } else if (skillId === "echo") {
         next.diamonds += 1;
       }
@@ -6895,15 +6912,21 @@ export default function FarmGame() {
     }
     if (game.ageSkillsLearned.includes(skillId)) {
       if (skillId === "trail") {
-        startWorldTrailExpedition();
+        setAgeBookOpen(false);
+        setMessage("灵巧采集正在永久生效：以后双击捡起地上的种子、药材和食物，都会一次获得双份。 ");
+        playTone(720);
         return;
       }
       if (skillId === "shelter") {
-        deployLearnedShelter();
+        setAgeBookOpen(false);
+        setMessage("省力农具正在永久生效：锄地、播种、浇水、收获、砍树和挖矿，每次都会少消耗 1 点体力。 ");
+        playTone(720);
         return;
       }
       if (skillId === "hybrid") {
-        startWorldHybridLab();
+        setAgeBookOpen(false);
+        setMessage("丰收巧手正在永久生效：成熟作物每次多收 1 份，还会多返还 1 颗同类种子。 ");
+        playTone(760);
         return;
       }
       if (skillId === "echo") {
@@ -6916,13 +6939,15 @@ export default function FarmGame() {
         playTone(820);
         return;
       }
+      if (skillId === "teleport") {
+        setAgeBookOpen(false);
+        setMapOpen(true);
+        setMessage("本人瞬移地图打开了：点击一个真实地点，小禾本人会立即瞬移过去。 ");
+        playTone(920);
+        return;
+      }
       setMessage(`小禾已经学会“${skill.name}”了，这项能力已经永久记录在成长手册里。`);
       playTone(640);
-      return;
-    }
-    if (skillId === "shelter" && (game.wood < 12 || game.stone < 6 || game.resin < 2)) {
-      setMessage(`独立搭营需要 12 木头、6 石头和 2 树脂。现在有木头 ${game.wood}、石头 ${game.stone}、树脂 ${game.resin}，材料不足不能假装完成。`);
-      playTone(220);
       return;
     }
     setAgeTraining({ skill: skillId, progress: 0, mistakes: 0 });
@@ -6957,6 +6982,20 @@ export default function FarmGame() {
       return;
     }
     setMessage(`落点正确！分身穿过墙壁，瞬移到了${route.destination}。`);
+    advanceAgeTraining();
+  };
+
+  const trainAgeTeleport = (signal: string) => {
+    if (ageTraining?.skill !== "teleport") return;
+    const route = AGE_CLONE_ROUTES[ageTraining.progress];
+    if (!route) return;
+    if (signal !== route.signal) {
+      setAgeTraining({ ...ageTraining, mistakes: ageTraining.mistakes + 1 });
+      setMessage(`${signal}不是通往${route.destination}的安全落点。本人不能冒险传送，重新核对目的地纹样。`);
+      playTone(220);
+      return;
+    }
+    setMessage(`目的地与落点完全一致！小禾本人安全瞬移到了${route.destination}。`);
     advanceAgeTraining();
   };
 
@@ -7074,7 +7113,7 @@ export default function FarmGame() {
   const dropAgeCampPart = () => {
     if (ageCampDropLockRef.current) return;
     if (ageTraining?.skill !== "shelter" || !ageTrainingHeldPart) {
-      setMessage("先按住一件营地零件，把它拖到帐篷骨架上再松手。 ");
+      setMessage("先按住一件农具养护零件，把它拖到工具台发亮的接口上再松手。 ");
       return;
     }
     ageCampDropLockRef.current = true;
@@ -7083,7 +7122,7 @@ export default function FarmGame() {
     if (ageTrainingHeldPart !== expected) {
       setAgeTraining({ ...ageTraining, mistakes: ageTraining.mistakes + 1 });
       setAgeTrainingHeldPart(null);
-      setMessage(`这一步需要${expected}，刚才的零件接口对不上，已经放回材料堆。`);
+      setMessage(`这一步需要${expected}，刚才的养护零件不合适，已经放回工具盘。`);
       playTone(210);
       return;
     }
@@ -7600,6 +7639,16 @@ export default function FarmGame() {
       snowRollingFinishedRef.current = false;
       setSnowBuild({ playerX: 5, bodyX: 14, bodySize: 24, bodyPlaced: false, headX: 14, headSize: 19, headRolled: false, headStacked: false });
     }
+    if (festivalId === "water") {
+      if (waterFillTimerRef.current !== null) window.clearInterval(waterFillTimerRef.current);
+      if (waterMoveTimerRef.current !== null) window.clearInterval(waterMoveTimerRef.current);
+      waterFillTimerRef.current = null;
+      waterMoveTimerRef.current = null;
+      waterPipeDropLockRef.current = false;
+      const resetWaterFestival = { installedPipes: [false, false, false, false], heldPipe: null, bucketFill: [0, 0, 0, 0], playerX: 10, hits: 0, soaked: 0 };
+      waterFestivalRef.current = resetWaterFestival;
+      setWaterFestival(resetWaterFestival);
+    }
     festivalActionCountRef.current = 0;
     festivalRiddleCorrectRef.current = null;
     setFestivalActionCount(0);
@@ -7773,7 +7822,7 @@ export default function FarmGame() {
   const festivalActionRequirements: Partial<Record<FestivalId, number[]>> = {
     seeds: [4, 4, 1], spring: [3, 3, 6], coffee: [1, 6, 1, 1, 3], craft: [3, 6, 1], springFestival: [1, 8, 6],
     lantern: [4, 5, 4, 3],
-    medical: [4, 4, 6, 5, 5], kite: [4, 4, 6], flower: [4, 3, 5], water: [4, 4, 6], firefly: [4, 3, 4], harvest: [4, 5, 4], leafMusic: [4, 5, 6], firstSnow: [6, 3, 5], hotSoup: [4, 5, 6, 5],
+    medical: [4, 4, 6, 5, 5], kite: [4, 4, 6], flower: [4, 3, 5], water: [4, 4, 3], firefly: [4, 3, 4], harvest: [4, 5, 4], leafMusic: [4, 5, 6], firstSnow: [6, 3, 5], hotSoup: [4, 5, 6, 5],
   };
   const festivalActionIcons: Partial<Record<FestivalId, string[][]>> = {
     lantern: [["圈", "撑", "扣", "绳"], ["纸", "胶", "边", "穗", "牌"], ["火", "火", "火", "火"], ["荷", "雨", "桌"]],
@@ -7785,7 +7834,7 @@ export default function FarmGame() {
     medical: [["镜", "温", "听", "卡"], ["巾", "计", "水", "本"], ["桌", "杯", "勺", "手", "罐", "巾"], ["药", "药", "水", "草", "杯"], ["敷", "水", "记", "息", "查"]],
     kite: [["竹", "竹", "扣", "线"], ["刷", "刷", "压", "压"], ["跑", "跑", "跑", "放", "放", "放"]],
     flower: [["红", "黄", "蓝", "白"], ["香", "香", "香"], ["木", "草", "管", "叶", "绳"]],
-    water: [["弯", "直", "接", "阀"], ["桶", "桶", "桶", "桶"], ["跑", "跑", "泼", "跑", "接", "泼"]],
+    water: [["弯", "直", "接", "阀"], ["桶", "桶", "桶", "桶"], ["安", "麦", "玲"]],
     firefly: [["罩", "灯", "扣", "绳"], ["草", "草", "草"], ["时", "地", "亮", "记"]],
     harvest: [["瓜", "玉", "莓", "薯"], ["大", "中", "小", "叶", "筐"], ["推", "称", "跑", "交"]],
     leafMusic: [["枫", "银", "橡", "桦"], ["弦", "弦", "弦", "弦", "弦"], ["♪", "♫", "♩", "♪", "♫", "♩"]],
@@ -7830,8 +7879,107 @@ export default function FarmGame() {
     performFestivalDetailAction();
   };
 
+  const updateWaterFestival = (updater: (current: WaterFestivalState) => WaterFestivalState) => {
+    const next = updater(waterFestivalRef.current);
+    waterFestivalRef.current = next;
+    setWaterFestival(next);
+    return next;
+  };
+
+  const selectWaterPipe = (index: number) => {
+    if (waterFestivalRef.current.installedPipes[index]) return;
+    updateWaterFestival((current) => ({ ...current, heldPipe: index }));
+    setFestivalDragging(true);
+    setMessage(`拿起了${["蓝色弯管", "长直管", "铜接头", "总水阀"][index]}，把它拖到形状相同的接口。`);
+  };
+
+  const installWaterPipe = (slot: number) => {
+    if (waterPipeDropLockRef.current || festivalProcess?.id !== "water" || festivalProcess.step !== 0) return;
+    const heldPipe = waterFestivalRef.current.heldPipe;
+    if (heldPipe === null) {
+      setMessage("先从下方材料架拿起一段水管，再放到接口上。 ");
+      return;
+    }
+    if (heldPipe !== slot) {
+      updateWaterFestival((current) => ({ ...current, heldPipe: null }));
+      setFestivalDragging(false);
+      festivalDragReadyRef.current = false;
+      setMessage("管口形状对不上，水会漏出来。水管已经送回材料架，请换一个接口。 ");
+      playTone(180);
+      return;
+    }
+    waterPipeDropLockRef.current = true;
+    updateWaterFestival((current) => ({ ...current, installedPipes: current.installedPipes.map((installed, index) => installed || index === slot), heldPipe: null }));
+    setFestivalDragging(false);
+    festivalDragReadyRef.current = false;
+    performFestivalDetailAction();
+    window.setTimeout(() => { waterPipeDropLockRef.current = false; }, 140);
+  };
+
+  const stopWaterFilling = () => {
+    if (waterFillTimerRef.current !== null) window.clearInterval(waterFillTimerRef.current);
+    waterFillTimerRef.current = null;
+  };
+
+  const beginWaterFilling = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (festivalProcess?.id !== "water" || festivalProcess.step !== 1 || waterFillTimerRef.current !== null) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const bucketIndex = festivalActionCountRef.current;
+    setMessage(`水正在流进第 ${bucketIndex + 1} 只桶。要一直按住，水满了才会换下一只。`);
+    waterFillTimerRef.current = window.setInterval(() => {
+      let bucketCompleted = false;
+      updateWaterFestival((current) => {
+        const bucketFill = [...current.bucketFill];
+        bucketFill[bucketIndex] = Math.min(100, bucketFill[bucketIndex] + 4);
+        bucketCompleted = bucketFill[bucketIndex] >= 100;
+        return { ...current, bucketFill };
+      });
+      if (!bucketCompleted) return;
+      stopWaterFilling();
+      playTone(720);
+      window.setTimeout(() => performFestivalDetailAction(), 120);
+    }, 45);
+  };
+
+  const stopWaterMoving = () => {
+    if (waterMoveTimerRef.current !== null) window.clearInterval(waterMoveTimerRef.current);
+    waterMoveTimerRef.current = null;
+  };
+
+  const beginWaterMoving = (direction: -1 | 1, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (festivalProcess?.id !== "water" || festivalProcess.step !== 2 || waterMoveTimerRef.current !== null) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setMessage(direction < 0 ? "小禾正在向左跑，松开方向键就会停下。" : "小禾正在向右跑，松开方向键就会停下。");
+    waterMoveTimerRef.current = window.setInterval(() => {
+      updateWaterFestival((current) => ({ ...current, playerX: Math.max(5, Math.min(93, current.playerX + direction * 1.5)) }));
+    }, 45);
+  };
+
+  const splashWaterResident = () => {
+    if (festivalProcess?.id !== "water" || festivalProcess.step !== 2) return;
+    const targets = [30, 58, 82];
+    const current = waterFestivalRef.current;
+    const targetX = targets[Math.min(current.hits, targets.length - 1)];
+    const distance = targetX - current.playerX;
+    if (Math.abs(distance) > 9) {
+      setMessage(distance < 0 ? "安安在左边，按住左方向跑近一些再泼水。" : "发光的队友还在右边，按住右方向跑近一些再泼水。 ");
+      playTone(230);
+      return;
+    }
+    const nextHit = current.hits + 1;
+    updateWaterFestival((state) => ({ ...state, hits: nextHit, soaked: state.soaked + 1 }));
+    setMessage(nextHit < targets.length ? `${["安安", "阿麦", "小玲"][nextHit - 1]}被泼中了，也笑着把一桶水泼回小禾！快去找下一位。` : "小玲被泼中了，三个人一起把水泼回来，水路接力完成！");
+    playTone(650 + nextHit * 80);
+    performFestivalDetailAction();
+  };
+
   const handleFestivalPointerRelease = (event: ReactPointerEvent<HTMLElement>) => {
     const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    const waterPipeTarget = element?.closest<HTMLElement>("[data-water-pipe-slot]");
+    if (waterPipeTarget?.dataset.waterPipeSlot !== undefined) {
+      installWaterPipe(Number(waterPipeTarget.dataset.waterPipeSlot));
+      return;
+    }
     const target = element?.closest<HTMLElement>("[data-festival-drop]");
     const dropKind = target?.dataset.festivalDrop;
     if (dropKind === "lantern-riddle") {
@@ -8100,9 +8248,11 @@ export default function FarmGame() {
     }
 
     if (festivalProcess.id === "water") {
-      if (festivalProcess.step === 0) return <div className="festival-story-workshop water-pipe-workshop"><strong>观察接口方向，装好弯管、直管、接头和水阀</strong><div className="water-pipe-yard">{dragSource(["蓝色弯管","长直管","铜接头","总水阀"][festivalActionCount] ?? "水管","water-pipe-source")}<div className={`real-water-channel joined-${festivalActionCount}`}><i /><b /><em /><u /></div>{dropTarget("水道发光接口","water-pipe-target")}</div><small>管口方向不对会漏水；四段全部连通后才能打开水阀。</small></div>;
-      if (festivalProcess.step === 1) return <div className="festival-story-workshop water-bucket-workshop"><strong>一直按住水阀，依次把四只水桶接满</strong><div className="water-bucket-yard"><div className="festival-water-tap"><i /><b /><em /></div><div className="real-water-buckets">{[0,1,2,3].map(index=><i key={index} className={index < festivalActionCount ? "full" : index === festivalActionCount ? "filling" : ""}><b /></i>)}</div>{holdControl("按住水阀接水","water-valve-hold")}</div><small>水流会真正落进当前水桶；松开后会停，不会自动把后面的桶装满。</small></div>;
-      return <div className="festival-story-workshop water-relay-workshop"><strong>和队伍跑过六段水路：奔跑、接桶、泼水</strong><div className="water-relay-field"><div className="water-relay-lanes"><i /><i /><i /></div><div className="water-relay-runner" style={{ left: `${7 + festivalActionCount * 13}%` }}><i /><b /><em /></div><div className={`water-splash splash-${festivalActionCount}`}><i /><i /><i /></div><div className="water-relay-crowd"><i /><i /><i /><i /></div>{holdControl(`${["向前跑","接过水桶","泼向对手","继续跑","接住回传","最后泼水"][festivalActionCount] ?? "冲向终点"} · 一直按住`,`water-relay-hold`)}</div><small>对面的人也会跑来泼小禾，水花和队伍位置会跟着六段接力变化。</small></div>;
+      const pipeParts = [{ label: "蓝色弯管", icon: "弯" }, { label: "长直管", icon: "直" }, { label: "铜接头", icon: "接" }, { label: "总水阀", icon: "阀" }];
+      if (festivalProcess.step === 0) return <div className="festival-story-workshop water-pipe-workshop"><strong>自己辨认形状，把四段水管装到对应接口</strong><div className="water-pipe-yard"><div className="water-pipe-rack">{pipeParts.map((part, index) => <button key={part.label} draggable={!waterFestival.installedPipes[index]} disabled={waterFestival.installedPipes[index]} className={`water-pipe-piece pipe-${index} ${waterFestival.heldPipe === index ? "held" : ""} ${waterFestival.installedPipes[index] ? "used" : ""}`} onDragStart={() => selectWaterPipe(index)} onPointerDown={() => selectWaterPipe(index)}><i>{part.icon}</i><span>{waterFestival.installedPipes[index] ? "已装好" : part.label}</span></button>)}</div><div className="water-pipe-board">{pipeParts.map((part, index) => <button key={part.label} data-water-pipe-slot={index} className={`water-pipe-slot slot-${index} ${waterFestival.installedPipes[index] ? "installed" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); installWaterPipe(index); }}><i>{waterFestival.installedPipes[index] ? part.icon : "?"}</i><span>{part.label}接口</span></button>)}<div className={`connected-water-main ${waterFestival.installedPipes.every(Boolean) ? "ready" : ""}`}><i /><b /></div></div></div><div className="bespoke-meter"><i style={{ width: `${festivalActionCount * 25}%` }} /><span>水管 {festivalActionCount}/4</span></div><small>电脑可拖动；平板可先点水管再点接口。装错会漏水并退回材料架。</small></div>;
+      if (festivalProcess.step === 1) return <div className="festival-story-workshop water-bucket-workshop"><strong>一直按住红色水阀，亲眼把四只水桶逐只接满</strong><div className="water-bucket-yard"><div className={`festival-water-tap ${waterFestival.bucketFill.some((fill) => fill > 0 && fill < 100) ? "running" : ""}`}><i /><b /><em /></div><div className="real-water-buckets">{waterFestival.bucketFill.map((fill, index) => <i key={index} className={fill >= 100 ? "full" : index === festivalActionCount ? "filling" : ""}><b style={{ height: `${Math.min(82, fill * .82)}%` }} /><span>{Math.round(fill)}%</span></i>)}</div><button className="water-valve-physical" onPointerDown={beginWaterFilling} onPointerUp={stopWaterFilling} onPointerCancel={stopWaterFilling}><i /><span>一直按住水阀</span></button></div><div className="bespoke-meter"><i style={{ width: `${festivalActionCount * 25}%` }} /><span>装满 {festivalActionCount}/4 桶</span></div><small>太早松手，水就会停；已经接进桶里的水会保留，接满才会换下一桶。</small></div>;
+      const splashTargets = [{ name: "安安", x: 30, color: "mint" }, { name: "阿麦", x: 58, color: "red" }, { name: "小玲", x: 82, color: "purple" }];
+      return <div className="festival-story-workshop water-relay-workshop"><strong>按住方向键跑到发光的人身边，再亲手按“泼水”</strong><div className={`water-relay-field soaked-${waterFestival.soaked}`}><div className="water-relay-lanes"><i /><i /><i /></div>{splashTargets.map((target, index) => <div key={target.name} className={`festival-water-resident resident-${target.color} ${index === waterFestival.hits ? "target" : ""} ${index < waterFestival.hits ? "splashed" : ""}`} style={{ left: `${target.x}%` }}><i /><b /><em /><span>{target.name}</span></div>)}<div className="water-relay-runner controllable" style={{ left: `${waterFestival.playerX}%` }}><i /><b /><em /><span>小禾</span></div>{waterFestival.soaked > 0 && <div className="counter-water-splash"><i /><i /><i /><b>他们也泼回来了！</b></div>}<div className="water-relay-controls"><button onPointerDown={(event) => beginWaterMoving(-1, event)} onPointerUp={stopWaterMoving} onPointerCancel={stopWaterMoving}><i>←</i><span>按住向左</span></button><button className="splash-button" onClick={splashWaterResident}><i>水</i><span>泼水</span></button><button onPointerDown={(event) => beginWaterMoving(1, event)} onPointerUp={stopWaterMoving} onPointerCancel={stopWaterMoving}><i>→</i><span>按住向右</span></button></div></div><div className="bespoke-meter"><i style={{ width: `${waterFestival.hits / 3 * 100}%` }} /><span>泼中居民 {waterFestival.hits}/3</span></div><small>站得太远会泼不到；每次命中，对方也会跑动并把水泼回小禾。</small></div>;
     }
 
     if (festivalProcess.id === "firefly") {
@@ -8813,6 +8963,13 @@ export default function FarmGame() {
     playTone(680);
   };
 
+  const togglePajamas = () => {
+    const puttingOn = game.equippedOutfit !== "pajamas";
+    setGame((current) => ({ ...current, equippedOutfit: puttingOn ? "pajamas" : "default" }));
+    setMessage(puttingOn ? "小禾在床边换上了蓝紫色星月睡衣。现在身上能看见睡衣，可以再点击床睡觉。" : "小禾把睡衣叠到床头，换回了平常的农场服。 ");
+    playTone(puttingOn ? 690 : 450);
+  };
+
   const toggleUmbrella = () => {
     if (game.mallItems.umbrella <= 0) return;
     setGame((current) => ({ ...current, umbrellaOpen: !current.umbrellaOpen }));
@@ -9011,7 +9168,7 @@ export default function FarmGame() {
           <button className="brand-mark" onClick={() => setBrandMenuOpen((open) => !open)} aria-label="打开青禾谷菜单" aria-expanded={brandMenuOpen}><i /><i /><i /></button>
           <div><strong>青禾谷</strong><span>GREENFIELD VALLEY</span></div>
           <div key={game.coins} className="coins top-coins coin-value-updated" aria-label={`现有 ${game.coins} 金币`}><span>●</span><b>{game.coins.toLocaleString()}</b></div>
-          {brandMenuOpen && <div className="brand-menu"><span>青禾谷村庄菜单</span><strong>想做什么？</strong><button className="brand-guide-entry" onClick={() => { setGuideOpen(true); setBrandMenuOpen(false); }}><i className="mini-guide-icon">?</i><b>游戏说明</b><small>第一次玩也能看懂 · 带动画演示</small></button><button onClick={() => { setMapOpen(true); setBrandMenuOpen(false); }}><i className="mini-map-icon" /><b>打开小地图</b><small>查看场景和建筑</small></button><button className="brand-craft-entry" onClick={() => { setCraftingOpen(true); setBrandMenuOpen(false); setMessage("打开制作手册，选择想做的东西。"); }}><i className="mini-craft-icon">⚒</i><b>打开制作</b><small>使用木头和石材做东西</small></button><button className="brand-journal-entry" onClick={() => { setJournalOpen(true); setBrandMenuOpen(false); }}><i className="mini-journal-icon">记</i><b>山谷日记</b><small>好感、任务、收藏与食谱</small></button></div>}
+          {brandMenuOpen && <div className="brand-menu"><span>青禾谷村庄菜单</span><strong>想做什么？</strong><button className="brand-guide-entry" onClick={() => { setGuideOpen(true); setBrandMenuOpen(false); }}><i className="mini-guide-icon">?</i><b>游戏说明</b><small>第一次玩也能看懂 · 带动画演示</small></button><button onClick={() => { setBrandMenuOpen(false); if (game.ageSkillsLearned.includes("teleport")) { setMapOpen(true); setMessage("打开本人瞬移地图，点击想去的地点就会立刻到达。 "); } else { setAgeBookOpen(true); setAgeTraining(null); setMessage(`本人瞬移要到八岁并完成训练后才能使用。小禾现在 ${game.playerAge} 岁。`); } }}><i className="mini-map-icon" /><b>本人瞬移</b><small>{game.ageSkillsLearned.includes("teleport") ? "点开地图 · 点击地点直接到达" : "八岁训练后解锁"}</small></button><button className="brand-craft-entry" onClick={() => { setCraftingOpen(true); setBrandMenuOpen(false); setMessage("打开制作手册，选择想做的东西。"); }}><i className="mini-craft-icon">⚒</i><b>打开制作</b><small>使用木头和石材做东西</small></button><button className="brand-journal-entry" onClick={() => { setJournalOpen(true); setBrandMenuOpen(false); }}><i className="mini-journal-icon">记</i><b>山谷日记</b><small>好感、任务、收藏与食谱</small></button></div>}
         </div>
         <div className={`day-card ${festivalPreview ? "festival-preview-day" : ""}`}>
           <span className={`season-dot season-dot-${displaySeason}`}>{SEASON_SHORT[displaySeason]}</span>
@@ -9027,7 +9184,7 @@ export default function FarmGame() {
         </div>
       </header>
 
-      {ageBookOpen && ageTraining?.skill === "clone" && (() => { const skill = AGE_SKILLS.find((item) => item.id === "clone")!; const route = AGE_CLONE_ROUTES[Math.min(ageTraining.progress, AGE_CLONE_ROUTES.length - 1)]; return <div className="clone-training-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="分身穿墙瞬移实际训练"><header><div><span>七岁本领 · 穿墙落点训练</span><h2>{skill.name}</h2><small>成功 {ageTraining.progress}/{skill.required} 次 · 撞墙 {ageTraining.mistakes} 次</small></div><button onClick={() => { setAgeTraining(null); setMessage("暂时退出穿墙训练，回到成长手册。 "); }} aria-label="退出穿墙训练">×</button></header><div className="clone-training-course"><div className="training-original"><i /><b /><span>小禾</span></div><div className="training-solid-wall"><i /><i /><i /><strong>厚石墙</strong></div><div className="training-landing"><i /><b /><span>{route.destination}</span></div><div className="training-signal"><small>墙上的真实落点信号</small><strong>{route.signal}</strong><p>从三个入口中辨认与落点相同的纹样。选错会撞在墙上，不能直接通过。</p></div></div><div className="clone-gate-choices">{route.answers.map((answer) => <button key={`${route.destination}-${answer}`} onClick={() => trainAgeClone(answer)}><i>{answer.slice(0, 1)}</i><span>{answer}</span></button>)}</div><div className="clone-training-progress">{AGE_CLONE_ROUTES.map((item, index) => <i key={item.destination} className={index < ageTraining.progress ? "done" : index === ageTraining.progress ? "active" : ""}>{index < ageTraining.progress ? "✓" : index + 1}</i>)}</div><footer><span>{message}</span><button onClick={() => setAgeTraining(null)}>返回成长手册</button></footer></section></div>; })()}
+      {ageBookOpen && (ageTraining?.skill === "clone" || ageTraining?.skill === "teleport") && (() => { const skill = AGE_SKILLS.find((item) => item.id === ageTraining.skill)!; const route = AGE_CLONE_ROUTES[Math.min(ageTraining.progress, AGE_CLONE_ROUTES.length - 1)]; return <div className="clone-training-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label={ageTraining.skill === "teleport" ? "本人地图瞬移实际训练" : "分身穿墙瞬移实际训练"}><header><div><span>{ageTraining.skill === "teleport" ? "八岁本领 · 本人瞬移落点训练" : "七岁本领 · 分身穿墙落点训练"}</span><h2>{skill.name}</h2><small>成功 {ageTraining.progress}/{skill.required} 次 · 撞墙 {ageTraining.mistakes} 次</small></div><button onClick={() => { setAgeTraining(null); setMessage("暂时退出瞬移训练，回到成长手册。 "); }} aria-label="退出穿墙训练">×</button></header><div className="clone-training-course"><div className="training-original"><i /><b /><span>小禾</span></div><div className="training-solid-wall"><i /><i /><i /><strong>厚石墙</strong></div><div className="training-landing"><i /><b /><span>{route.destination}</span></div><div className="training-signal"><small>墙上的真实落点信号</small><strong>{route.signal}</strong><p>从三个入口中辨认与落点相同的纹样。选错会撞在墙上，不能直接通过。</p></div></div><div className="clone-gate-choices">{route.answers.map((answer) => <button key={`${route.destination}-${answer}`} onClick={() => ageTraining.skill === "teleport" ? trainAgeTeleport(answer) : trainAgeClone(answer)}><i>{answer.slice(0, 1)}</i><span>{answer}</span></button>)}</div><div className="clone-training-progress">{AGE_CLONE_ROUTES.map((item, index) => <i key={item.destination} className={index < ageTraining.progress ? "done" : index === ageTraining.progress ? "active" : ""}>{index < ageTraining.progress ? "✓" : index + 1}</i>)}</div><footer><span>{message}</span><button onClick={() => setAgeTraining(null)}>返回成长手册</button></footer></section></div>; })()}
 
       {shippingReport && <div className="shipping-report-toast" role="dialog" aria-modal="true" aria-label="昨晚售卖收入"><span>大号售卖箱通知</span><strong>昨晚卖出 {shippingReport.itemCount} 件东西</strong><b>+ {shippingReport.earnings.toLocaleString()} 金币</b><button onClick={() => setShippingReport(null)}>知道了</button></div>}
 
@@ -9043,7 +9200,7 @@ export default function FarmGame() {
         {birthdayCeremony.step === 2 && <div className="birthday-cut-game"><strong>按住蛋糕刀，从左边慢慢拖到右边</strong><div className="cake-cut-board" onPointerDown={dragBirthdayKnife} onPointerMove={(event) => { if (event.buttons > 0 || event.pressure > 0) dragBirthdayKnife(event); }}><div className="cuttable-cake"><i /><i /><b className="cake-cut-line" style={{ width: `${birthdayCeremony.cutProgress}%` }} /></div><span className="birthday-knife" style={{ left: `${Math.max(4, birthdayCeremony.cutProgress)}%` }}><i /><b /></span></div><div className="birthday-cut-progress"><i style={{ width: `${birthdayCeremony.cutProgress}%` }} /><span>已经切开 {Math.round(birthdayCeremony.cutProgress)}%</span></div><button onClick={() => updateBirthdayCut(Math.min(100, birthdayCeremony.cutProgress + 25))}>平板不好拖动时，点这里切一段</button></div>}
       </div><footer><span>{birthdayCeremony.step === 0 ? "唱完四句，才可以吹蜡烛" : birthdayCeremony.step === 1 ? "三根火焰全部熄灭，才能拿蛋糕刀" : "把刀拖到最右边，蛋糕才会真正切开并发放奖励"}</span></footer></section></div>}
 
-      {ageBookOpen && <div className="age-growth-overlay" role="presentation" onPointerUpCapture={handleAgeTrainingPointerRelease}><section role="dialog" aria-modal="true" aria-label="小禾的年龄成长手册"><header><div><span>每年春天第十九日过完生日才会长大</span><h2>小禾的成长手册 · {game.playerAge} 岁</h2></div><button onClick={() => { setAgeBookOpen(false); setAgeTraining(null); setAgeTrainingHeldPart(null); }} aria-label="关闭成长手册">×</button></header>{!ageTraining ? <><div className="age-book-intro"><div className={`age-portrait age-${Math.min(5, game.playerAge)}`}><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="小禾" /></div><div><strong>{displayName}现在 {game.playerAge} 岁</strong><p>一岁不能提前做两岁的事情。达到年龄只代表可以开始学习，仍要亲手完成完整训练，能力才会永久生效。</p><small>下次长大：第 {game.year + (game.birthdayGrowthYear === game.year ? 1 : 0)} 年春天第十九日生日派对结束后</small></div></div><div className="age-skill-grid">{AGE_SKILLS.map((skill) => { const locked = game.playerAge < skill.age; const learned = game.ageSkillsLearned.includes(skill.id); return <article key={skill.id} className={`${locked ? "locked" : ""} ${learned ? "learned" : ""}`}><i>{learned ? "✓" : skill.age}</i><span><small>{skill.age} 岁解锁 · {skill.kind}</small><strong>{skill.name}</strong><p>{skill.description}</p><em>{skill.benefit}</em></span><button disabled={locked} onClick={() => beginAgeTraining(skill.id)}>{learned ? "已经学会" : locked ? `还要长到 ${skill.age} 岁` : "进入实际训练"}</button></article>; })}</div></> : (() => { const skill = AGE_SKILLS.find((item) => item.id === ageTraining.skill)!; if (ageTraining.skill === "trail") return <div className="age-training-stage trail-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>已经走过 {ageTraining.progress}/{skill.required} 段 · 走错 {ageTraining.mistakes} 次</small></div><div className="age-trail-map"><i className="trail-river" /><i className="trail-bridge" /><div className="trail-footprints">{AGE_TRAIL_ROUTE.map((direction,index)=><i key={`foot-${index}`} style={{ rotate: direction === "up" ? "0deg" : direction === "right" ? "90deg" : direction === "down" ? "180deg" : "270deg" }} className={index < ageTraining.progress ? "found" : index === ageTraining.progress ? "current" : ""} />)}</div><div className="age-trail-player" style={{ left: `${12 + ageTraining.progress * 12}%`, top: `${68 - (ageTraining.progress % 3) * 16}%` }}><i /><b /></div><div className="trail-treasure"><i /><b /></div></div><div className="age-direction-pad"><button onClick={() => trainAgeTrail("up")}>↑<small>向上</small></button><button onClick={() => trainAgeTrail("left")}>←<small>向左</small></button><button onClick={() => trainAgeTrail("down")}>↓<small>向下</small></button><button onClick={() => trainAgeTrail("right")}>→<small>向右</small></button></div><p>观察当前发亮脚印的朝向，再用方向键走。走错会退回上一处，不能连续乱按。</p></div>; if (ageTraining.skill === "shelter") { const expected = AGE_CAMP_PARTS[ageTraining.progress]; return <div className="age-training-stage shelter-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>骨架 {ageTraining.progress}/{skill.required} · 接错 {ageTraining.mistakes} 次</small></div><div className="age-shelter-yard"><div className={`training-tent built-${ageTraining.progress}`}><i /><b /><em /><u /><s /><span /></div><button data-age-camp-target className="age-camp-target" onDragOver={(event)=>event.preventDefault()} onDrop={(event)=>{event.preventDefault();dropAgeCampPart();}}><i /><strong>本轮接口</strong><small>需要：{expected}</small></button><div className="age-camp-parts">{AGE_CAMP_PARTS.map((part)=><button key={part} draggable className={ageTrainingHeldPart === part ? "held" : ""} onDragStart={() => { setAgeTrainingHeldPart(part); setMessage(`拿起${part}，拖到帐篷骨架右边的接口。`); }} onPointerDown={() => { setAgeTrainingHeldPart(part); setMessage(`按住${part}不要松手，拖到右边发光接口。`); }}><i>{part.slice(0,1)}</i><span>{part}</span></button>)}</div></div><p>材料会逐件装到实体骨架上；必须拖动正确零件，接口不合的零件会退回。</p></div>; } if (ageTraining.skill === "hybrid") { const round = AGE_HYBRID_ROUNDS[ageTraining.progress]; return <div className="age-training-stage hybrid-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>观察实验 {ageTraining.progress + 1}/{skill.required} · 配错 {ageTraining.mistakes} 次</small></div><div className="age-seed-lab"><div className={`weather-observation-card weather-round-${ageTraining.progress}`}><i /><b>{round.weather}</b><span>观察叶片、温度和土壤后选择种子</span></div><div className="seed-observation-pots"><i /><i /><i /></div><div className="age-seed-choices">{round.answers.map((answer)=><button key={answer} onClick={() => trainAgeHybrid(answer)}><i>{answer.slice(0,1)}</i><span>{answer}</span></button>)}</div></div><p>错误种子会在观察皿里停止发芽，必须根据四季和天气重新比较，不会自动告诉答案。</p></div>; } return <div className="age-training-stage echo-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>找到 {ageTraining.progress}/{skill.required} 处回声 · 敲空 {ageTraining.mistakes} 次</small></div><div className="age-echo-cave"><div className="echo-rocks"><i /><i /><i /><i /></div><div className="echo-timing-bar"><i className="echo-good-zone" /><b style={{ left: `${ageEchoPulse}%` }} /></div><button onClick={strikeAgeEcho}><i>⚒</i><span>光点进入绿色区域时敲击</span></button><div className={`echo-crystal-progress found-${ageTraining.progress}`}><i /><i /><i /><i /></div></div><p>光点会不断来回移动。太早或太晚都只会敲到普通石头，连续四次听准才能找到矿脉。</p></div>; })()}<footer><span>{message}</span>{ageTraining && <button onClick={() => { setAgeTraining(null); setAgeTrainingHeldPart(null); setMessage("暂时退出训练，已经学会的能力不会消失。 "); }}>返回成长手册</button>}</footer></section></div>}
+      {ageBookOpen && ageTraining?.skill !== "clone" && ageTraining?.skill !== "teleport" && <div className="age-growth-overlay" role="presentation" onPointerUpCapture={handleAgeTrainingPointerRelease}><section role="dialog" aria-modal="true" aria-label="小禾的年龄成长手册"><header><div><span>每年春天第十九日过完生日才会长大</span><h2>小禾的成长手册 · {game.playerAge} 岁</h2></div><button onClick={() => { setAgeBookOpen(false); setAgeTraining(null); setAgeTrainingHeldPart(null); }} aria-label="关闭成长手册">×</button></header>{!ageTraining ? <><div className="age-book-intro"><div className={`age-portrait age-${Math.min(5, game.playerAge)}`}><img src={game.sick ? "/xiaohe-sick-sprite.png" : "/xiaohe-sprite.png"} alt="小禾" /></div><div><strong>{displayName}现在 {game.playerAge} 岁</strong><p>一岁不能提前做两岁的事情。达到年龄只代表可以开始学习，仍要亲手完成完整训练，能力才会永久生效。</p><small>下次长大：第 {game.year + (game.birthdayGrowthYear === game.year ? 1 : 0)} 年春天第十九日生日派对结束后</small></div></div><div className="age-skill-grid">{AGE_SKILLS.map((skill) => { const locked = game.playerAge < skill.age; const learned = game.ageSkillsLearned.includes(skill.id); return <article key={skill.id} className={`${locked ? "locked" : ""} ${learned ? "learned" : ""}`}><i>{learned ? "✓" : skill.age}</i><span><small>{skill.age} 岁解锁 · {skill.kind}</small><strong>{skill.name}</strong><p>{skill.description}</p><em>{skill.benefit}</em></span><button disabled={locked} onClick={() => beginAgeTraining(skill.id)}>{learned ? "已经学会" : locked ? `还要长到 ${skill.age} 岁` : "进入实际训练"}</button></article>; })}</div></> : (() => { const skill = AGE_SKILLS.find((item) => item.id === ageTraining.skill)!; if (ageTraining.skill === "trail") return <div className="age-training-stage trail-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>已经走过 {ageTraining.progress}/{skill.required} 段 · 走错 {ageTraining.mistakes} 次</small></div><div className="age-trail-map"><i className="trail-river" /><i className="trail-bridge" /><div className="trail-footprints">{AGE_TRAIL_ROUTE.map((direction,index)=><i key={`foot-${index}`} style={{ rotate: direction === "up" ? "0deg" : direction === "right" ? "90deg" : direction === "down" ? "180deg" : "270deg" }} className={index < ageTraining.progress ? "found" : index === ageTraining.progress ? "current" : ""} />)}</div><div className="age-trail-player" style={{ left: `${12 + ageTraining.progress * 12}%`, top: `${68 - (ageTraining.progress % 3) * 16}%` }}><i /><b /></div><div className="trail-treasure"><i /><b /></div></div><div className="age-direction-pad"><button onClick={() => trainAgeTrail("up")}>↑<small>向上</small></button><button onClick={() => trainAgeTrail("left")}>←<small>向左</small></button><button onClick={() => trainAgeTrail("down")}>↓<small>向下</small></button><button onClick={() => trainAgeTrail("right")}>→<small>向右</small></button></div><p>观察当前发亮脚印的朝向，再用方向键走。走错会退回上一处，不能连续乱按。</p></div>; if (ageTraining.skill === "shelter") { const expected = AGE_CAMP_PARTS[ageTraining.progress]; return <div className="age-training-stage shelter-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>工具带 {ageTraining.progress}/{skill.required} · 装错 {ageTraining.mistakes} 次</small></div><div className="age-shelter-yard"><div className={`training-tent tool-bench built-${ageTraining.progress}`}><i /><b /><em /><u /><s /><span /></div><button data-age-camp-target className="age-camp-target" onDragOver={(event)=>event.preventDefault()} onDrop={(event)=>{event.preventDefault();dropAgeCampPart();}}><i /><strong>本轮接口</strong><small>需要：{expected}</small></button><div className="age-camp-parts">{AGE_CAMP_PARTS.map((part)=><button key={part} draggable className={ageTrainingHeldPart === part ? "held" : ""} onDragStart={() => { setAgeTrainingHeldPart(part); setMessage(`拿起${part}，拖到农具养护台右边的接口。`); }} onPointerDown={() => { setAgeTrainingHeldPart(part); setMessage(`按住${part}不要松手，拖到右边发光接口。`); }}><i>{part.slice(0,1)}</i><span>{part}</span></button>)}</div></div><p>养护零件会逐件装到真实工具台上；必须拖动正确零件，装错的会退回工具盘。</p></div>; } if (ageTraining.skill === "hybrid") { const round = AGE_HYBRID_ROUNDS[ageTraining.progress]; return <div className="age-training-stage hybrid-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>观察实验 {ageTraining.progress + 1}/{skill.required} · 配错 {ageTraining.mistakes} 次</small></div><div className="age-seed-lab"><div className={`weather-observation-card weather-round-${ageTraining.progress}`}><i /><b>{round.weather}</b><span>观察叶片、温度和土壤，找出最能形成丰收的作物</span></div><div className="seed-observation-pots"><i /><i /><i /></div><div className="age-seed-choices">{round.answers.map((answer)=><button key={answer} onClick={() => trainAgeHybrid(answer)}><i>{answer.slice(0,1)}</i><span>{answer}</span></button>)}</div></div><p>判断错了，作物收成会变少；必须根据四季和天气重新比较，不会自动告诉答案。</p></div>; } return <div className="age-training-stage echo-training"><div className="age-training-title"><span>{skill.age} 岁本领 · {skill.kind}</span><strong>{skill.name}</strong><small>找到 {ageTraining.progress}/{skill.required} 处回声 · 敲空 {ageTraining.mistakes} 次</small></div><div className="age-echo-cave"><div className="echo-rocks"><i /><i /><i /><i /></div><div className="echo-timing-bar"><i className="echo-good-zone" /><b style={{ left: `${ageEchoPulse}%` }} /></div><button onClick={strikeAgeEcho}><i>⚒</i><span>光点进入绿色区域时敲击</span></button><div className={`echo-crystal-progress found-${ageTraining.progress}`}><i /><i /><i /><i /></div></div><p>光点会不断来回移动。太早或太晚都只会敲到普通石头，连续四次听准才能找到矿脉。</p></div>; })()}<footer><span>{message}</span>{ageTraining && <button onClick={() => { setAgeTraining(null); setAgeTrainingHeldPart(null); setMessage("暂时退出训练，已经学会的能力不会消失。 "); }}>返回成长手册</button>}</footer></section></div>}
 
       {residentInvitation && <div className={`resident-invitation-card ${residentInvitation.travelMode === "car" ? "car-invitation" : ""}`} role="dialog" aria-label={`${residentInvitation.person}邀请一起出门`}><button className="invitation-person" style={personClothesStyle(residentInvitation.person)} onClick={() => setMessage(`${residentInvitation.person}${residentInvitation.travelMode === "car" ? "已经把车开到咖啡店门口" : "正在路边等小禾跟上"}。`)}><i /><b /></button><div><span>临时邀请 · 只在现在有效</span><strong>{residentInvitation.person}要去{HIDDEN_TRIPS[residentInvitation.trip].name}</strong><p>{residentInvitation.travelMode === "car" ? "居民的车已经停在门口，小禾不能独自前往，但可以坐在副驾驶一起去。" : "这个地方不在地图上，也不能自己开车到达。"}</p></div>{residentInvitation.travelMode === "car" && <i className="resident-trip-car" aria-hidden="true"><b /><em /></i>}<button onClick={followResidentToHiddenPlace}>{residentInvitation.travelMode === "car" ? "跟着上车" : "现在跟上"}</button><button className="decline-invitation" onClick={() => { setResidentInvitation(null); setMessage(`小禾这次没有跟去，${residentInvitation.person}挥挥手独自出发了。`); }}>这次不去</button></div>}
 
@@ -9179,8 +9336,8 @@ export default function FarmGame() {
 
       {mapOpen && <div className="map-overlay" role="presentation">
         <section className={`village-map-panel village-map-${activeVillage}`} role="dialog" aria-modal="true" aria-labelledby="village-map-title">
-          <header><div><span>按照当前村庄的实际道路绘制</span><h2 id="village-map-title">{activeVillageInfo.name}实际地图</h2></div><button onClick={() => setMapOpen(false)} aria-label="关闭地图">×</button></header>
-          {activeVillage === "qinghe" ? <div className="village-map-canvas qinghe-map-canvas">
+          <header><div><span>八岁本人瞬移 · 选择真实目的地</span><h2 id="village-map-title">{activeVillageInfo.name}瞬移地图</h2></div><button onClick={() => setMapOpen(false)} aria-label="关闭地图">×</button></header>
+          {activeVillage === "qinghe" ? <div className="village-map-canvas qinghe-map-canvas" onClickCapture={(event) => { if (!game.ageSkillsLearned.includes("teleport") && (event.target as HTMLElement).closest(".map-place")) { event.preventDefault(); event.stopPropagation(); setMessage("这里只能查看道路；八岁完成本人瞬移训练后，才可以点击地点直接到达。 "); playTone(230); } }}>
             <i className="map-river" /><i className="actual-route route-wild-farm" /><i className="actual-route route-farm-town" /><i className="actual-route route-town-east" /><i className="actual-route route-east-maple" /><i className="actual-route route-town-culture" /><i className="actual-route route-culture-north" /><i className="actual-route route-culture-residential" /><i className="actual-route route-town-south" /><i className="map-tree-cluster tree-cluster-one" /><i className="map-tree-cluster tree-cluster-two" />
             <button className={`map-place map-farm ${activeVillage === "qinghe" && scene === "farm" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("farm", { x: 8, y: 5 }, "青禾农场"); }}><i className="map-scene-picture picture-farm"><em /><em /><em /></i><b>青禾农场</b><span>农舍 · 农田 · 鱼塘</span></button>
             <button className={`map-place map-wild-farm ${activeVillage === "qinghe" && scene === "westFriendFarm" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("westFriendFarm", { x: 8, y: 5 }, "安安的小农场"); }}><i className="map-scene-picture picture-wild-farm"><em /><em /><em /></i><b>安安的小农场</b><span>青禾农场左边 · 野外朋友</span></button>
@@ -9191,8 +9348,8 @@ export default function FarmGame() {
             <button className={`map-place map-south ${activeVillage === "qinghe" && scene === "southNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("southNeighbor", { x: 6, y: 3 }, "鲁师傅的院子"); }}><i className="map-scene-picture picture-workshop"><em /><em /><em /></i><b>南坡院子</b><span>鲁师傅家</span></button>
             <button className={`map-place map-north ${activeVillage === "qinghe" && scene === "northNeighbor" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("northNeighbor", { x: 6, y: 5 }, "叶老师的书屋"); }}><i className="map-scene-picture picture-library"><em /><em /><em /></i><b>北林书屋</b><span>叶老师家</span></button>
             <button className={`map-place map-residential ${activeVillage === "qinghe" && scene === "residentialDistrict" ? "you-are-here" : ""}`} onClick={() => { switchVillage("qinghe"); travelFromMap("residentialDistrict", { x: 2, y: 5 }, "青禾住宅坡"); }}><i className="map-scene-picture picture-residential"><em /><em /><em /></i><b>青禾住宅坡</b><span>居民院落 · 小玲、豆豆、小满、阿禾等朋友的家</span></button>
-            <div className="map-legend"><span><i />你现在的位置</span><small>点击地图上的场景图可以直接前往</small></div>
-          </div> : <div className="village-map-canvas maple-map-canvas">
+            <div className="map-legend"><span><i />你现在的位置</span><small>点击地点，让小禾本人直接瞬移</small></div>
+          </div> : <div className="village-map-canvas maple-map-canvas" onClickCapture={(event) => { if (!game.ageSkillsLearned.includes("teleport") && (event.target as HTMLElement).closest(".map-place")) { event.preventDefault(); event.stopPropagation(); setMessage("这里只能查看道路；八岁完成本人瞬移训练后，才可以点击地点直接到达。 "); playTone(230); } }}>
             <i className="maple-map-ridge ridge-one" /><i className="maple-map-ridge ridge-two" /><i className="maple-map-stream" /><i className="maple-map-road maple-route-crossing-farm" /><i className="maple-map-road maple-route-farm-town" /><i className="maple-map-road maple-route-town-east" /><i className="maple-map-road maple-route-town-culture" /><i className="maple-map-road maple-route-culture-north" /><i className="maple-map-road maple-route-culture-residential" /><i className="maple-map-road maple-route-town-south" /><i className="maple-leaf-grove grove-one" /><i className="maple-leaf-grove grove-two" /><i className="maple-leaf-grove grove-three" />
             <button className={`map-place maple-map-farm ${scene === "farm" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("farm", { x: 6, y: 5 }, "枫叶农场"); }}><i className="map-scene-picture picture-maple-farm"><em /><em /><em /></i><b>枫叶农场</b><span>红顶农舍 · 坡田 · 山泉池</span></button>
             <button className={`map-place maple-map-town ${scene === "town" ? "you-are-here" : ""}`} onClick={() => { switchVillage("maple"); travelFromMap("town", { x: 5, y: 5 }, "枫叶村中心街"); }}><i className="map-scene-picture picture-maple-town"><em /><em /><em /></i><b>枫叶中心街</b><span>枫木商店 · 山路广场</span></button>
@@ -9204,7 +9361,7 @@ export default function FarmGame() {
             <button className="map-place maple-map-crossing" onClick={() => { switchVillage("qinghe"); travelFromMap("farm", { x: 11, y: 5 }, "青禾村西边山路"); }}><i className="map-scene-picture picture-qinghe-crossing"><em /><em /><em /></i><b>通往青禾村</b><span>沿农场左侧一直走</span></button>
             <div className="map-legend maple-map-legend"><span><i />你现在的位置</span><small>这张图只画枫叶村与出村山路</small></div>
           </div>}
-          <footer><span>{activeVillage === "qinghe" ? "青禾农场一直向左到安安的小农场；中心街向上到文化街，文化街向上去北林。" : "枫叶农场是这张地图的起点；向右进中心街，向上到文化坡，沿农场左侧山路可以回青禾村。"}</span><button onClick={() => setMapOpen(false)}>收起地图</button></footer>
+          <footer><span>{activeVillage === "qinghe" ? "青禾农场一直向左到安安的小农场；中心街向上到文化街，文化街向上去北林。" : "枫叶农场是这张地图的起点；向右进中心街，向上到文化坡，沿农场左侧山路可以回青禾村。"}</span><button onClick={() => setMapOpen(false)}>取消瞬移</button></footer>
         </section>
       </div>}
 
@@ -9267,10 +9424,11 @@ export default function FarmGame() {
           <button className="age-growth-card" onClick={() => { setAgeBookOpen(true); setAgeTraining(null); setMessage(`打开成长手册：小禾现在 ${game.playerAge} 岁，已经学会 ${game.ageSkillsLearned.length} 项年龄本领。`); }}><i>{game.playerAge}</i><span><small>年龄与新本领</small><strong>{game.playerAge} 岁成长手册</strong><em>{game.ageSkillsLearned.length ? `已学会 ${game.ageSkillsLearned.length} 项` : AGE_SKILLS.some((skill) => skill.age <= game.playerAge) ? "有可以开始的实际训练" : `长到 ${AGE_SKILLS[0].age} 岁解锁第一项本领`}</em></span><b>›</b></button>
           {multiplayerSession && <div className="multiplayer-status-card"><div><span>双人村庄</span><button onClick={() => setMultiplayerOpen(true)}>查看</button></div><strong>{activeVillageInfo.name} · {multiplayerSession.roomCode}</strong><small>{partner ? `${partner.online ? "● 在线" : "○ 离线"} ${partner.playerName}住在${VILLAGE_INFO[partner.village].name}` : "等待另一位玩家加入"}</small></div>}
           {game.ageSkillsLearned.includes("clone") && <button className={`clone-work-card ${cloneMission ? "clone-busy" : ""}`} onClick={() => { setCloneWorkOpen(true); setMessage(cloneMission ? `分身正在${cloneMission.destination}${cloneMission.label}。` : "打开七岁分身工作台，安排另一个小禾去做一件真实工作。 "); }}><i>双</i><span><small>七岁永久本领</small><strong>分身穿墙瞬移</strong><em>{cloneMission ? `正在${cloneMission.label}` : "点击安排农活、采集或帮居民"}</em></span><b>›</b></button>}
-          {game.ageSkillsLearned.includes("trail") && <button className={`clone-work-card age-world-ability-card trail-ability-card ${trailExpedition ? "clone-busy" : ""}`} onClick={startWorldTrailExpedition}><i>迹</i><span><small>两岁永久本领 · 主游戏</small><strong>林间循迹</strong><em>{trailExpedition ? `正在追踪第 ${trailExpedition.step + 1}/5 枚脚印` : game.lastAgeAbilityDays.trail === `${game.year}-${game.season}-${game.day}` ? "今天已经找到踪迹" : "亲自在主世界追踪隐藏补给"}</em></span><b>›</b></button>}
-          {game.ageSkillsLearned.includes("shelter") && <button className="clone-work-card age-world-ability-card shelter-ability-card" onClick={deployLearnedShelter}><i>篷</i><span><small>三岁永久本领 · 主游戏</small><strong>独立搭营</strong><em>在普通户外展开帐篷并住到明早</em></span><b>›</b></button>}
-          {game.ageSkillsLearned.includes("hybrid") && <button className="clone-work-card age-world-ability-card hybrid-ability-card" onClick={startWorldHybridLab}><i>育</i><span><small>四岁永久本领 · 主游戏</small><strong>四季育种</strong><em>{game.lastAgeAbilityDays.hybrid === `${game.year}-${game.season}-${game.day}` ? `今天已制成 · 剩 ${game.hybridSeedCharges} 份` : `调温授粉 · 库存 ${game.hybridSeedCharges} 份`}</em></span><b>›</b></button>}
+          {game.ageSkillsLearned.includes("trail") && <button className="clone-work-card age-world-ability-card trail-ability-card" onClick={() => setMessage("灵巧采集永久生效：双击捡起地上的种子、药材和食物时，每次都会获得双份。 ")}><i>双</i><span><small>两岁永久本领 · 自动生效</small><strong>灵巧采集</strong><em>地上拾取物永久双份</em></span><b>✓</b></button>}
+          {game.ageSkillsLearned.includes("shelter") && <button className="clone-work-card age-world-ability-card shelter-ability-card" onClick={() => setMessage("省力农具永久生效：锄地、播种、浇水、收获、砍树和挖矿，每次少消耗 1 点体力。 ")}><i>省</i><span><small>三岁永久本领 · 自动生效</small><strong>省力农具</strong><em>所有农具少耗 1 点体力</em></span><b>✓</b></button>}
+          {game.ageSkillsLearned.includes("hybrid") && <button className="clone-work-card age-world-ability-card hybrid-ability-card" onClick={() => setMessage("丰收巧手永久生效：每次收获多 1 份作物，同时多返还 1 颗同类种子。 ")}><i>丰</i><span><small>四岁永久本领 · 自动生效</small><strong>丰收巧手</strong><em>作物与返还种子都多 1 份</em></span><b>✓</b></button>}
           {game.ageSkillsLearned.includes("echo") && <button className="clone-work-card age-world-ability-card echo-ability-card" onClick={startWorldEchoSurvey}><i>晶</i><span><small>五岁永久本领 · 山洞实地使用</small><strong>听石寻晶</strong><em>{game.lastAgeAbilityDays.echo === `${game.year}-${game.season}-${game.day}` ? "今天已定位隐藏矿脉" : farmInterior === "cave" ? "听准三层回声定位矿脉" : "进入山洞点火后使用"}</em></span><b>›</b></button>}
+          {game.ageSkillsLearned.includes("teleport") && <button className="clone-work-card age-world-ability-card teleport-ability-card" onClick={() => { setMapOpen(true); setMessage("打开本人瞬移地图，点击一个地点就会让小禾本人直接到达。 "); }}><i>移</i><span><small>八岁永久本领 · 主游戏</small><strong>本人地图瞬移</strong><em>选择目的地 · 本人立即到达</em></span><b>›</b></button>}
           {isBirthday && <button className="birthday-card" onClick={() => { setDismissedBirthdayPartyKey(null); setScene("farm"); setActiveBuilding("farmhouse"); setIndoorPlayer({ x: 34, y: 70 }); setMessage(`今天是${displayName}的生日！大家已经来到农舍，点击生日蛋糕可以一起分享。`); }}><span>二月十九日 · 今日活动</span><strong>{displayName}的生日派对</strong><small>{showBirthdayParty ? "大家都在农舍 · 点击回家庆祝" : "生日会已收起 · 点击重新打开"}</small></button>}
           <button className={`festival-card ${currentFestival ? "festival-open" : ""}`} onClick={() => { if (currentFestival) goToFestival(); else setMessage(`下一场是${nextFestival.name}，${SEASONS[nextFestival.season]}第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]}在${nextFestival.place}举行，还有 ${daysUntilFestival} 天。`); }}><span>{currentFestival ? "今日活动" : "下一场活动"}</span><strong>{(currentFestival ?? nextFestival).name}</strong><small>{currentFestival ? `正在${currentFestival.place}举行 · 点击前往` : `${SEASONS[nextFestival.season]}第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]} · 还有 ${daysUntilFestival} 天`}</small></button>
           <div className="meter-block">
@@ -9757,10 +9915,11 @@ export default function FarmGame() {
                     {game.upgrades.secondFloor > 0 && <button className={`house-stairs real-house-staircase ${stairTravel === "up" ? "stairs-in-use" : ""}`} onClick={(event) => { event.stopPropagation(); travelHouseStairs("up"); }} aria-label="走上真正的木楼梯到二楼"><span className="stair-flight">{Array.from({ length: 7 }, (_, index) => <i key={`lower-stair-${index}`} style={{ "--stair-index": index } as CSSProperties} />)}</span><b className="stair-railing" /><em className="stair-landing" /></button>}
                     {showBirthdayParty && <><button className="birthday-party-room-close" onClick={(event) => { event.stopPropagation(); setBirthdayCeremony(null); setDismissedBirthdayPartyKey(currentBirthdayPartyKey); setMessage("生日会页面已经关闭，朋友们先收拾好房间；回到左边生日卡片可以再次打开。 "); }} aria-label="关闭生日会页面">×<span>关闭生日会</span></button><div className="birthday-banner">二月十九日 · {displayName}生日快乐！</div><div className="birthday-loft" aria-label="生日派对时可以跑上去的小阁楼"><i /><b /><span>小阁楼</span></div><div className="birthday-house-guests" aria-label="会在农舍里跑动、看窗户、跳床和玩耍的所有朋友">{BIRTHDAY_GUESTS.map((name, index) => <button key={`birthday-${name}`} style={personClothesStyle(name)} className={`birthday-guest birthday-guest-${index + 1} birthday-behavior-${index % 5} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：生日快乐！我们刚才在屋里跑来跑去、看窗外，还轮流在床上跳呢！`)} aria-label={`和参加生日派对的${name}聊天`}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><button className={`birthday-cake ${game.birthdayCakeYear === game.year ? "cake-eaten" : ""}`} onClick={eatBirthdayCake} aria-label="分享生日蛋糕恢复体力"><i /><b /><em /><span>{game.birthdayCakeYear === game.year ? "蛋糕已经分享完" : "点击吃生日蛋糕 · 恢复40体力"}</span></button></>}
                     <button className="house-bed" onClick={sleepAtHome} aria-label="点击床睡到第二天"><i /><b /><span>点击睡觉</span></button>
+                    <button className={`bedside-pajama-button ${game.equippedOutfit === "pajamas" ? "wearing" : ""}`} onClick={(event) => { event.stopPropagation(); togglePajamas(); }} aria-label={game.equippedOutfit === "pajamas" ? "脱下睡衣" : "换上睡衣"}><i /><span>{game.equippedOutfit === "pajamas" ? "脱下睡衣" : "穿上睡衣"}</span></button>
                     {houseFloor === 1 && game.firstFloorNightstandPlaced && <button className={`first-floor-nightstand ${selected === "axe" ? "dismantle-ready" : ""}`} onClick={(event) => { event.stopPropagation(); if (selected === "axe") { const woodBack = Math.max(1, Math.floor(CRAFT_RECIPES.nightstand.wood / 2)); setGame((current) => ({ ...current, firstFloorNightstandPlaced: false, wood: current.wood + woodBack, energy: Math.max(0, current.energy - staminaCost(current, 2)) })); setMessage(`拆掉了床边小柜，回收成 ${woodBack} 块木头。`); playTone(360); return; } setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) })); setMessage("从床边小柜拿起温水慢慢喝完，恢复 5 点体力。 "); playTone(610); }} aria-label={selected === "axe" ? "点击拆除床边小柜并回收木头" : "床边小柜，点击喝温水恢复体力"}><i /><b /><span>床边小柜</span></button>}
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && <div className={`sleeping-player-in-bed ${bedtimePhase}`} aria-label={bedtimePhase === "waking" ? "小禾第二天在床上醒来" : "小禾盖着被子睡觉"}><i className="sleep-head" /><b className="sleep-blanket" /><span>{bedtimePhase === "waking" ? "早上七点 · 点击房间起床" : "盖好被子睡觉中…"}</span></div>}
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && followingPets.length > 0 && <div className="sleeping-pet-cages" aria-label="睡觉时宠物们回到农舍里的小窝"><strong>宠物们的睡觉小窝</strong>{followingPets.slice(0, 6).map((pet) => <span key={`sleep-${pet.id}`} className={`sleep-pet-cage pet-${pet.type} ${game.sickPetIds.includes(pet.id) ? "sick-pet" : ""}`}><i /><b /><em /></span>)}</div>}
-                    {game.pets.some((pet) => pet.id.includes("-baby-")) && <div className="home-baby-pets" aria-label="出生在家里的小动物宝宝"><strong>小动物育幼垫<small>点击一只宝宝开始实际照顾</small></strong>{game.pets.filter((pet) => pet.id.includes("-baby-")).slice(0, 6).map((pet, index) => { const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name ?? "小宠物"; const caredToday = game.lastBabyCareDays[pet.id] === `${game.year}-${game.season}-${game.day}`; return <button key={`home-baby-${pet.id}`} className={`home-baby-pet baby-${index + 1} pet-${pet.type} ${caredToday ? "cared" : "needs-care"}`} onClick={(event) => { event.stopPropagation(); beginBabyPetCare(pet); }} aria-label={`${petName}宝宝，${caredToday ? "今天已经照顾" : "需要喂食、加水、梳毛和陪玩"}`}><i /><b /><em>{caredToday ? "✓" : "!"}</em><span>{petName}宝宝<small>{caredToday ? `连续照顾 ${game.babyCareStreaks[pet.id] ?? 1} 天` : "今天需要更多照顾"}</small></span></button>; })}</div>}
+                    {<div className="home-baby-pets" aria-label="出生在家里的小动物宝宝"><strong>小动物育幼垫<small>点击一只宝宝开始实际照顾</small></strong>{!game.pets.some((pet) => pet.id.includes("-baby-")) && <button className="empty-baby-nursery" onClick={(event) => { event.stopPropagation(); setMessage("这里是宝宝出生后住的育幼垫。需要同一种宠物一只男生、一只女生一起生活满五年，宝宝才会出生。 "); }}><i>？</i><span>还没有出生宝宝<small>同种一男一女 · 一起生活满五年</small></span></button>}{game.pets.filter((pet) => pet.id.includes("-baby-")).slice(0, 6).map((pet, index) => { const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name ?? "小宠物"; const caredToday = game.lastBabyCareDays[pet.id] === `${game.year}-${game.season}-${game.day}`; return <button key={`home-baby-${pet.id}`} className={`home-baby-pet baby-${index + 1} pet-${pet.type} ${caredToday ? "cared" : "needs-care"}`} onClick={(event) => { event.stopPropagation(); beginBabyPetCare(pet); }} aria-label={`${petName}宝宝，${caredToday ? "今天已经照顾" : "需要喂食、加水、梳毛和陪玩"}`}><i /><b /><em>{caredToday ? "✓" : "!"}</em><span>{petName}宝宝<small>{caredToday ? `连续照顾 ${game.babyCareStreaks[pet.id] ?? 1} 天` : "今天需要更多照顾"}</small></span></button>; })}</div>}
                     <div className="house-table"><i /><i /></div>
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     {game.upgrades.house >= 1 && <button className={`house-equipment house-lamp ${game.equipment.lampOn ? "active" : ""}`} onClick={() => { setGame((current) => ({ ...current, equipment: { ...current.equipment, lampOn: !current.equipment.lampOn } })); setMessage(game.equipment.lampOn ? "关掉了暖光灯。" : "暖光灯亮起来，夜晚的房间变得明亮了！"); }}><i />暖光灯</button>}

@@ -171,12 +171,12 @@
 
 .age-shelter-yard { background: linear-gradient(#8dc8d5 0 45%, #6da258 46%); }
 .training-tent { position: absolute; left: 42%; top: 45px; width: 260px; height: 190px; transform: translateX(-50%); }
-.training-tent > i { position: absolute; inset: 20px 10px 8px; opacity: .16; border: 9px solid #644533; background: #d48251; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-.training-tent > b { position: absolute; left: 49%; top: 9px; width: 9px; height: 179px; opacity: .16; background: #744c32; rotate: 24deg; transform-origin: top; }
-.training-tent > em { position: absolute; left: 49%; top: 9px; width: 9px; height: 179px; opacity: .16; background: #744c32; rotate: -24deg; transform-origin: top; }
-.training-tent > u { position: absolute; left: 24px; bottom: 7px; width: 206px; height: 13px; opacity: .16; background: #7a5538; }
-.training-tent > s { position: absolute; left: 49%; top: 2px; width: 20px; height: 20px; opacity: .16; border-radius: 50%; background: #6c4c35; }
-.training-tent > span { position: absolute; left: 107px; bottom: 12px; width: 46px; height: 91px; opacity: .16; background: #60423b; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.training-tent > i { position: absolute; left: 15px; right: 15px; top: 60px; height: 58px; opacity: .16; border: 8px solid #60432f; border-radius: 8px; background: repeating-linear-gradient(90deg,#c99255 0 30px,#b47a43 31px 35px); box-shadow:0 13px #6d4933; }
+.training-tent > b { position: absolute; left: 35px; top: 113px; width: 18px; height: 70px; opacity: .16; border-radius: 4px; background: #684732; box-shadow: 172px 0 #684732; }
+.training-tent > em { position: absolute; left: 69px; top: 22px; width: 28px; height: 83px; opacity: .16; border: 7px solid #51606b; border-radius: 50% 50% 7px 7px; background:linear-gradient(90deg,#d7dce0,#7c8b94); rotate:-18deg; }
+.training-tent > u { position: absolute; left: 125px; top: 21px; width: 15px; height: 90px; opacity: .16; border-radius: 8px; background:#8b5d35; box-shadow:inset 0 45px #586973; rotate:11deg; }
+.training-tent > s { position: absolute; left: 166px; top: 33px; width: 61px; height: 46px; opacity: .16; border: 8px solid #4f5c65; border-radius: 50%; background:radial-gradient(circle,#9cb2bf 0 12px,#667984 13px); text-decoration:none; }
+.training-tent > span { position: absolute; left: 71px; bottom: 4px; width: 118px; height: 24px; opacity: .16; border:6px solid #573f32; border-radius:10px; background:repeating-linear-gradient(90deg,#82593c 0 18px,#d1a05d 19px 22px); }
 .training-tent.built-1 i,.training-tent.built-2 i,.training-tent.built-3 i,.training-tent.built-4 i,.training-tent.built-5 i,.training-tent.built-6 i,.training-tent.built-2 b,.training-tent.built-3 b,.training-tent.built-4 b,.training-tent.built-5 b,.training-tent.built-6 b,.training-tent.built-3 em,.training-tent.built-4 em,.training-tent.built-5 em,.training-tent.built-6 em,.training-tent.built-4 u,.training-tent.built-5 u,.training-tent.built-6 u,.training-tent.built-5 s,.training-tent.built-6 s,.training-tent.built-6 span { opacity: 1; }
 .age-camp-target { position: absolute; z-index: 6; right: 3%; top: 69px; width: 150px; min-height: 107px; color: #456343; border: 6px dashed #59a058; border-radius: 12px; outline: 7px solid rgba(91, 190, 82, .3); background: #ddedb5; }
 .age-camp-target i { display: block; width: 59px; height: 35px; margin: auto; border: 4px dashed #579357; border-radius: 9px; }
