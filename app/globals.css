@@ -26,6 +26,7 @@
 @import "./resident-quests.css";
 @import "./pet-contest.css";
 @import "./pet-contest-intense.css";
+@import "./birthday-guide.css";
 
 :root {
   --ink: #263d31;
