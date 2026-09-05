@@ -1288,9 +1288,7 @@ const reconcilePetFamilies = (records: PetRecord[] | undefined, savedBirthYears:
     if (!lastPetBirthYears[kind.id] && newestExistingBaby > 0) lastPetBirthYears[kind.id] = newestExistingBaby;
     const hasPair = sameType.some((pet) => pet.sex === "男生") && sameType.some((pet) => pet.sex === "女生");
     const lastBirthYear = lastPetBirthYears[kind.id];
-    const familyStartYear = Math.max(0, ...sameType.filter((pet) => !pet.id.includes("-baby-")).map((pet) => pet.bornYear));
-    const yearsTogether = lastBirthYear ? currentYear - lastBirthYear : currentYear - familyStartYear + 1;
-    if (!hasPair || yearsTogether < 5) return;
+    if (!hasPair || lastBirthYear) return;
     pets.push({ id: `${kind.id}-baby-${currentYear}-restored-${index}`, type: kind.id, sex: (currentYear + index) % 2 ? "女生" : "男生", bornDay: currentDay, bornSeason: currentSeason, bornYear: currentYear });
     lastPetBirthYears[kind.id] = currentYear;
   });
@@ -1298,7 +1296,7 @@ const reconcilePetFamilies = (records: PetRecord[] | undefined, savedBirthYears:
   const firstMale = adultPets.find((pet) => pet.sex === "男生");
   const firstFemale = adultPets.find((pet) => pet.sex === "女生");
   const alreadyRecordedBirth = pets.some((pet) => pet.id.includes("-baby-")) || Object.values(lastPetBirthYears).some((year) => Boolean(year));
-  if (currentYear >= 5 && firstMale && firstFemale && !alreadyRecordedBirth) {
+  if (firstMale && firstFemale && !alreadyRecordedBirth) {
     pets.push({
       id: `${firstFemale.type}-baby-${currentYear}-family-restored`,
       type: firstFemale.type,
@@ -8834,12 +8832,11 @@ export default function FarmGame() {
       const sameType = game.pets.filter((pet) => pet.type === kind.id && !pet.id.includes("-baby-"));
       const hasPair = sameType.some((pet) => pet.sex === "男生") && sameType.some((pet) => pet.sex === "女生");
       if (!hasPair) return [];
-      const lastBirthYear = game.lastPetBirthYears[kind.id];
-      const familyStartYear = Math.max(1, ...sameType.map((pet) => pet.bornYear ?? 1));
-      const yearsTogether = lastBirthYear ? game.year - lastBirthYear : game.year - familyStartYear + 1;
-      return [{ kind, yearsTogether }];
+      const alreadyHasBaby = game.pets.some((pet) => pet.type === kind.id && pet.id.includes("-baby-"));
+      if (alreadyHasBaby || game.lastPetBirthYears[kind.id]) return [];
+      return [{ kind }];
     });
-    const readyFamilies = pairedFamilies.filter((family) => family.yearsTogether >= 5);
+    const readyFamilies = pairedFamilies;
     if (readyFamilies.length) {
       setGame((current) => {
         const lastPetBirthYears = { ...current.lastPetBirthYears };
@@ -8856,7 +8853,7 @@ export default function FarmGame() {
         });
         return { ...current, pets: [...current.pets, ...newborns], lastPetBirthYears };
       });
-      setMessage(`${readyFamilies.map(({ kind }) => kind.name).join("、")}家庭的五年记录已经核对完成，宝宝现在就在小育幼垫上！`);
+      setMessage(`${readyFamilies.map(({ kind }) => kind.name).join("、")}家庭的一男一女已经核对完成，宝宝现在就在小育幼垫上！`);
       playTone(980);
       return;
     }
@@ -8865,9 +8862,8 @@ export default function FarmGame() {
       playTone(320);
       return;
     }
-    const soonest = pairedFamilies.reduce((best, family) => family.yearsTogether > best.yearsTogether ? family : best);
-    setMessage(`${soonest.kind.name}家庭已经一起生活 ${Math.max(1, soonest.yearsTogether)} 年，还要再过 ${Math.max(1, 5 - soonest.yearsTogether)} 年。达到第五年时，点育幼垫就会补生宝宝。`);
-    playTone(420);
+    setMessage("一男一女的宠物宝宝已经出生过了；新的宝宝仍会在以后的家庭生活中自然出生。 ");
+    playTone(520);
   };
 
   const contestCueFor = (rival: string, exchange: number): PetContestCue => {
@@ -10182,7 +10178,7 @@ export default function FarmGame() {
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && followingPets.length > 0 && <div className="sleeping-pet-cages" aria-label="睡觉时宠物们回到农舍里的小窝"><strong>宠物们的睡觉小窝</strong>{followingPets.slice(0, 6).map((pet) => <span key={`sleep-${pet.id}`} className={`sleep-pet-cage pet-${pet.type} ${game.sickPetIds.includes(pet.id) ? "sick-pet" : ""}`}><i /><b /><em /></span>)}</div>}
                     <div className="home-baby-pets" aria-label="出生在家里的小动物宝宝">
                       <strong>小育幼垫<small>{nurseryPets.length ? `${nurseryPets.length}只宝宝` : "点垫子核对"}</small></strong>
-                      {!nurseryPets.length && <button className="empty-baby-nursery" onClick={(event) => { event.stopPropagation(); inspectPetNursery(); }}><i>？</i><span>检查宝宝<small>满五年会立即补生</small></span></button>}
+                      {!nurseryPets.length && <button className="empty-baby-nursery" onClick={(event) => { event.stopPropagation(); inspectPetNursery(); }}><i>？</i><span>检查宝宝<small>有一男一女就立即出现</small></span></button>}
                       {nurseryPets.slice(0, 4).map((pet, index) => {
                         const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name ?? "小宠物";
                         const caredToday = game.lastBabyCareDays[pet.id] === `${game.year}-${game.season}-${game.day}`;
