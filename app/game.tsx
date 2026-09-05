@@ -35,6 +35,8 @@ type SnowBuildState = { playerX: number; bodyX: number; bodySize: number; bodyPl
 type BirthdayCeremonyState = { person: string; own: boolean; step: 0 | 1 | 2; songTaps: number; blowTaps: number; cutProgress: number };
 type AgeSkillId = "trail" | "shelter" | "hybrid" | "echo" | "clone";
 type AgeTrainingState = { skill: AgeSkillId; progress: number; mistakes: number };
+type TrailDirection = "up" | "down" | "left" | "right";
+type TrailExpeditionState = { routeIndex: number; step: number; mistakes: number };
 type CloneWorkKind = "water" | "fertilize" | "plant" | "mineDiamond" | "chopWood" | "breakStone" | "gatherHerbs" | "fish" | "helpResident";
 type CloneMissionState = { kind: CloneWorkKind; label: string; destination: string; icon: string };
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
@@ -113,6 +115,7 @@ type GameState = {
   playerAge: number;
   birthdayGrowthYear: number;
   ageSkillsLearned: AgeSkillId[];
+  lastAgeAbilityDays: Partial<Record<AgeSkillId, string>>;
   day: number;
   season: number;
   hour: number;
@@ -935,6 +938,12 @@ const AGE_SKILLS: Array<{ id: AgeSkillId; age: number; name: string; kind: strin
   { id: "clone", age: 7, name: "分身穿墙瞬移", kind: "七岁稀奇本领", description: "在五种不同障碍前辨认正确落点，让分身穿过墙壁并安全瞬移到工作地点。", benefit: "学会后可以随时召出一个分身，自己继续行动，分身会自动去农田、树林、山洞或居民家完成工作。", required: 5 },
 ];
 const AGE_TRAIL_ROUTE = ["right", "up", "right", "down", "right", "up"] as const;
+const AGE_WORLD_TRAIL_ROUTES: readonly (readonly TrailDirection[])[] = [
+  ["left", "left", "up", "right", "up"],
+  ["right", "up", "up", "left", "up"],
+  ["down", "left", "up", "left", "down"],
+  ["up", "right", "down", "right", "up"],
+];
 const AGE_CAMP_PARTS = ["长木杆", "短木杆", "平整石块", "树脂接头", "防水布", "固定绳"] as const;
 const AGE_HYBRID_ROUNDS = [
   { weather: "春日细雨", answers: ["草莓种子", "南瓜种子", "玉米种子"], correct: "草莓种子" },
@@ -1096,6 +1105,7 @@ const makeNewGame = (): GameState => ({
   playerAge: 1,
   birthdayGrowthYear: 0,
   ageSkillsLearned: [],
+  lastAgeAbilityDays: {},
   day: 1,
   season: 0,
   hour: 7,
@@ -1268,6 +1278,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       playerAge: parsed.playerAge ?? Math.max(1, (parsed.year ?? 1) + ((parsed.birthdayCakeYear ?? 0) === (parsed.year ?? 1) ? 1 : 0)),
       birthdayGrowthYear: parsed.birthdayGrowthYear ?? parsed.birthdayCakeYear ?? 0,
       ageSkillsLearned: parsed.ageSkillsLearned ?? [],
+      lastAgeAbilityDays: parsed.lastAgeAbilityDays ?? {},
       inventory: { ...defaults.inventory, ...(parsed.inventory ?? {}) },
       chestStorage: { ...defaults.chestStorage, ...(parsed.chestStorage ?? {}) },
       shippingBin: { ...defaults.shippingBin, ...(parsed.shippingBin ?? {}) },
@@ -1390,6 +1401,7 @@ export default function FarmGame() {
   const [ageTraining, setAgeTraining] = useState<AgeTrainingState | null>(null);
   const [ageTrainingHeldPart, setAgeTrainingHeldPart] = useState<string | null>(null);
   const [ageEchoPulse, setAgeEchoPulse] = useState(6);
+  const [trailExpedition, setTrailExpedition] = useState<TrailExpeditionState | null>(null);
   const [cloneWorkOpen, setCloneWorkOpen] = useState(false);
   const [cloneMission, setCloneMission] = useState<CloneMissionState | null>(null);
   const [babyCare, setBabyCare] = useState<BabyCareState | null>(null);
@@ -1639,6 +1651,7 @@ export default function FarmGame() {
             playerAge: parsed.playerAge ?? Math.max(1, (parsed.year ?? 1) + ((parsed.birthdayCakeYear ?? 0) === (parsed.year ?? 1) ? 1 : 0)),
             birthdayGrowthYear: parsed.birthdayGrowthYear ?? parsed.birthdayCakeYear ?? 0,
             ageSkillsLearned: parsed.ageSkillsLearned ?? [],
+            lastAgeAbilityDays: parsed.lastAgeAbilityDays ?? {},
             season: parsed.season ?? 0,
             strawberrySeeds: parsed.strawberrySeeds ?? 0,
             cornSeeds: parsed.cornSeeds ?? 0,
@@ -2303,7 +2316,7 @@ export default function FarmGame() {
       setBedtimePhase(null);
       setMessage("小禾掀开被子下床，可以继续走路了。 ");
     } else if (bedtimePhase) return;
-    if (ananBeachTraveling || babyCare || bulkChestPrompt || bulkShippingPrompt || cloneWorkOpen || newsBroadcast || guideOpen || journalOpen || cookingGame || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || lanternRiddle !== null || festivalProcess || dragonBoatOpen || dragonBoatTraveling) return;
+    if (ananBeachTraveling || babyCare || careSession || bulkChestPrompt || bulkShippingPrompt || cloneWorkOpen || newsBroadcast || guideOpen || journalOpen || cookingGame || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || lanternRiddle !== null || festivalProcess || dragonBoatOpen || dragonBoatTraveling) return;
     if (ananBeachOpen) {
       showWalking(dx, dy);
       setBeachPlayer((current) => ({
@@ -2324,6 +2337,40 @@ export default function FarmGame() {
     if (now - lastMoveAtRef.current < 230) return;
     lastMoveAtRef.current = now;
     showWalking(dx, dy);
+    if (trailExpedition && !activeBuilding && !farmInterior && !neighborInterior && !residentHome && !friendHomeOpen) {
+      const route = AGE_WORLD_TRAIL_ROUTES[trailExpedition.routeIndex];
+      const direction: TrailDirection = dx < 0 ? "left" : dx > 0 ? "right" : dy < 0 ? "up" : "down";
+      const expected = route[trailExpedition.step];
+      if (direction === expected) {
+        const nextStep = trailExpedition.step + 1;
+        if (nextStep >= route.length) {
+          setTrailExpedition(null);
+          setGame((current) => {
+            const hiddenSupply = current.groundSupplies.findIndex((visible) => !visible);
+            const revealedSupplies = hiddenSupply < 0 ? current.groundSupplies : current.groundSupplies.map((visible, index) => index === hiddenSupply ? true : visible);
+            const abilityDay = `${current.year}-${current.season}-${current.day}`;
+            return {
+              ...current,
+              herbs: current.herbs + 2,
+              pinecones: current.pinecones + 1,
+              groundSupplies: revealedSupplies,
+              lastAgeAbilityDays: { ...current.lastAgeAbilityDays, trail: abilityDay },
+              journalEntries: [`${SEASONS[current.season]}第${current.day}天：使用林间循迹在主世界走完五段脚印，找到2份药材、1颗松果${hiddenSupply >= 0 ? "和一件隐藏补给" : ""}。`, ...current.journalEntries].slice(0, 40),
+            };
+          });
+          setMessage("最后一枚脚印在草边消失了：找到 2 份药材、1 颗松果，并把沿途发现的补给留在地上。林间循迹今天完成！");
+          playTone(960);
+        } else {
+          setTrailExpedition({ ...trailExpedition, step: nextStep });
+          setMessage(`跟对了第 ${nextStep}/5 段脚印。下一枚脚印又出现在前方，继续亲自走过去。`);
+          playTone(560 + nextStep * 50);
+        }
+      } else {
+        setTrailExpedition({ ...trailExpedition, mistakes: trailExpedition.mistakes + 1 });
+        setMessage("这边没有脚印。小禾仍然可以自由走动，但要转回发亮脚印指向的方向继续追踪。 ");
+        playTone(230);
+      }
+    }
     if (farmInterior) {
       setIndoorPlayer((current) => ({
         x: Math.max(18, Math.min(82, current.x + dx * 5)),
@@ -2391,7 +2438,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, babyCare, bedtimePhase, bulkChestPrompt, bulkShippingPrompt, carTraveling, chestOpen, shippingBinOpen, cloneWorkOpen, cookingGame, craftingOpen, crossSceneBoundary, divingAtSea, dragonBoatOpen, dragonBoatTraveling, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmEdgeTraveling, farmGateOpen, farmInterior, festivalProcess, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, guideOpen, journalOpen, lanternRiddle, mallOpen, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, babyCare, bedtimePhase, bulkChestPrompt, bulkShippingPrompt, careSession, carTraveling, chestOpen, shippingBinOpen, cloneWorkOpen, cookingGame, craftingOpen, crossSceneBoundary, divingAtSea, dragonBoatOpen, dragonBoatTraveling, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmEdgeTraveling, farmGateOpen, farmInterior, festivalProcess, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, guideOpen, journalOpen, lanternRiddle, mallOpen, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, trailExpedition, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -2414,6 +2461,20 @@ export default function FarmGame() {
       if (key === "escape" && cloneWorkOpen) {
         setCloneWorkOpen(false);
         setMessage(cloneMission ? "收起了分身工作台，分身会继续完成已经安排的工作。 " : "收起了分身工作台，回到游戏。 ");
+        return;
+      }
+      if (key === "escape" && careSession) {
+        stopCareTimedHold(false);
+        endCareGesture();
+        setCareHeldItem(null);
+        setMedicalThermometerPicked(false);
+        setCareSession(null);
+        setMessage("已经暂停治疗流程，回到游戏；疾病和已经学会的治疗方法都不会丢失。 ");
+        return;
+      }
+      if (key === "escape" && trailExpedition) {
+        setTrailExpedition(null);
+        setMessage("暂时停止林间循迹。今天还可以从第一枚脚印重新开始。 ");
         return;
       }
       if (key === "escape" && schoolLesson) {
@@ -2565,7 +2626,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, babyCare, birthdayCeremony, builderOpen, bulkChestPrompt, bulkShippingPrompt, chestOpen, shippingBinOpen, cloneMission, cloneWorkOpen, cookingGame, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, guideOpen, journalOpen, move, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, ranchOpen, residentHome, schoolLesson, splitScreen, townhallCalendarOpen]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, babyCare, birthdayCeremony, builderOpen, bulkChestPrompt, bulkShippingPrompt, careSession, chestOpen, shippingBinOpen, cloneMission, cloneWorkOpen, cookingGame, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, guideOpen, journalOpen, move, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, ranchOpen, residentHome, schoolLesson, splitScreen, townhallCalendarOpen, trailExpedition]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -6571,6 +6632,48 @@ export default function FarmGame() {
     playTone(980);
   };
 
+  const startWorldTrailExpedition = () => {
+    if (!game.ageSkillsLearned.includes("trail")) {
+      setMessage("先在两岁成长手册里完成林间循迹训练。 ");
+      return;
+    }
+    if (activeBuilding || farmInterior || neighborInterior || residentHome || friendHomeOpen || ananBeachOpen) {
+      setMessage("林间脚印只会出现在户外地面。先离开房间、山洞或海滩，再打开成长手册使用。 ");
+      playTone(230);
+      return;
+    }
+    const abilityDay = `${game.year}-${game.season}-${game.day}`;
+    if (game.lastAgeAbilityDays.trail === abilityDay) {
+      setMessage("今天的林间踪迹已经走完了。地面需要一夜时间才会留下新的脚印。 ");
+      playTone(330);
+      return;
+    }
+    const routeIndex = currentAbsoluteDay() % AGE_WORLD_TRAIL_ROUTES.length;
+    setTrailExpedition({ routeIndex, step: 0, mistakes: 0 });
+    setAgeBookOpen(false);
+    setAgeTraining(null);
+    setMessage("林间循迹已经在主世界开始：看屏幕上的五枚脚印，用方向键或平板方向键亲自走。走错不会传送，也不会直接完成。 ");
+    playTone(760);
+  };
+
+  const deployLearnedShelter = () => {
+    if (!game.ageSkillsLearned.includes("shelter")) {
+      setMessage("先在三岁成长手册里完成独立搭营训练。 ");
+      return;
+    }
+    if (activeBuilding || farmInterior || neighborInterior || residentHome || friendHomeOpen || ananBeachOpen || residentOuting) {
+      setMessage("要先走到普通户外空地，才能真正展开随身帐篷。房间、山洞、旅行场地里不能硬塞帐篷。 ");
+      playTone(230);
+      return;
+    }
+    setAgeBookOpen(false);
+    setAgeTraining(null);
+    setFarmInterior("camp");
+    setIndoorPlayer({ x: 32, y: 72 });
+    setMessage("小禾在当前位置展开学会的帐篷，钻进门帘后可以在睡袋里睡到第二天；出去时仍会回到刚才的户外地点。 ");
+    playTone(820);
+  };
+
   const beginAgeTraining = (skillId: AgeSkillId) => {
     const skill = AGE_SKILLS.find((item) => item.id === skillId)!;
     if (game.playerAge < skill.age) {
@@ -6579,6 +6682,14 @@ export default function FarmGame() {
       return;
     }
     if (game.ageSkillsLearned.includes(skillId)) {
+      if (skillId === "trail") {
+        startWorldTrailExpedition();
+        return;
+      }
+      if (skillId === "shelter") {
+        deployLearnedShelter();
+        return;
+      }
       if (skillId === "clone") {
         setCloneWorkOpen(true);
         setMessage("打开分身工作台。选择一项工作，另一个小禾会穿墙瞬移过去自动完成。 ");
@@ -8655,6 +8766,7 @@ export default function FarmGame() {
 
   return (
     <main className={`game-shell ${embeddedMode ? "embedded-game" : ""} ${dreamScene !== null ? `dream-reality-active dream-reality-${dreamOddity} dream-variant-${dreamScene % 16}` : ""}`}>
+      {trailExpedition && (() => { const route = AGE_WORLD_TRAIL_ROUTES[trailExpedition.routeIndex]; const directionLabel: Record<TrailDirection, string> = { up: "↑", down: "↓", left: "←", right: "→" }; return <div className="world-trail-hud" role="status" aria-label={`林间循迹，已完成${trailExpedition.step}段`}><div><i>迹</i><span><small>主世界本领正在使用</small><strong>沿脚印亲自走 · {trailExpedition.step}/5</strong></span><button onClick={() => { setTrailExpedition(null); setMessage("暂时停止林间循迹。今天还可以从第一枚脚印重新开始。 "); }} aria-label="停止林间循迹">×</button></div><section>{route.map((direction, index) => <i key={`${direction}-${index}`} className={index < trailExpedition.step ? "done" : index === trailExpedition.step ? "active" : ""}><b>{index < trailExpedition.step ? "✓" : directionLabel[direction]}</b><span>{index === trailExpedition.step ? "下一步" : index < trailExpedition.step ? "走过" : "脚印"}</span></i>)}</section><small>方向键、WASD 和平板方向键都会真实推进；走错只会走到旁边，不会自动完成。错 {trailExpedition.mistakes} 次</small></div>; })()}
       {festivalPreview && <button className="festival-preview-exit" onClick={exitFestivalPreview} aria-label="退出节日体验并回到原来的日期"><b>×</b><span><strong>退出节日体验</strong><small>回到{SEASONS[festivalPreview.returnGame.season]}第 {festivalPreview.returnGame.day} 天</small></span></button>}
       {newsBroadcast && <div className={`tv-broadcast-overlay tv-channel-${newsBroadcast.channel} news-kind-${newsBroadcast.news.kind}`} role="dialog" aria-modal="true" aria-label="青禾电视节目">
         <section className="tv-broadcast-frame">
@@ -8933,6 +9045,8 @@ export default function FarmGame() {
           <button className="age-growth-card" onClick={() => { setAgeBookOpen(true); setAgeTraining(null); setMessage(`打开成长手册：小禾现在 ${game.playerAge} 岁，已经学会 ${game.ageSkillsLearned.length} 项年龄本领。`); }}><i>{game.playerAge}</i><span><small>年龄与新本领</small><strong>{game.playerAge} 岁成长手册</strong><em>{game.ageSkillsLearned.length ? `已学会 ${game.ageSkillsLearned.length} 项` : AGE_SKILLS.some((skill) => skill.age <= game.playerAge) ? "有可以开始的实际训练" : `长到 ${AGE_SKILLS[0].age} 岁解锁第一项本领`}</em></span><b>›</b></button>
           {multiplayerSession && <div className="multiplayer-status-card"><div><span>双人村庄</span><button onClick={() => setMultiplayerOpen(true)}>查看</button></div><strong>{activeVillageInfo.name} · {multiplayerSession.roomCode}</strong><small>{partner ? `${partner.online ? "● 在线" : "○ 离线"} ${partner.playerName}住在${VILLAGE_INFO[partner.village].name}` : "等待另一位玩家加入"}</small></div>}
           {game.ageSkillsLearned.includes("clone") && <button className={`clone-work-card ${cloneMission ? "clone-busy" : ""}`} onClick={() => { setCloneWorkOpen(true); setMessage(cloneMission ? `分身正在${cloneMission.destination}${cloneMission.label}。` : "打开七岁分身工作台，安排另一个小禾去做一件真实工作。 "); }}><i>双</i><span><small>七岁永久本领</small><strong>分身穿墙瞬移</strong><em>{cloneMission ? `正在${cloneMission.label}` : "点击安排农活、采集或帮居民"}</em></span><b>›</b></button>}
+          {game.ageSkillsLearned.includes("trail") && <button className={`clone-work-card age-world-ability-card trail-ability-card ${trailExpedition ? "clone-busy" : ""}`} onClick={startWorldTrailExpedition}><i>迹</i><span><small>两岁永久本领 · 主游戏</small><strong>林间循迹</strong><em>{trailExpedition ? `正在追踪第 ${trailExpedition.step + 1}/5 枚脚印` : game.lastAgeAbilityDays.trail === `${game.year}-${game.season}-${game.day}` ? "今天已经找到踪迹" : "亲自在主世界追踪隐藏补给"}</em></span><b>›</b></button>}
+          {game.ageSkillsLearned.includes("shelter") && <button className="clone-work-card age-world-ability-card shelter-ability-card" onClick={deployLearnedShelter}><i>篷</i><span><small>三岁永久本领 · 主游戏</small><strong>独立搭营</strong><em>在普通户外展开帐篷并住到明早</em></span><b>›</b></button>}
           {isBirthday && <button className="birthday-card" onClick={() => { setDismissedBirthdayPartyKey(null); setScene("farm"); setActiveBuilding("farmhouse"); setIndoorPlayer({ x: 34, y: 70 }); setMessage(`今天是${displayName}的生日！大家已经来到农舍，点击生日蛋糕可以一起分享。`); }}><span>二月十九日 · 今日活动</span><strong>{displayName}的生日派对</strong><small>{showBirthdayParty ? "大家都在农舍 · 点击回家庆祝" : "生日会已收起 · 点击重新打开"}</small></button>}
           <button className={`festival-card ${currentFestival ? "festival-open" : ""}`} onClick={() => { if (currentFestival) goToFestival(); else setMessage(`下一场是${nextFestival.name}，${SEASONS[nextFestival.season]}第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]}在${nextFestival.place}举行，还有 ${daysUntilFestival} 天。`); }}><span>{currentFestival ? "今日活动" : "下一场活动"}</span><strong>{(currentFestival ?? nextFestival).name}</strong><small>{currentFestival ? `正在${currentFestival.place}举行 · 点击前往` : `${SEASONS[nextFestival.season]}第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]} · 还有 ${daysUntilFestival} 天`}</small></button>
           <div className="meter-block">
@@ -9344,7 +9458,7 @@ export default function FarmGame() {
             {farmInterior && (
               <div className="shop-overlay farm-special-overlay" role="presentation">
                 <section className={`farm-special-panel ${farmInterior}-interior-panel ${interiorFireLit ? "interior-fire-lit" : ""}`} role="dialog" aria-modal="true" aria-labelledby="farm-special-title">
-                  <header><div><span>{farmInterior === "cave" ? "青禾农场西侧" : "溪边露营地"}</span><h2 id="farm-special-title">{farmInterior === "cave" ? "青禾山洞内部" : "双顶帐篷内部"}</h2></div><button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); }} aria-label="离开这里">×</button></header>
+                  <header><div><span>{farmInterior === "cave" ? "青禾农场西侧" : "户外随身营地"}</span><h2 id="farm-special-title">{farmInterior === "cave" ? "青禾山洞内部" : "双顶帐篷内部"}</h2></div><button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); }} aria-label="离开这里">×</button></header>
                   <div className="farm-special-scene" onClick={walkInsidePointer}>
                     {farmInterior === "cave" ? <><i className="cave-rock cave-rock-one" /><i className="cave-rock cave-rock-two" />{game.caveDiamondSpots.map((spotIndex, index) => { const diamond = CAVE_DIAMOND_SPOTS[spotIndex]; const echoRevealed = diamond.hidden && game.ageSkillsLearned.includes("echo") && game.caveDiamondStates[index]; return <button key={`cave-diamond-${index}-${spotIndex}`} className={`cave-diamond-mine cave-diamond-${index + 1} ${diamond.hidden ? "diamond-partly-hidden" : ""} ${echoRevealed ? "echo-revealed-diamond" : ""} ${game.caveDiamondStates[index] ? "" : "mined"}`} style={{ left: `${diamond.x}%`, top: `${diamond.y}%` }} onClick={(event) => { event.stopPropagation(); mineCaveDiamond(index); }} aria-label={game.caveDiamondStates[index] ? `${diamond.hidden ? "岩石后露出尖角的" : "地面上的"}钻石矿，使用镐子挖掘` : `第 ${index + 1} 处钻石矿已经挖完`}><i /><b>{game.caveDiamondStates[index] ? echoRevealed ? "回声定位 · 晶尖" : diamond.hidden ? "露出的晶尖" : "钻石矿" : "碎矿"}</b></button>; })}<span className="cave-path" /><b className="cave-fire" />{currentCaveWorkers.map((order, index) => <button key={`cave-worker-${order.person}`} className={`resident-cave-worker cave-worker-${index + 1}`} style={personClothesStyle(order.person)} onClick={(event) => { event.stopPropagation(); interactWithPerson(order.person, `${order.person}：${order.result}，钻石和石材已经放进你的资源记录。`, true); }}><i /><b /><em>⚒</em><span>{order.person}<small>{order.result}</small></span></button>)}</> : <><button className="camp-bed" onClick={(event) => { event.stopPropagation(); nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进睡袋，盖好条纹毯住了一晚。早上七点，在帐篷睡袋里醒来了。 "); }} aria-label="睡进帐篷睡袋并住到第二天"><i className="camp-pillow" /><b className="camp-blanket" /><span>帐篷睡袋<small>点击盖好毯子睡到明早</small></span></button><i className="camp-bag" /><i className="camp-table" /><span className="camp-lantern" /><b className="camp-window" />{wildFriendVisit === "camp" && <button style={personClothesStyle("安安")} className="camp-resident anan-character" onClick={() => interactWithPerson("安安", "安安：今晚风很轻，我们可以住在帐篷里听着溪水声睡觉。 ")}><i /><em className="anan-pigtails" /><b /><span>安安住在帐篷里</span></button>}</>}
                     {wildFriendVisit === farmInterior && <button style={personClothesStyle("安安")} className="wild-friend-visitor anan-character" onClick={() => interactWithPerson("安安", farmInterior === "cave" ? "安安：这里的水晶真漂亮！我们点亮火柴，再一起找找通往深处的小路吧。" : "安安：今晚风很轻，我们可以在帐篷里讲山谷探险的故事。") }><i /><em className="anan-pigtails" /><b /><span>安安<small>来陪你玩</small></span></button>}
@@ -9354,7 +9468,7 @@ export default function FarmGame() {
                     <div className={`player indoor-player farm-special-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}><span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     {!interiorFireLit && <div className="special-darkness"><span>{farmInterior === "cave" ? "山洞里很暗" : "帐篷里还没点灯"}</span></div>}
                   </div>
-                  <div className="farm-special-actions"><button onClick={igniteWithMatches} disabled={interiorFireLit}>{interiorFireLit ? "火光已经点亮" : `使用火柴照明 · 剩 ${game.crafted.matches}`}</button>{farmInterior === "cave" && <button className={selected === "pickaxe" ? "active-special-tool" : ""} onClick={() => { setSelected("pickaxe"); setMessage(game.toolUpgrades.pickaxe ? "拿出了金铁镐子。每处矿脉能挖到 3 颗钻石。 " : "拿出了镐子。点击地面走到钻石矿旁，再点击钻石矿挖掘。 "); }}>{game.toolUpgrades.pickaxe ? `拿出金铁镐子 · 剩 ${game.toolUpgradeDays.pickaxe} 天` : "拿出镐子"} · 已有 {game.diamonds} 钻石</button>}{farmInterior === "camp" && <button className="camp-sleep-action" onClick={() => { nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进睡袋，盖好毯子睡了一夜。第二天早上仍在帐篷里醒来。 "); }}>钻进睡袋 · 睡到明早</button>}<button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); setMessage(farmInterior === "cave" ? "从山洞回到大农场。" : "从帐篷回到露营地。 "); }}>从入口出去</button></div>
+                  <div className="farm-special-actions"><button onClick={igniteWithMatches} disabled={interiorFireLit}>{interiorFireLit ? "火光已经点亮" : `使用火柴照明 · 剩 ${game.crafted.matches}`}</button>{farmInterior === "cave" && <button className={selected === "pickaxe" ? "active-special-tool" : ""} onClick={() => { setSelected("pickaxe"); setMessage(game.toolUpgrades.pickaxe ? "拿出了金铁镐子。每处矿脉能挖到 3 颗钻石。 " : "拿出了镐子。点击地面走到钻石矿旁，再点击钻石矿挖掘。 "); }}>{game.toolUpgrades.pickaxe ? `拿出金铁镐子 · 剩 ${game.toolUpgradeDays.pickaxe} 天` : "拿出镐子"} · 已有 {game.diamonds} 钻石</button>}{farmInterior === "camp" && <button className="camp-sleep-action" onClick={() => { nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进睡袋，盖好毯子睡了一夜。第二天早上仍在帐篷里醒来。 "); }}>钻进睡袋 · 睡到明早</button>}<button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); setMessage(farmInterior === "cave" ? "从山洞回到大农场。" : "从帐篷出来，回到刚才搭营的户外地点。 "); }}>从入口出去</button></div>
                 </section>
               </div>
             )}
