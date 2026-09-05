@@ -33,8 +33,10 @@ type WorkshopSeedId = "strawberry" | "watermelon" | "corn" | "pumpkin";
 type WorkshopSeason = "春" | "夏" | "秋" | "冬";
 type SnowBuildState = { playerX: number; bodyX: number; bodySize: number; bodyPlaced: boolean; headX: number; headSize: number; headRolled: boolean; headStacked: boolean };
 type BirthdayCeremonyState = { person: string; own: boolean; step: 0 | 1 | 2; songTaps: number; blowTaps: number; cutProgress: number };
-type AgeSkillId = "trail" | "shelter" | "hybrid" | "echo";
+type AgeSkillId = "trail" | "shelter" | "hybrid" | "echo" | "clone";
 type AgeTrainingState = { skill: AgeSkillId; progress: number; mistakes: number };
+type CloneWorkKind = "water" | "fertilize" | "plant" | "mineDiamond" | "chopWood" | "breakStone" | "gatherHerbs" | "fish" | "helpResident";
+type CloneMissionState = { kind: CloneWorkKind; label: string; destination: string; icon: string };
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
 type CraftType = "chest" | "fence" | "gate" | "scarecrow" | "lamp" | "bench" | "sign" | "table" | "floorLamp" | "television" | "sofa" | "bookshelf" | "dresser" | "nightstand" | "matches" | "blanket";
 type CraftRotation = 0 | 45 | 90;
@@ -44,6 +46,7 @@ type FencePlacementSlot = { id: string; x: number; y: number; rotation: 0 | 90 }
 type ForestItem = "pinecone" | "pineNut";
 type PetType = "cat" | "dog" | "chick" | "duck" | "rabbit" | "hamster";
 type PetRecord = { id: string; type: PetType; sex: "男生" | "女生"; bornDay: number; bornYear: number };
+type BabyCareState = { petId: string; stage: 0 | 1 | 2 | 3; feedHits: number; brushProgress: number; mistakes: number };
 type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "resin" } | { kind: "matches" } | { kind: "product"; id: "egg" | "milk" | "wool" } | { kind: "petGift"; id: "feather" | "softFur" | "bone" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
 type ShippingItemGroup = "resource" | "seed" | "craft" | "single";
 type ShippingSingleField = "wood" | "stone" | "diamonds" | "herbs" | "pinecones" | "pineNuts" | "resin" | "eggs" | "milk" | "wool" | "feathers" | "softFur" | "petBones" | "cookies" | "crabs" | "shrimp" | "cookedCrabs" | "cookedShrimp" | "drinks" | "oldSocks" | "puddleHoes";
@@ -204,6 +207,8 @@ type GameState = {
   rainExposure: number;
   pets: PetRecord[];
   lastPetBirthYears: Partial<Record<PetType, number>>;
+  lastBabyCareDays: Record<string, string>;
+  babyCareStreaks: Record<string, number>;
   sickPetIds: string[];
   lastPetIllnessAbsoluteDay: number;
   missingPetId: string | null;
@@ -927,6 +932,7 @@ const AGE_SKILLS: Array<{ id: AgeSkillId; age: number; name: string; kind: strin
   { id: "shelter", age: 3, name: "独立搭营", kind: "野外本领", description: "辨认六件营地材料，把正确零件逐件拖进帐篷骨架。", benefit: "学会后得到结实的野营毯；需要 12 木头、6 石头、2 树脂。", required: 6 },
   { id: "hybrid", age: 4, name: "四季育种观察", kind: "农场研究", description: "根据天气观察卡，从三种种子中完成四轮正确配对。", benefit: "学会后精心照料的作物更容易长成星级品质，并获得四季种子。", required: 4 },
   { id: "echo", age: 5, name: "听石寻晶", kind: "稀奇能力", description: "听岩石回声，在光点进入绿色区域的一瞬间完成四次定位。", benefit: "学会后找到 1 颗真正的钻石，并能听出隐藏矿脉。", required: 4 },
+  { id: "clone", age: 7, name: "分身穿墙瞬移", kind: "七岁稀奇本领", description: "在五种不同障碍前辨认正确落点，让分身穿过墙壁并安全瞬移到工作地点。", benefit: "学会后可以随时召出一个分身，自己继续行动，分身会自动去农田、树林、山洞或居民家完成工作。", required: 5 },
 ];
 const AGE_TRAIL_ROUTE = ["right", "up", "right", "down", "right", "up"] as const;
 const AGE_CAMP_PARTS = ["长木杆", "短木杆", "平整石块", "树脂接头", "防水布", "固定绳"] as const;
@@ -936,6 +942,14 @@ const AGE_HYBRID_ROUNDS = [
   { weather: "秋日凉风", answers: ["胡萝卜种子", "玉米种子", "草莓种子"], correct: "玉米种子" },
   { weather: "冬日温棚", answers: ["南瓜种子", "西瓜种子", "番茄种子"], correct: "南瓜种子" },
 ] as const;
+const AGE_CLONE_ROUTES = [
+  { destination: "农田水渠", signal: "水滴门", answers: ["石纹门", "水滴门", "叶片门"] },
+  { destination: "草莓苗圃", signal: "红莓门", answers: ["红莓门", "矿晶门", "木纹门"] },
+  { destination: "青禾树林", signal: "木纹门", answers: ["水滴门", "星光门", "木纹门"] },
+  { destination: "山洞矿脉", signal: "矿晶门", answers: ["叶片门", "矿晶门", "红莓门"] },
+  { destination: "居民小院", signal: "星光门", answers: ["木纹门", "星光门", "水滴门"] },
+] as const;
+const CLONE_HELP_RESIDENTS = ["安安", "林婶", "鲁师傅", "白医生", "叶老师", "许老师", "阿麦", "周镇长", "沈馆长", "小玲", "豆豆", "小满", "阿禾"] as const;
 
 const CAVE_DIAMOND_SPOTS = [
   { x: 18, y: 70, hidden: false }, { x: 29, y: 61, hidden: true }, { x: 39, y: 72, hidden: false },
@@ -1176,6 +1190,8 @@ const makeNewGame = (): GameState => ({
   rainExposure: 0,
   pets: [],
   lastPetBirthYears: {},
+  lastBabyCareDays: {},
+  babyCareStreaks: {},
   sickPetIds: [],
   lastPetIllnessAbsoluteDay: 0,
   missingPetId: null,
@@ -1285,6 +1301,8 @@ const restoreVillageGame = (saved: string | null): GameState => {
       sickFarmAnimalIds: parsed.sickFarmAnimalIds ?? [],
       pets: petFamily.pets,
       lastPetBirthYears: petFamily.lastPetBirthYears,
+      lastBabyCareDays: parsed.lastBabyCareDays ?? {},
+      babyCareStreaks: parsed.babyCareStreaks ?? {},
       mallItems: { ...defaults.mallItems, ...(parsed.mallItems ?? {}) },
       lanternRiddlesSolved: parsed.lanternRiddlesSolved ?? [],
       festivalActivitiesCompleted: parsed.festivalActivitiesCompleted ?? [],
@@ -1367,10 +1385,17 @@ export default function FarmGame() {
   const [heldWishMaterial, setHeldWishMaterial] = useState<WishMaterial | null>(null);
   const [heldWishSeal, setHeldWishSeal] = useState(false);
   const [birthdayCeremony, setBirthdayCeremony] = useState<BirthdayCeremonyState | null>(null);
+  const [dismissedBirthdayPartyKey, setDismissedBirthdayPartyKey] = useState<string | null>(null);
   const [ageBookOpen, setAgeBookOpen] = useState(false);
   const [ageTraining, setAgeTraining] = useState<AgeTrainingState | null>(null);
   const [ageTrainingHeldPart, setAgeTrainingHeldPart] = useState<string | null>(null);
   const [ageEchoPulse, setAgeEchoPulse] = useState(6);
+  const [cloneWorkOpen, setCloneWorkOpen] = useState(false);
+  const [cloneMission, setCloneMission] = useState<CloneMissionState | null>(null);
+  const [babyCare, setBabyCare] = useState<BabyCareState | null>(null);
+  const [babyCareAim, setBabyCareAim] = useState(8);
+  const [babyCareWater, setBabyCareWater] = useState(0);
+  const [babyCareToyAim, setBabyCareToyAim] = useState(12);
   const [cafePlayerSitting, setCafePlayerSitting] = useState(false);
   const [careSession, setCareSession] = useState<{ mode: "training" | "treatment"; illness: IllnessId; step: number; progress: number; selected: string[]; herbParts: number; waterParts: number } | null>(null);
   const [medicalThermometerPicked, setMedicalThermometerPicked] = useState(false);
@@ -1543,6 +1568,12 @@ export default function FarmGame() {
   const careGestureDistanceRef = useRef(0);
   const careHoldTimerRef = useRef<number | null>(null);
   const careHoldFinishTimerRef = useRef<number | null>(null);
+  const cloneMissionTimerRef = useRef<number | null>(null);
+  const babyCareAimDirectionRef = useRef(1);
+  const babyCareToyDirectionRef = useRef(1);
+  const babyCareWaterTimerRef = useRef<number | null>(null);
+  const babyCareBrushLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const babyCareBrushDistanceRef = useRef(0);
   const saveTimerRef = useRef<number | null>(null);
   const latestSaveRef = useRef<{ key: string; game: GameState } | null>(null);
   const beachRespawnTimersRef = useRef<number[]>([]);
@@ -1566,6 +1597,26 @@ export default function FarmGame() {
     }, 65);
     return () => window.clearInterval(timer);
   }, [ageTraining?.skill]);
+
+  useEffect(() => {
+    if (!babyCare || (babyCare.stage !== 0 && babyCare.stage !== 3)) return;
+    const timer = window.setInterval(() => {
+      if (babyCare.stage === 0) {
+        setBabyCareAim((current) => {
+          if (current >= 94) babyCareAimDirectionRef.current = -1;
+          if (current <= 6) babyCareAimDirectionRef.current = 1;
+          return current + babyCareAimDirectionRef.current * 4;
+        });
+      } else {
+        setBabyCareToyAim((current) => {
+          if (current >= 92) babyCareToyDirectionRef.current = -1;
+          if (current <= 8) babyCareToyDirectionRef.current = 1;
+          return current + babyCareToyDirectionRef.current * 5;
+        });
+      }
+    }, babyCare.stage === 0 ? 58 : 52);
+    return () => window.clearInterval(timer);
+  }, [babyCare?.stage]);
 
   useEffect(() => {
     const splitVillage = new URLSearchParams(window.location.search).get("splitVillage");
@@ -2038,6 +2089,8 @@ export default function FarmGame() {
     if (tripMoveHoldTimerRef.current !== null) window.clearInterval(tripMoveHoldTimerRef.current);
     if (careHoldTimerRef.current !== null) window.clearInterval(careHoldTimerRef.current);
     if (careHoldFinishTimerRef.current !== null) window.clearTimeout(careHoldFinishTimerRef.current);
+    if (cloneMissionTimerRef.current !== null) window.clearTimeout(cloneMissionTimerRef.current);
+    if (babyCareWaterTimerRef.current !== null) window.clearInterval(babyCareWaterTimerRef.current);
     beachRespawnTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     beachRespawnTimersRef.current = [];
     bedtimeTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -2250,7 +2303,7 @@ export default function FarmGame() {
       setBedtimePhase(null);
       setMessage("小禾掀开被子下床，可以继续走路了。 ");
     } else if (bedtimePhase) return;
-    if (ananBeachTraveling || bulkChestPrompt || bulkShippingPrompt || newsBroadcast || guideOpen || journalOpen || cookingGame || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || lanternRiddle !== null || festivalProcess || dragonBoatOpen || dragonBoatTraveling) return;
+    if (ananBeachTraveling || babyCare || bulkChestPrompt || bulkShippingPrompt || cloneWorkOpen || newsBroadcast || guideOpen || journalOpen || cookingGame || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || lanternRiddle !== null || festivalProcess || dragonBoatOpen || dragonBoatTraveling) return;
     if (ananBeachOpen) {
       showWalking(dx, dy);
       setBeachPlayer((current) => ({
@@ -2338,7 +2391,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, bedtimePhase, bulkChestPrompt, bulkShippingPrompt, carTraveling, chestOpen, shippingBinOpen, cookingGame, craftingOpen, crossSceneBoundary, divingAtSea, dragonBoatOpen, dragonBoatTraveling, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmEdgeTraveling, farmGateOpen, farmInterior, festivalProcess, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, guideOpen, journalOpen, lanternRiddle, mallOpen, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
+  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, babyCare, bedtimePhase, bulkChestPrompt, bulkShippingPrompt, carTraveling, chestOpen, shippingBinOpen, cloneWorkOpen, cookingGame, craftingOpen, crossSceneBoundary, divingAtSea, dragonBoatOpen, dragonBoatTraveling, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmEdgeTraveling, farmGateOpen, farmInterior, festivalProcess, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, guideOpen, journalOpen, lanternRiddle, mallOpen, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -2351,6 +2404,18 @@ export default function FarmGame() {
       }
       if (key === "escape" && guideOpen) { setGuideOpen(false); return; }
       if (key === "escape" && journalOpen) { setJournalOpen(false); return; }
+      if (key === "escape" && babyCare) {
+        if (babyCareWaterTimerRef.current !== null) window.clearInterval(babyCareWaterTimerRef.current);
+        babyCareWaterTimerRef.current = null;
+        setBabyCare(null);
+        setMessage("暂时离开宝宝照顾区，回到农舍；今天还可以重新照顾。 ");
+        return;
+      }
+      if (key === "escape" && cloneWorkOpen) {
+        setCloneWorkOpen(false);
+        setMessage(cloneMission ? "收起了分身工作台，分身会继续完成已经安排的工作。 " : "收起了分身工作台，回到游戏。 ");
+        return;
+      }
       if (key === "escape" && schoolLesson) {
         setSchoolLesson(null);
         setMessage("已经退出课堂，回到学校教室。下次可以重新开始这节课。 ");
@@ -2372,6 +2437,11 @@ export default function FarmGame() {
       if (key === "escape" && newsBroadcast) {
         setNewsBroadcast(null);
         setMessage("关掉电视节目，回到游戏。 ");
+        return;
+      }
+      if (key === "escape" && birthdayCeremony) {
+        setBirthdayCeremony(null);
+        setMessage("生日会页面已经关闭，回到农舍房间。再次点击蛋糕可以继续。 ");
         return;
       }
       if (key === "escape" && townhallCalendarOpen) {
@@ -2495,7 +2565,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, builderOpen, bulkChestPrompt, bulkShippingPrompt, chestOpen, shippingBinOpen, cookingGame, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, guideOpen, journalOpen, move, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, ranchOpen, residentHome, schoolLesson, splitScreen, townhallCalendarOpen]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, babyCare, birthdayCeremony, builderOpen, bulkChestPrompt, bulkShippingPrompt, chestOpen, shippingBinOpen, cloneMission, cloneWorkOpen, cookingGame, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, guideOpen, journalOpen, move, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, ranchOpen, residentHome, schoolLesson, splitScreen, townhallCalendarOpen]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -6490,7 +6560,7 @@ export default function FarmGame() {
         next.watermelonSeeds += 3;
         next.cornSeeds += 3;
         next.pumpkinSeeds += 3;
-      } else {
+      } else if (skillId === "echo") {
         next.diamonds += 1;
       }
       return next;
@@ -6509,6 +6579,12 @@ export default function FarmGame() {
       return;
     }
     if (game.ageSkillsLearned.includes(skillId)) {
+      if (skillId === "clone") {
+        setCloneWorkOpen(true);
+        setMessage("打开分身工作台。选择一项工作，另一个小禾会穿墙瞬移过去自动完成。 ");
+        playTone(820);
+        return;
+      }
       setMessage(`小禾已经学会“${skill.name}”了，这项能力已经永久记录在成长手册里。`);
       playTone(640);
       return;
@@ -6537,6 +6613,119 @@ export default function FarmGame() {
     setAgeTraining({ ...ageTraining, progress: next });
     setMessage(`“${skill.name}”已经完成 ${next}/${skill.required} 段，继续观察下一段。`);
     playTone(470 + next * 55);
+  };
+
+  const trainAgeClone = (signal: string) => {
+    if (ageTraining?.skill !== "clone") return;
+    const route = AGE_CLONE_ROUTES[ageTraining.progress];
+    if (!route) return;
+    if (signal !== route.signal) {
+      setAgeTraining({ ...ageTraining, mistakes: ageTraining.mistakes + 1 });
+      setMessage(`分身撞在了障碍前，${signal}不能通往${route.destination}。重新观察墙上的落点标记。`);
+      playTone(220);
+      return;
+    }
+    setMessage(`落点正确！分身穿过墙壁，瞬移到了${route.destination}。`);
+    advanceAgeTraining();
+  };
+
+  const dispatchCloneWork = (kind: CloneWorkKind, crop?: CropType, person?: string) => {
+    if (!game.ageSkillsLearned.includes("clone")) {
+      setMessage("要先在七岁成长手册里完成“分身穿墙瞬移”的五段训练。 ");
+      playTone(220);
+      return;
+    }
+    if (cloneMission) {
+      setMessage(`分身正在${cloneMission.destination}${cloneMission.label}，等她回来再安排下一件事。`);
+      return;
+    }
+    const cropInfo = crop ? CROP_INFO[crop] : null;
+    const noTarget = kind === "water" ? !game.tiles.some((tile) => tile.state === "crop" && !tile.watered)
+      : kind === "fertilize" ? !game.tiles.some((tile) => tile.state === "crop")
+      : kind === "plant" ? !cropInfo || game[cropInfo.seedField] <= 0 || !game.tiles.some((tile) => tile.state === "soil")
+      : kind === "mineDiamond" ? !game.caveDiamondStates.some(Boolean)
+      : kind === "chopWood" ? !game.treeStates.some(Boolean)
+      : kind === "breakStone" ? !game.rockStates.some(Boolean)
+      : false;
+    if (noTarget) {
+      const reason = kind === "water" ? "田里没有需要浇水的作物"
+        : kind === "fertilize" ? "田里还没有作物可以施肥"
+        : kind === "plant" ? `${cropInfo?.name ?? "这种作物"}种子不足，或者没有空着的松土地`
+        : kind === "mineDiamond" ? "今天山洞里没有还没挖过的钻石矿"
+        : kind === "chopWood" ? "农场上暂时没有可以砍的树"
+        : "农场上暂时没有可以敲碎的石头";
+      setMessage(`分身检查了工作地点：${reason}。`);
+      playTone(260);
+      return;
+    }
+
+    const mission: CloneMissionState = kind === "water" ? { kind, label: "给作物浇水", destination: "青禾农田", icon: "水" }
+      : kind === "fertilize" ? { kind, label: "给作物施肥", destination: "青禾农田", icon: "肥" }
+      : kind === "plant" ? { kind, label: `播种${cropInfo?.name}`, destination: "青禾农田", icon: cropInfo?.short ?? "苗" }
+      : kind === "mineDiamond" ? { kind, label: "挖掘钻石", destination: "青禾山洞", icon: "◆" }
+      : kind === "chopWood" ? { kind, label: "砍树收集木材", destination: "青禾树林", icon: "木" }
+      : kind === "breakStone" ? { kind, label: "敲石收集石材", destination: "农场石坡", icon: "石" }
+      : kind === "gatherHerbs" ? { kind, label: "寻找药材", destination: "溪边草地", icon: "药" }
+      : kind === "fish" ? { kind, label: "在池边钓鱼", destination: "青禾鱼塘", icon: "鱼" }
+      : { kind, label: `帮助${person}`, destination: `${person}家`, icon: "心" };
+
+    setCloneMission(mission);
+    setMessage(`另一个小禾已经出现，穿过障碍瞬移去${mission.destination}${mission.label}。你仍然可以继续做自己的事情。`);
+    playTone(840);
+    if (cloneMissionTimerRef.current !== null) window.clearTimeout(cloneMissionTimerRef.current);
+    cloneMissionTimerRef.current = window.setTimeout(() => {
+      setGame((current) => {
+        let next: GameState = { ...current };
+        if (kind === "water") {
+          const targets = current.tiles.map((tile, index) => tile.state === "crop" && !tile.watered ? index : -1).filter((index) => index >= 0).slice(0, 8);
+          next.tiles = current.tiles.map((tile, index) => targets.includes(index) ? { ...tile, watered: true, care: (tile.care ?? 0) + 1 } : tile);
+          next.wateredCount = current.wateredCount + targets.length;
+        } else if (kind === "fertilize") {
+          const targets = current.tiles.map((tile, index) => tile.state === "crop" ? index : -1).filter((index) => index >= 0).slice(0, 8);
+          next.tiles = current.tiles.map((tile, index) => targets.includes(index) ? { ...tile, care: (tile.care ?? 0) + 2 } : tile);
+        } else if (kind === "plant" && cropInfo && crop) {
+          const seedField = cropInfo.seedField;
+          const targets = current.tiles.map((tile, index) => tile.state === "soil" ? index : -1).filter((index) => index >= 0).slice(0, Math.min(4, current[seedField]));
+          next.tiles = current.tiles.map((tile, index) => targets.includes(index) ? { state: "crop", stage: 0, watered: false, cropType: crop, care: 0 } : tile);
+          next[seedField] = current[seedField] - targets.length;
+          next.planted = current.planted + targets.length;
+        } else if (kind === "mineDiamond") {
+          const index = current.caveDiamondStates.findIndex(Boolean);
+          const caveDiamondStates = [...current.caveDiamondStates];
+          if (index >= 0) caveDiamondStates[index] = false;
+          next.caveDiamondStates = caveDiamondStates;
+          next.diamonds = current.diamonds + (current.toolUpgrades.pickaxe ? 3 : 2);
+        } else if (kind === "chopWood") {
+          const index = current.treeStates.findIndex(Boolean);
+          const treeStates = [...current.treeStates];
+          if (index >= 0) treeStates[index] = false;
+          next.treeStates = treeStates;
+          next.wood = current.wood + 5;
+          next.resin = current.resin + 1;
+          next.pinecones = current.pinecones + 1;
+          next.pineNuts = current.pineNuts + 2;
+        } else if (kind === "breakStone") {
+          const index = current.rockStates.findIndex(Boolean);
+          const rockStates = [...current.rockStates];
+          if (index >= 0) rockStates[index] = false;
+          next.rockStates = rockStates;
+          next.stone = current.stone + 4;
+        } else if (kind === "gatherHerbs") {
+          next.herbs = current.herbs + 3;
+        } else if (kind === "fish") {
+          next.inventory = { ...current.inventory, fish: current.inventory.fish + 2 };
+          next.fishCaught = current.fishCaught + 2;
+        } else if (kind === "helpResident" && person) {
+          next.friendship = { ...current.friendship, [person]: Math.min(100, (current.friendship[person] ?? 0) + 15) };
+        }
+        next.journalEntries = [`${SEASONS[current.season]}第${current.day}天：分身穿墙瞬移到${mission.destination}，完成“${mission.label}”。`, ...current.journalEntries].slice(0, 40);
+        return next;
+      });
+      setCloneMission(null);
+      setMessage(`分身从${mission.destination}瞬移回来了，“${mission.label}”已经真实完成，成果已经留在田地、资源或好感度里。`);
+      playTone(980);
+      cloneMissionTimerRef.current = null;
+    }, 1_350);
   };
 
   const trainAgeTrail = (direction: "up" | "down" | "left" | "right") => {
@@ -7007,6 +7196,8 @@ export default function FarmGame() {
   const daysUntilFestival = nextFestivalPosition >= calendarPosition ? nextFestivalPosition - calendarPosition : 112 - calendarPosition + nextFestivalPosition;
   const displayName = multiplayerSession?.playerName ?? "小禾";
   const isBirthday = !festivalPreview && game.season === 0 && game.day === 19;
+  const currentBirthdayPartyKey = `${game.year}-${game.season}-${game.day}`;
+  const showBirthdayParty = isBirthday && dismissedBirthdayPartyKey !== currentBirthdayPartyKey;
   const todayResidentBirthday = !festivalPreview ? RESIDENT_BIRTHDAYS.find((birthday) => birthday.name !== "小禾" && birthday.season === game.season && birthday.day === game.day) ?? null : null;
   const calendarMonth = [2, 5, 8, 11][displaySeason];
   const sceneLabel = scene === "farm" ? activeVillageInfo.farm : scene === "westFriendFarm" ? "西边 · 安安的小农场" : scene === "mysteryRoad" ? "远方新区 · 青禾大商场" : scene === "town" ? `${activeVillageInfo.name} · 中心街` : scene === "cultureDistrict" ? `${activeVillageInfo.name} · 清河文化街` : scene === "residentialDistrict" ? `${activeVillageInfo.name} · 青禾住宅坡` : scene === "eastNeighbor" ? "东郊 · 林婶的果园小屋" : scene === "southNeighbor" ? "南坡 · 鲁师傅的院子" : "北林 · 叶老师的书屋";
@@ -8114,6 +8305,121 @@ export default function FarmGame() {
     playTone(720);
   };
 
+  const beginBabyPetCare = (pet: PetRecord) => {
+    const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name ?? "小宠物";
+    const dayKey = `${game.year}-${game.season}-${game.day}`;
+    if (game.lastBabyCareDays[pet.id] === dayKey) {
+      setMessage(`${petName}宝宝今天已经吃饱、喝好、梳过毛并玩过软球了。明天再进行下一次完整照顾。`);
+      playTone(620);
+      return;
+    }
+    setBabyCare({ petId: pet.id, stage: 0, feedHits: 0, brushProgress: 0, mistakes: 0 });
+    setBabyCareAim(8);
+    setBabyCareWater(0);
+    setBabyCareToyAim(12);
+    babyCareAimDirectionRef.current = 1;
+    babyCareToyDirectionRef.current = 1;
+    babyCareBrushDistanceRef.current = 0;
+    babyCareBrushLastPointRef.current = null;
+    setMessage(`开始照顾刚出生的${petName}宝宝：先看准它张嘴的时机，把两勺食物送到嘴边。`);
+    playTone(760);
+  };
+
+  const feedBabyAtRightMoment = () => {
+    if (!babyCare || babyCare.stage !== 0) return;
+    if (babyCareAim < 42 || babyCareAim > 58) {
+      setBabyCare({ ...babyCare, mistakes: babyCare.mistakes + 1 });
+      setMessage("食勺放早了或放晚了，宝宝转开了脑袋。观察绿色区域，再等嘴巴对准食勺。 ");
+      playTone(220);
+      return;
+    }
+    const nextHits = babyCare.feedHits + 1;
+    if (nextHits >= 2) {
+      setBabyCare({ ...babyCare, stage: 1, feedHits: 2 });
+      setBabyCareWater(0);
+      setMessage("两勺食物都稳稳喂到了。现在按住水壶加水，在水面进入绿色刻度时松手。 ");
+      playTone(760);
+      return;
+    }
+    setBabyCare({ ...babyCare, feedHits: nextHits });
+    setBabyCareAim(8);
+    setMessage("第一勺喂好了，宝宝会再次探头，继续看准时机喂第二勺。 ");
+    playTone(610);
+  };
+
+  const startBabyWaterPour = () => {
+    if (!babyCare || babyCare.stage !== 1 || babyCareWaterTimerRef.current !== null) return;
+    setBabyCareWater(0);
+    babyCareWaterTimerRef.current = window.setInterval(() => {
+      setBabyCareWater((current) => Math.min(100, current + 3));
+    }, 55);
+    setMessage("水正在流进小碗，继续按住；到绿色刻度再松手。 ");
+  };
+
+  const stopBabyWaterPour = () => {
+    if (!babyCare || babyCare.stage !== 1) return;
+    if (babyCareWaterTimerRef.current !== null) window.clearInterval(babyCareWaterTimerRef.current);
+    babyCareWaterTimerRef.current = null;
+    if (babyCareWater < 64 || babyCareWater > 80) {
+      setBabyCare({ ...babyCare, mistakes: babyCare.mistakes + 1 });
+      setBabyCareWater(0);
+      setMessage(babyCareWater < 64 ? "水还太少，宝宝喝不到。重新按住水壶，把水加到绿色刻度。 " : "水倒得太满，溅出了小碗。擦干以后重新控制水量。 ");
+      playTone(230);
+      return;
+    }
+    setBabyCare({ ...babyCare, stage: 2 });
+    setMessage("水量刚刚好。现在按住梳子，沿着宝宝身体来回梳理，不能只点一下。 ");
+    playTone(760);
+  };
+
+  const brushBabyPet = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!babyCare || babyCare.stage !== 2) return;
+    const point = { x: event.clientX, y: event.clientY };
+    if (event.type === "pointerdown") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      babyCareBrushLastPointRef.current = point;
+      setMessage("梳子贴住毛发了，沿着身体左右来回移动。 ");
+      return;
+    }
+    const last = babyCareBrushLastPointRef.current;
+    if (!last || event.buttons === 0) return;
+    const distance = Math.hypot(point.x - last.x, point.y - last.y);
+    babyCareBrushLastPointRef.current = point;
+    babyCareBrushDistanceRef.current += distance;
+    const progress = Math.min(100, babyCareBrushDistanceRef.current / 2.3);
+    if (progress >= 100) {
+      babyCareBrushLastPointRef.current = null;
+      setBabyCare({ ...babyCare, stage: 3, brushProgress: 100 });
+      setBabyCareToyAim(12);
+      setMessage("毛发梳顺了。最后瞄准正在跑动的宝宝，把软球投进它前面的绿色范围。 ");
+      playTone(810);
+      return;
+    }
+    setBabyCare({ ...babyCare, brushProgress: progress });
+  };
+
+  const throwBabyToy = () => {
+    if (!babyCare || babyCare.stage !== 3) return;
+    if (babyCareToyAim < 58 || babyCareToyAim > 76) {
+      setBabyCare({ ...babyCare, mistakes: babyCare.mistakes + 1 });
+      setMessage("软球从宝宝身边滚过去了。看它跑到绿色接球区时再投。 ");
+      playTone(230);
+      return;
+    }
+    const caredPet = game.pets.find((pet) => pet.id === babyCare.petId);
+    const petName = PET_CATALOG.find((entry) => entry.id === caredPet?.type)?.name ?? "小宠物";
+    const dayKey = `${game.year}-${game.season}-${game.day}`;
+    setGame((current) => ({
+      ...current,
+      lastBabyCareDays: { ...current.lastBabyCareDays, [babyCare.petId]: dayKey },
+      babyCareStreaks: { ...current.babyCareStreaks, [babyCare.petId]: (current.babyCareStreaks[babyCare.petId] ?? 0) + 1 },
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：亲手给${petName}宝宝喂食、控水、梳毛并陪它接球。`, ...current.journalEntries].slice(0, 40),
+    }));
+    setBabyCare(null);
+    setMessage(`${petName}宝宝接住了软球，今天的照顾真正完成！它吃饱喝足、毛发整齐，也更信任你了。`);
+    playTone(1020);
+  };
+
   const healPetWithHerb = (pet: PetRecord) => {
     const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name ?? "小宠物";
     if (!game.sickPetIds.includes(pet.id)) { setMessage(`${petName}精神很好，正在小禾脚边开心地跑动。`); return; }
@@ -8384,7 +8690,15 @@ export default function FarmGame() {
         </div>
       </header>
 
+      {ageBookOpen && ageTraining?.skill === "clone" && (() => { const skill = AGE_SKILLS.find((item) => item.id === "clone")!; const route = AGE_CLONE_ROUTES[Math.min(ageTraining.progress, AGE_CLONE_ROUTES.length - 1)]; return <div className="clone-training-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="分身穿墙瞬移实际训练"><header><div><span>七岁本领 · 穿墙落点训练</span><h2>{skill.name}</h2><small>成功 {ageTraining.progress}/{skill.required} 次 · 撞墙 {ageTraining.mistakes} 次</small></div><button onClick={() => { setAgeTraining(null); setMessage("暂时退出穿墙训练，回到成长手册。 "); }} aria-label="退出穿墙训练">×</button></header><div className="clone-training-course"><div className="training-original"><i /><b /><span>小禾</span></div><div className="training-solid-wall"><i /><i /><i /><strong>厚石墙</strong></div><div className="training-landing"><i /><b /><span>{route.destination}</span></div><div className="training-signal"><small>墙上的真实落点信号</small><strong>{route.signal}</strong><p>从三个入口中辨认与落点相同的纹样。选错会撞在墙上，不能直接通过。</p></div></div><div className="clone-gate-choices">{route.answers.map((answer) => <button key={`${route.destination}-${answer}`} onClick={() => trainAgeClone(answer)}><i>{answer.slice(0, 1)}</i><span>{answer}</span></button>)}</div><div className="clone-training-progress">{AGE_CLONE_ROUTES.map((item, index) => <i key={item.destination} className={index < ageTraining.progress ? "done" : index === ageTraining.progress ? "active" : ""}>{index < ageTraining.progress ? "✓" : index + 1}</i>)}</div><footer><span>{message}</span><button onClick={() => setAgeTraining(null)}>返回成长手册</button></footer></section></div>; })()}
+
       {shippingReport && <div className="shipping-report-toast" role="dialog" aria-modal="true" aria-label="昨晚售卖收入"><span>大号售卖箱通知</span><strong>昨晚卖出 {shippingReport.itemCount} 件东西</strong><b>+ {shippingReport.earnings.toLocaleString()} 金币</b><button onClick={() => setShippingReport(null)}>知道了</button></div>}
+
+      {cloneMission && !cloneWorkOpen && <button className="clone-mission-hud" onClick={() => setCloneWorkOpen(true)}><i>{cloneMission.icon}</i><span><strong>分身正在{cloneMission.label}</strong><small>{cloneMission.destination} · 你可以继续行动</small></span></button>}
+
+      {cloneWorkOpen && <div className="clone-work-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="分身穿墙瞬移工作台"><header><div><span>七岁永久本领 · 主游戏可用</span><h2>分身穿墙瞬移工作台</h2></div><button onClick={() => { setCloneWorkOpen(false); setMessage(cloneMission ? "收起工作台；分身继续工作，小禾可以照常行动。 " : "收起分身工作台，回到游戏。 "); }} aria-label="关闭分身工作台">×</button></header><div className={`clone-live-route ${cloneMission ? "mission-running" : "mission-idle"}`}><div className="clone-original"><i /><b /><span>正在游玩的你</span></div><div className="clone-wall"><i /><i /><i /><strong>可穿越障碍</strong></div><div className="clone-worker"><i /><b /><span>{cloneMission ? cloneMission.label : "等待安排"}</span></div><div className="clone-portal" /><p>{cloneMission ? `分身已经穿墙瞬移到${cloneMission.destination}，成果完成后会自动加入游戏记录。` : "选择一件工作后，另一个小禾会出现并自动前往目标；原来的你仍能继续玩。"}</p></div><div className="clone-job-scroll"><section><h3>农田工作</h3><div className="clone-job-grid"><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("water")}><i>水</i><span>给作物浇水<small>最多 8 株</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("fertilize")}><i>肥</i><span>给作物施肥<small>提高照料值</small></span></button>{CROP_TYPES.map((crop) => <button key={`clone-${crop}`} disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("plant", crop)}><i>{CROP_INFO[crop].short}</i><span>播种{CROP_INFO[crop].name}<small>最多 4 格</small></span></button>)}</div></section><section><h3>山野与资源</h3><div className="clone-job-grid"><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("mineDiamond")}><i>◆</i><span>进山洞挖钻石<small>金铁镐会增产</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("chopWood")}><i>木</i><span>砍树<small>木头、树脂、松果</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("breakStone")}><i>石</i><span>敲碎石头<small>收集石材</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("gatherHerbs")}><i>药</i><span>采集药材<small>加入资源记录</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("fish")}><i>鱼</i><span>池塘钓鱼<small>鱼钩会落进水里</small></span></button></div></section><section><h3>帮助居民</h3><div className="clone-resident-grid">{CLONE_HELP_RESIDENTS.map((person) => <button key={`clone-help-${person}`} disabled={Boolean(cloneMission)} style={personClothesStyle(person)} onClick={() => dispatchCloneWork("helpResident", undefined, person)}><i /><b /><span>帮助{person}<small>完成委托 · 好感 +15</small></span></button>)}</div></section></div><footer><span>{message}</span><button onClick={() => setCloneWorkOpen(false)}>回到主游戏</button></footer></section></div>}
+
+      {babyCare && (() => { const petRecord = game.pets.find((pet) => pet.id === babyCare.petId); const petName = PET_CATALOG.find((pet) => pet.id === petRecord?.type)?.name ?? "小宠物"; return <div className="baby-care-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label={`照顾${petName}宝宝`}><header><div><span>农舍里的新生小动物 · 真实照顾</span><h2>照顾{petName}宝宝</h2><small>第 {babyCare.stage + 1}/4 段 · 失误 {babyCare.mistakes} 次</small></div><button onClick={() => { if (babyCareWaterTimerRef.current !== null) window.clearInterval(babyCareWaterTimerRef.current); babyCareWaterTimerRef.current = null; setBabyCare(null); }} aria-label="暂时离开照顾">×</button></header><div className={`baby-care-stage baby-stage-${babyCare.stage} pet-${petRecord?.type ?? "cat"}`}><div className="baby-pet-art"><i /><b /><em /></div>{babyCare.stage === 0 && <div className="baby-feed-game"><strong>等宝宝的嘴对准食勺</strong><div className="baby-timing-track"><i className="baby-good-zone" /><b style={{ left: `${babyCareAim}%` }} /></div><button onClick={feedBabyAtRightMoment}>现在喂一勺</button><small>已经喂好 {babyCare.feedHits}/2 勺；光点进入绿色区域才算喂到</small></div>}{babyCare.stage === 1 && <div className="baby-water-game"><strong>按住水壶，在正确水位松手</strong><div className="baby-water-bowl"><i style={{ height: `${babyCareWater}%` }} /><b /></div><div className="baby-water-meter"><i className="baby-water-zone" /><b style={{ height: `${babyCareWater}%` }} /></div><button onPointerDown={startBabyWaterPour} onPointerUp={stopBabyWaterPour} onPointerLeave={stopBabyWaterPour} onPointerCancel={stopBabyWaterPour}>按住倒水 · 松手停下</button><small>水量 {babyCareWater}% · 少了喝不到，多了会溅出来</small></div>}{babyCare.stage === 2 && <div className="baby-brush-game"><strong>按住梳子，沿身体来回梳毛</strong><div className="baby-brush-surface" onPointerDown={brushBabyPet} onPointerMove={brushBabyPet} onPointerUp={() => { babyCareBrushLastPointRef.current = null; }} onPointerCancel={() => { babyCareBrushLastPointRef.current = null; }}><i className="baby-fur-lines" /><b className="baby-brush-tool" style={{ left: `${Math.min(88, 4 + babyCare.brushProgress * .82)}%` }} /></div><div className="baby-brush-meter"><i style={{ width: `${babyCare.brushProgress}%` }} /></div><small>梳理 {Math.round(babyCare.brushProgress)}% · 只点一下不会增加进度</small></div>}{babyCare.stage === 3 && <div className="baby-play-game"><strong>看准宝宝跑进绿色接球区再投球</strong><div className="baby-play-lane"><i className="baby-catch-zone" /><b className="baby-running-target" /><em className="baby-toy-marker" style={{ left: `${babyCareToyAim}%` }} /></div><button onClick={throwBabyToy}>把软球投出去</button><small>投偏不会完成；瞄准绿色范围再出手</small></div>}</div><div className="baby-care-progress">{["喂食", "控水", "梳毛", "陪玩"].map((label, index) => <i key={label} className={index < babyCare.stage ? "done" : index === babyCare.stage ? "active" : ""}><b>{index < babyCare.stage ? "✓" : index + 1}</b><span>{label}</span></i>)}</div><footer><span>{message}</span><button onClick={() => setBabyCare(null)}>暂时离开</button></footer></section></div>; })()}
 
       {birthdayCeremony && <div className="birthday-ceremony-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label={`${birthdayCeremony.person}的生日仪式`}><header><div><span>亲手完成生日仪式 · 第 {birthdayCeremony.step + 1}/3 步</span><h2>{birthdayCeremony.person}的生日会</h2></div><button onClick={() => { setBirthdayCeremony(null); setMessage("生日仪式暂时停下了，再点一次蛋糕就能重新开始。 "); }} aria-label="暂时离开生日仪式">×</button></header><div className={`birthday-ceremony-stage ceremony-step-${birthdayCeremony.step}`}>
         {birthdayCeremony.step === 0 && <div className="birthday-song-game"><div className="birthday-singers" aria-hidden="true">{BIRTHDAY_GUESTS.slice(0, 6).map((name, index) => <i key={`singer-${name}`} className={index < birthdayCeremony.songTaps + 2 ? "singing" : ""} style={personClothesStyle(name)}><b /><em /></i>)}</div><strong>跟着亮起的音符唱生日歌</strong><div className="birthday-notes">{["祝", "生", "快", "乐"].map((note, index) => <button key={note} className={index < birthdayCeremony.songTaps ? "sung" : index === birthdayCeremony.songTaps ? "next-note" : ""} disabled={index !== birthdayCeremony.songTaps} onClick={tapBirthdaySong}><i>♪</i><span>{note}</span></button>)}</div><small>依次点击四个音符，所有人会一起开口唱歌</small></div>}
@@ -8615,7 +8929,8 @@ export default function FarmGame() {
           </div>
           <button className="age-growth-card" onClick={() => { setAgeBookOpen(true); setAgeTraining(null); setMessage(`打开成长手册：小禾现在 ${game.playerAge} 岁，已经学会 ${game.ageSkillsLearned.length} 项年龄本领。`); }}><i>{game.playerAge}</i><span><small>年龄与新本领</small><strong>{game.playerAge} 岁成长手册</strong><em>{game.ageSkillsLearned.length ? `已学会 ${game.ageSkillsLearned.length} 项` : AGE_SKILLS.some((skill) => skill.age <= game.playerAge) ? "有可以开始的实际训练" : `长到 ${AGE_SKILLS[0].age} 岁解锁第一项本领`}</em></span><b>›</b></button>
           {multiplayerSession && <div className="multiplayer-status-card"><div><span>双人村庄</span><button onClick={() => setMultiplayerOpen(true)}>查看</button></div><strong>{activeVillageInfo.name} · {multiplayerSession.roomCode}</strong><small>{partner ? `${partner.online ? "● 在线" : "○ 离线"} ${partner.playerName}住在${VILLAGE_INFO[partner.village].name}` : "等待另一位玩家加入"}</small></div>}
-          {isBirthday && <button className="birthday-card" onClick={() => { setScene("farm"); setActiveBuilding("farmhouse"); setIndoorPlayer({ x: 34, y: 70 }); setMessage(`今天是${displayName}的生日！大家已经来到农舍，点击生日蛋糕可以一起分享。`); }}><span>二月十九日 · 今日活动</span><strong>{displayName}的生日派对</strong><small>大家都在农舍 · 点击回家庆祝</small></button>}
+          {game.ageSkillsLearned.includes("clone") && <button className={`clone-work-card ${cloneMission ? "clone-busy" : ""}`} onClick={() => { setCloneWorkOpen(true); setMessage(cloneMission ? `分身正在${cloneMission.destination}${cloneMission.label}。` : "打开七岁分身工作台，安排另一个小禾去做一件真实工作。 "); }}><i>双</i><span><small>七岁永久本领</small><strong>分身穿墙瞬移</strong><em>{cloneMission ? `正在${cloneMission.label}` : "点击安排农活、采集或帮居民"}</em></span><b>›</b></button>}
+          {isBirthday && <button className="birthday-card" onClick={() => { setDismissedBirthdayPartyKey(null); setScene("farm"); setActiveBuilding("farmhouse"); setIndoorPlayer({ x: 34, y: 70 }); setMessage(`今天是${displayName}的生日！大家已经来到农舍，点击生日蛋糕可以一起分享。`); }}><span>二月十九日 · 今日活动</span><strong>{displayName}的生日派对</strong><small>{showBirthdayParty ? "大家都在农舍 · 点击回家庆祝" : "生日会已收起 · 点击重新打开"}</small></button>}
           <button className={`festival-card ${currentFestival ? "festival-open" : ""}`} onClick={() => { if (currentFestival) goToFestival(); else setMessage(`下一场是${nextFestival.name}，${SEASONS[nextFestival.season]}第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]}在${nextFestival.place}举行，还有 ${daysUntilFestival} 天。`); }}><span>{currentFestival ? "今日活动" : "下一场活动"}</span><strong>{(currentFestival ?? nextFestival).name}</strong><small>{currentFestival ? `正在${currentFestival.place}举行 · 点击前往` : `${SEASONS[nextFestival.season]}第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]} · 还有 ${daysUntilFestival} 天`}</small></button>
           <div className="meter-block">
             <div className="meter-label"><span>体力</span><b>{game.energy}/100</b></div>
@@ -9099,11 +9414,12 @@ export default function FarmGame() {
                   <div className={`interior-room farmhouse-room ${game.upgrades.house ? "expanded-farmhouse-room" : ""} farmhouse-level-${game.upgrades.house} ${isNight ? "night-room" : ""} ${isNight && stoveLit ? "stove-lit-room" : ""} ${isNight && game.equipment.lampOn ? "lamp-lit-room" : ""} ${bedtimePhase === "tuckedIn" || bedtimePhase === "waking" ? "bedtime-sleeping" : ""}`} onClick={walkInsidePointer}>
                     <div className="room-window"><i /><i /></div>
                     {game.upgrades.secondFloor > 0 && <button className={`house-stairs real-house-staircase ${stairTravel === "up" ? "stairs-in-use" : ""}`} onClick={(event) => { event.stopPropagation(); travelHouseStairs("up"); }} aria-label="走上真正的木楼梯到二楼"><span className="stair-flight">{Array.from({ length: 7 }, (_, index) => <i key={`lower-stair-${index}`} style={{ "--stair-index": index } as CSSProperties} />)}</span><b className="stair-railing" /><em className="stair-landing" /></button>}
-                    {isBirthday && <><div className="birthday-banner">二月十九日 · {displayName}生日快乐！</div><div className="birthday-loft" aria-label="生日派对时可以跑上去的小阁楼"><i /><b /><span>小阁楼</span></div><div className="birthday-house-guests" aria-label="会在农舍里跑动、看窗户、跳床和玩耍的所有朋友">{BIRTHDAY_GUESTS.map((name, index) => <button key={`birthday-${name}`} style={personClothesStyle(name)} className={`birthday-guest birthday-guest-${index + 1} birthday-behavior-${index % 5} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：生日快乐！我们刚才在屋里跑来跑去、看窗外，还轮流在床上跳呢！`)} aria-label={`和参加生日派对的${name}聊天`}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><button className={`birthday-cake ${game.birthdayCakeYear === game.year ? "cake-eaten" : ""}`} onClick={eatBirthdayCake} aria-label="分享生日蛋糕恢复体力"><i /><b /><em /><span>{game.birthdayCakeYear === game.year ? "蛋糕已经分享完" : "点击吃生日蛋糕 · 恢复40体力"}</span></button></>}
+                    {showBirthdayParty && <><button className="birthday-party-room-close" onClick={(event) => { event.stopPropagation(); setBirthdayCeremony(null); setDismissedBirthdayPartyKey(currentBirthdayPartyKey); setMessage("生日会页面已经关闭，朋友们先收拾好房间；回到左边生日卡片可以再次打开。 "); }} aria-label="关闭生日会页面">×<span>关闭生日会</span></button><div className="birthday-banner">二月十九日 · {displayName}生日快乐！</div><div className="birthday-loft" aria-label="生日派对时可以跑上去的小阁楼"><i /><b /><span>小阁楼</span></div><div className="birthday-house-guests" aria-label="会在农舍里跑动、看窗户、跳床和玩耍的所有朋友">{BIRTHDAY_GUESTS.map((name, index) => <button key={`birthday-${name}`} style={personClothesStyle(name)} className={`birthday-guest birthday-guest-${index + 1} birthday-behavior-${index % 5} ${name === "安安" ? "anan-character" : ""}`} onClick={() => interactWithPerson(name, `${name}：生日快乐！我们刚才在屋里跑来跑去、看窗外，还轮流在床上跳呢！`)} aria-label={`和参加生日派对的${name}聊天`}><i />{name === "安安" && <em className="anan-pigtails" />}<b /><span>{name}</span></button>)}</div><button className={`birthday-cake ${game.birthdayCakeYear === game.year ? "cake-eaten" : ""}`} onClick={eatBirthdayCake} aria-label="分享生日蛋糕恢复体力"><i /><b /><em /><span>{game.birthdayCakeYear === game.year ? "蛋糕已经分享完" : "点击吃生日蛋糕 · 恢复40体力"}</span></button></>}
                     <button className="house-bed" onClick={sleepAtHome} aria-label="点击床睡到第二天"><i /><b /><span>点击睡觉</span></button>
                     {houseFloor === 1 && game.firstFloorNightstandPlaced && <button className={`first-floor-nightstand ${selected === "axe" ? "dismantle-ready" : ""}`} onClick={(event) => { event.stopPropagation(); if (selected === "axe") { const woodBack = Math.max(1, Math.floor(CRAFT_RECIPES.nightstand.wood / 2)); setGame((current) => ({ ...current, firstFloorNightstandPlaced: false, wood: current.wood + woodBack, energy: Math.max(0, current.energy - staminaCost(current, 2)) })); setMessage(`拆掉了床边小柜，回收成 ${woodBack} 块木头。`); playTone(360); return; } setGame((current) => ({ ...current, energy: Math.min(100, current.energy + 5) })); setMessage("从床边小柜拿起温水慢慢喝完，恢复 5 点体力。 "); playTone(610); }} aria-label={selected === "axe" ? "点击拆除床边小柜并回收木头" : "床边小柜，点击喝温水恢复体力"}><i /><b /><span>床边小柜</span></button>}
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && <div className={`sleeping-player-in-bed ${bedtimePhase}`} aria-label={bedtimePhase === "waking" ? "小禾第二天在床上醒来" : "小禾盖着被子睡觉"}><i className="sleep-head" /><b className="sleep-blanket" /><span>{bedtimePhase === "waking" ? "早上七点 · 点击房间起床" : "盖好被子睡觉中…"}</span></div>}
                     {(bedtimePhase === "tuckedIn" || bedtimePhase === "waking") && followingPets.length > 0 && <div className="sleeping-pet-cages" aria-label="睡觉时宠物们回到农舍里的小窝"><strong>宠物们的睡觉小窝</strong>{followingPets.slice(0, 6).map((pet) => <span key={`sleep-${pet.id}`} className={`sleep-pet-cage pet-${pet.type} ${game.sickPetIds.includes(pet.id) ? "sick-pet" : ""}`}><i /><b /><em /></span>)}</div>}
+                    {game.pets.some((pet) => pet.id.includes("-baby-")) && <div className="home-baby-pets" aria-label="出生在家里的小动物宝宝"><strong>小动物育幼垫<small>点击一只宝宝开始实际照顾</small></strong>{game.pets.filter((pet) => pet.id.includes("-baby-")).slice(0, 6).map((pet, index) => { const petName = PET_CATALOG.find((entry) => entry.id === pet.type)?.name ?? "小宠物"; const caredToday = game.lastBabyCareDays[pet.id] === `${game.year}-${game.season}-${game.day}`; return <button key={`home-baby-${pet.id}`} className={`home-baby-pet baby-${index + 1} pet-${pet.type} ${caredToday ? "cared" : "needs-care"}`} onClick={(event) => { event.stopPropagation(); beginBabyPetCare(pet); }} aria-label={`${petName}宝宝，${caredToday ? "今天已经照顾" : "需要喂食、加水、梳毛和陪玩"}`}><i /><b /><em>{caredToday ? "✓" : "!"}</em><span>{petName}宝宝<small>{caredToday ? `连续照顾 ${game.babyCareStreaks[pet.id] ?? 1} 天` : "今天需要更多照顾"}</small></span></button>; })}</div>}
                     <div className="house-table"><i /><i /></div>
                     <button className={`house-stove ${stoveLit ? "lit" : ""}`} onClick={() => { setStoveLit((lit) => !lit); setMessage(stoveLit ? "把炉火熄灭了。" : "炉灶点着了，屋里暖和起来！"); playTone(stoveLit ? 300 : 660); }} aria-pressed={stoveLit} aria-label={stoveLit ? "熄灭炉灶" : "点燃炉灶"}><i /><b /><span /></button>
                     {game.upgrades.house >= 1 && <button className={`house-equipment house-lamp ${game.equipment.lampOn ? "active" : ""}`} onClick={() => { setGame((current) => ({ ...current, equipment: { ...current.equipment, lampOn: !current.equipment.lampOn } })); setMessage(game.equipment.lampOn ? "关掉了暖光灯。" : "暖光灯亮起来，夜晚的房间变得明亮了！"); }}><i />暖光灯</button>}
@@ -9130,7 +9446,7 @@ export default function FarmGame() {
                     </div>}
                   </div>
                   {houseFloor === 2 && atticStorageOpen && <div className="attic-storage-modal"><section><header><div><span>二楼专用收纳</span><h3>二楼木箱</h3></div><button onClick={() => setAtticStorageOpen(false)}>×</button></header><div className="attic-storage-grid">{(Object.keys(ATTIC_RESOURCE_INFO) as AtticResource[]).map((resource) => <article key={`attic-resource-${resource}`}><i>{ATTIC_RESOURCE_INFO[resource].short}</i><div><strong>{ATTIC_RESOURCE_INFO[resource].name}</strong><small>背包 {game[resource]} · 箱内 {game.atticStorage[resource]}</small></div><button disabled={game[resource] <= 0} onClick={() => putInAtticStorage(resource)}>放入 1 个</button><button disabled={game.atticStorage[resource] <= 0} onClick={() => takeFromAtticStorage(resource)}>取出 1 个</button></article>)}</div><footer><span>{message}</span><button onClick={() => setAtticStorageOpen(false)}>关上木箱</button></footer></section></div>}
-                  <div className="service-dialogue"><strong>{isBirthday ? `${displayName}的生日派对` : wildFriendAtPlayerHome ? "安安来找你啦" : "回到家啦"}</strong><p>{isBirthday ? "每一年的春天第十九天，大家都会来到农舍庆祝二月十九日生日。点击朋友可以聊天，点击蛋糕能恢复体力。" : wildFriendAtPlayerHome ? "安安有时会从西边的小农场直接跑来你家。点击她可以聊天，也可以把头顶举着的礼物送给她。" : "床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。"}</p></div>
+                  <div className="service-dialogue"><strong>{showBirthdayParty ? `${displayName}的生日派对` : wildFriendAtPlayerHome ? "安安来找你啦" : game.pets.some((pet) => pet.id.includes("-baby-")) ? "家里的小动物宝宝" : "回到家啦"}</strong><p>{showBirthdayParty ? "每一年的春天第十九天，大家都会来到农舍庆祝二月十九日生日。点击朋友可以聊天，点击蛋糕能恢复体力；右上方叉叉可以关闭整个生日会。" : wildFriendAtPlayerHome ? "安安有时会从西边的小农场直接跑来你家。点击她可以聊天，也可以把头顶举着的礼物送给她。" : game.pets.some((pet) => pet.id.includes("-baby-")) ? "刚出生的宝宝住在育幼垫上，比大宠物更小。每天要亲手完成喂食、控水、梳毛和瞄准接球。" : "床铺得软软的，炉灶还留着余温。可以休息到明天，也可以从门口回农场。"}</p></div>
                   <div className="service-actions">
                     <button onClick={sleepAtHome}>在床上睡到明天</button>
                     <button className="exit-action" onClick={leaveBuilding}>从门口出去</button>
