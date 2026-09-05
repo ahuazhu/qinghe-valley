@@ -217,6 +217,7 @@ type GameState = {
   rainExposure: number;
   pets: PetRecord[];
   lastPetBirthYears: Partial<Record<PetType, number>>;
+  immediatePetBabyGranted: boolean;
   lastBabyCareDays: Record<string, string>;
   babyCareStreaks: Record<string, number>;
   petContestWins: number;
@@ -1220,6 +1221,7 @@ const makeNewGame = (): GameState => ({
   rainExposure: 0,
   pets: [],
   lastPetBirthYears: {},
+  immediatePetBabyGranted: false,
   lastBabyCareDays: {},
   babyCareStreaks: {},
   petContestWins: 0,
@@ -1274,13 +1276,14 @@ const staminaCost = (state: GameState, base: number) => {
 
 const villageSaveKey = (village: VillageId) => village === "maple" ? "qinghe-farm-save-maple" : "qinghe-farm-save";
 
-const reconcilePetFamilies = (records: PetRecord[] | undefined, savedBirthYears: Partial<Record<PetType, number>> | undefined, currentYear: number, currentSeason: number, currentDay: number) => {
+const reconcilePetFamilies = (records: PetRecord[] | undefined, savedBirthYears: Partial<Record<PetType, number>> | undefined, currentYear: number, currentSeason: number, currentDay: number, immediateBabyAlreadyGranted = false) => {
   const pets = (records ?? []).map((pet) => ({
     ...pet,
     bornYear: Number.isFinite(pet.bornYear) ? pet.bornYear : 1,
     bornSeason: Number.isFinite(pet.bornSeason) ? pet.bornSeason : 0,
     bornDay: Number.isFinite(pet.bornDay) ? pet.bornDay : 1,
   }));
+  const startingPetCount = pets.length;
   const lastPetBirthYears = { ...(savedBirthYears ?? {}) };
   PET_CATALOG.forEach((kind, index) => {
     const sameType = pets.filter((pet) => pet.type === kind.id);
@@ -1307,7 +1310,22 @@ const reconcilePetFamilies = (records: PetRecord[] | undefined, savedBirthYears:
     });
     lastPetBirthYears[firstFemale.type] = currentYear;
   }
-  return { pets, lastPetBirthYears };
+  let immediatePetBabyGranted = immediateBabyAlreadyGranted;
+  if (!immediatePetBabyGranted && firstMale && firstFemale) {
+    if (pets.length === startingPetCount) {
+      pets.push({
+        id: `${firstFemale.type}-baby-${currentYear}-${currentSeason}-${currentDay}-immediate`,
+        type: firstFemale.type,
+        sex: currentDay % 2 ? "女生" : "男生",
+        bornDay: currentDay,
+        bornSeason: currentSeason,
+        bornYear: currentYear,
+      });
+      lastPetBirthYears[firstFemale.type] = currentYear;
+    }
+    immediatePetBabyGranted = true;
+  }
+  return { pets, lastPetBirthYears, immediatePetBabyGranted };
 };
 
 const restoreVillageGame = (saved: string | null): GameState => {
@@ -1316,7 +1334,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
   try {
     const parsed = JSON.parse(saved) as Partial<GameState>;
     if (!parsed.tiles || parsed.tiles.length < 32) return defaults;
-    const petFamily = reconcilePetFamilies(parsed.pets, parsed.lastPetBirthYears, parsed.year ?? 1, parsed.season ?? 0, parsed.day ?? 1);
+    const petFamily = reconcilePetFamilies(parsed.pets, parsed.lastPetBirthYears, parsed.year ?? 1, parsed.season ?? 0, parsed.day ?? 1, parsed.immediatePetBabyGranted ?? false);
     return {
       ...defaults,
       ...parsed,
@@ -1357,6 +1375,7 @@ const restoreVillageGame = (saved: string | null): GameState => {
       sickFarmAnimalIds: parsed.sickFarmAnimalIds ?? [],
       pets: petFamily.pets,
       lastPetBirthYears: petFamily.lastPetBirthYears,
+      immediatePetBabyGranted: petFamily.immediatePetBabyGranted,
       lastBabyCareDays: parsed.lastBabyCareDays ?? {},
       babyCareStreaks: parsed.babyCareStreaks ?? {},
       mallItems: { ...defaults.mallItems, ...(parsed.mallItems ?? {}) },
@@ -1736,7 +1755,7 @@ export default function FarmGame() {
         const parsed = JSON.parse(saved) as GameState;
         if (parsed.tiles?.length >= 32) {
           const defaults = makeNewGame();
-          const petFamily = reconcilePetFamilies(parsed.pets, parsed.lastPetBirthYears, parsed.year ?? 1, parsed.season ?? 0, parsed.day ?? 1);
+          const petFamily = reconcilePetFamilies(parsed.pets, parsed.lastPetBirthYears, parsed.year ?? 1, parsed.season ?? 0, parsed.day ?? 1, parsed.immediatePetBabyGranted ?? false);
           setGame({
             ...defaults,
             ...parsed,
@@ -1771,6 +1790,7 @@ export default function FarmGame() {
             sickFarmAnimalIds: parsed.sickFarmAnimalIds ?? [],
             pets: petFamily.pets,
             lastPetBirthYears: petFamily.lastPetBirthYears,
+            immediatePetBabyGranted: petFamily.immediatePetBabyGranted,
             groundSupplies: defaults.groundSupplies.map((defaultVisible, index) => parsed.groundSupplies?.[index] ?? defaultVisible),
             treeStates: parsed.treeStates?.length === 4 ? parsed.treeStates : defaults.treeStates,
             plantedTrees: (parsed.plantedTrees ?? []).map((tree) => ({ ...tree, watered: tree.watered ?? false })),
@@ -8822,8 +8842,31 @@ export default function FarmGame() {
       return;
     }
     const petRecord: PetRecord = { id: `${pet.id}-${Date.now()}`, type: pet.id, sex: selectedPetSex, bornDay: game.day, bornSeason: game.season, bornYear: game.year };
-    setGame((current) => ({ ...current, coins: current.coins - pet.price, pets: [...current.pets, petRecord] }));
-    setMessage(`领养了${selectedPetSex}${pet.name}！它已经住进农舍旁的小宠物院。养到同种的一男一女，之后有机会生小宝宝。`);
+    setGame((current) => {
+      const adultPets = [...current.pets.filter((owned) => !owned.id.includes("-baby-")), petRecord];
+      const firstMale = adultPets.find((owned) => owned.sex === "男生");
+      const firstFemale = adultPets.find((owned) => owned.sex === "女生");
+      const shouldGrantBaby = !current.immediatePetBabyGranted && Boolean(firstMale && firstFemale);
+      const newborn: PetRecord | null = shouldGrantBaby && firstFemale ? {
+        id: `${firstFemale.type}-baby-${current.year}-${current.season}-${current.day}-${Date.now()}-immediate`,
+        type: firstFemale.type,
+        sex: current.day % 2 ? "女生" : "男生",
+        bornDay: current.day,
+        bornSeason: current.season,
+        bornYear: current.year,
+      } : null;
+      return {
+        ...current,
+        coins: current.coins - pet.price,
+        pets: newborn ? [...current.pets, petRecord, newborn] : [...current.pets, petRecord],
+        immediatePetBabyGranted: current.immediatePetBabyGranted || shouldGrantBaby,
+        lastPetBirthYears: newborn ? { ...current.lastPetBirthYears, [newborn.type]: current.year } : current.lastPetBirthYears,
+      };
+    });
+    const nowHasOppositeSex = game.pets.some((owned) => !owned.id.includes("-baby-") && owned.sex !== selectedPetSex);
+    setMessage(nowHasOppositeSex && !game.immediatePetBabyGranted
+      ? `领养了${selectedPetSex}${pet.name}！一男一女已经齐了，小宝宝也直接出生在农舍的小育幼垫上。`
+      : `领养了${selectedPetSex}${pet.name}！它已经住进农舍旁的小宠物院。`);
     playTone(880);
   };
 
