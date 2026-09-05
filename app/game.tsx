@@ -33,6 +33,7 @@ type WorkshopSeedId = "strawberry" | "watermelon" | "corn" | "pumpkin";
 type WorkshopSeason = "春" | "夏" | "秋" | "冬";
 type SnowBuildState = { playerX: number; bodyX: number; bodySize: number; bodyPlaced: boolean; headX: number; headSize: number; headRolled: boolean; headStacked: boolean };
 type WaterFestivalState = { installedPipes: boolean[]; heldPipe: number | null; bucketFill: number[]; playerX: number; hits: number; soaked: number };
+type HarvestFestivalState = { playerPlot: number; reapedPlots: number[]; mistakes: number; heldCrop: number | null; sortedCrops: number[]; cartX: number; weighStation: number; scaleKg: number };
 type BirthdayCeremonyState = { person: string; own: boolean; step: 0 | 1 | 2; songTaps: number; blowTaps: number; cutProgress: number };
 type AgeSkillId = "trail" | "shelter" | "hybrid" | "echo" | "clone" | "teleport";
 type AgeTrainingState = { skill: AgeSkillId; progress: number; mistakes: number };
@@ -928,6 +929,17 @@ const FESTIVAL_PROCESS_STEPS: Partial<Record<FestivalId, { title: string; intro:
   ] },
 };
 
+const HARVEST_FESTIVAL_PLOTS: { name: string; type: CropType; ripe: boolean; size: "大" | "中" | "小" }[] = [
+  { name: "金黄玉米", type: "corn", ripe: true, size: "大" },
+  { name: "青涩草莓", type: "strawberry", ripe: false, size: "小" },
+  { name: "红熟草莓", type: "strawberry", ripe: true, size: "小" },
+  { name: "熟透南瓜", type: "pumpkin", ripe: true, size: "大" },
+  { name: "嫩叶土豆", type: "potato", ripe: false, size: "中" },
+  { name: "饱满土豆", type: "potato", ripe: true, size: "中" },
+];
+const HARVEST_CART_STOPS = [30, 56, 80, 93];
+const HARVEST_SCALE_TARGETS = [8, 11, 9];
+
 const WORKSHOP_SEEDS: Array<{ id: WorkshopSeedId; name: string; season: WorkshopSeason; hint: string }> = [
   { id: "strawberry", name: "草莓种子", season: "春", hint: "粉红小籽，适合春天" },
   { id: "watermelon", name: "西瓜种子", season: "夏", hint: "黑亮扁籽，喜欢夏日阳光" },
@@ -1523,6 +1535,7 @@ export default function FarmGame() {
   const [festivalDragging, setFestivalDragging] = useState(false);
   const [snowBuild, setSnowBuild] = useState<SnowBuildState>({ playerX: 5, bodyX: 14, bodySize: 24, bodyPlaced: false, headX: 14, headSize: 19, headRolled: false, headStacked: false });
   const [waterFestival, setWaterFestival] = useState<WaterFestivalState>({ installedPipes: [false, false, false, false], heldPipe: null, bucketFill: [0, 0, 0, 0], playerX: 10, hits: 0, soaked: 0 });
+  const [harvestFestival, setHarvestFestival] = useState<HarvestFestivalState>({ playerPlot: 0, reapedPlots: [], mistakes: 0, heldCrop: null, sortedCrops: [], cartX: 6, weighStation: 0, scaleKg: 0 });
   const [craftWoodChoice, setCraftWoodChoice] = useState<number | null>(null);
   const [craftCarveProgress, setCraftCarveProgress] = useState(0);
   const [craftWrongCarves, setCraftWrongCarves] = useState(0);
@@ -1660,6 +1673,8 @@ export default function FarmGame() {
   const waterFillTimerRef = useRef<number | null>(null);
   const waterMoveTimerRef = useRef<number | null>(null);
   const waterPipeDropLockRef = useRef(false);
+  const harvestCartTimerRef = useRef<number | null>(null);
+  const harvestFinishLockRef = useRef(false);
   const careGestureActiveRef = useRef(false);
   const careGestureLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const careGestureDistanceRef = useRef(0);
@@ -7740,6 +7755,12 @@ export default function FarmGame() {
       waterFestivalRef.current = resetWaterFestival;
       setWaterFestival(resetWaterFestival);
     }
+    if (festivalId === "harvest") {
+      if (harvestCartTimerRef.current !== null) window.clearInterval(harvestCartTimerRef.current);
+      harvestCartTimerRef.current = null;
+      harvestFinishLockRef.current = false;
+      setHarvestFestival({ playerPlot: 0, reapedPlots: [], mistakes: 0, heldCrop: null, sortedCrops: [], cartX: 6, weighStation: 0, scaleKg: 0 });
+    }
     festivalActionCountRef.current = 0;
     festivalRiddleCorrectRef.current = null;
     setFestivalActionCount(0);
@@ -7913,7 +7934,7 @@ export default function FarmGame() {
   const festivalActionRequirements: Partial<Record<FestivalId, number[]>> = {
     seeds: [4, 4, 1], spring: [3, 3, 6], coffee: [1, 6, 1, 1, 3], craft: [3, 6, 1], springFestival: [1, 8, 6],
     lantern: [4, 5, 4, 3],
-    medical: [4, 4, 6, 5, 5], kite: [4, 4, 6], flower: [4, 3, 5], water: [4, 4, 3], firefly: [4, 3, 4], harvest: [4, 5, 4], leafMusic: [4, 5, 6], firstSnow: [6, 3, 5], hotSoup: [4, 5, 6, 5],
+    medical: [4, 4, 6, 5, 5], kite: [4, 4, 6], flower: [4, 3, 5], water: [4, 4, 3], firefly: [4, 3, 4], harvest: [4, 4, 4], leafMusic: [4, 5, 6], firstSnow: [6, 3, 5], hotSoup: [4, 5, 6, 5],
   };
   const festivalActionIcons: Partial<Record<FestivalId, string[][]>> = {
     lantern: [["圈", "撑", "扣", "绳"], ["纸", "胶", "边", "穗", "牌"], ["火", "火", "火", "火"], ["荷", "雨", "桌"]],
@@ -8064,8 +8085,140 @@ export default function FarmGame() {
     performFestivalDetailAction();
   };
 
+  const moveHarvestPlayer = (direction: -1 | 1) => {
+    if (festivalProcess?.id !== "harvest" || festivalProcess.step !== 0) return;
+    const playerPlot = Math.max(0, Math.min(HARVEST_FESTIVAL_PLOTS.length - 1, harvestFestival.playerPlot + direction));
+    setHarvestFestival((current) => ({ ...current, playerPlot }));
+    const plot = HARVEST_FESTIVAL_PLOTS[playerPlot];
+    setMessage(`小禾走到${plot.name}前。观察颜色和叶片，再决定要不要挥动镰刀。`);
+    playTone(360 + playerPlot * 26);
+  };
+
+  const reapHarvestPlot = () => {
+    if (festivalProcess?.id !== "harvest" || festivalProcess.step !== 0) return;
+    const plotIndex = harvestFestival.playerPlot;
+    const plot = HARVEST_FESTIVAL_PLOTS[plotIndex];
+    if (harvestFestival.reapedPlots.includes(plotIndex)) {
+      setMessage(`${plot.name}已经割进筐里了，走到其他田垄继续找。`);
+      return;
+    }
+    if (!plot.ripe) {
+      setHarvestFestival((current) => ({ ...current, mistakes: current.mistakes + 1 }));
+      setMessage(`${plot.name}还没成熟，镰刀停住了。成熟作物颜色更饱满、果实也更低垂。`);
+      playTone(190);
+      return;
+    }
+    const reapedPlots = [...harvestFestival.reapedPlots, plotIndex];
+    setHarvestFestival((current) => ({ ...current, reapedPlots }));
+    setMessage(`${plot.name}被小禾亲手割下，落进身后的收获筐。还要找 ${4 - reapedPlots.length} 株成熟作物。`);
+    playTone(650 + reapedPlots.length * 55);
+    performFestivalDetailAction();
+  };
+
+  const pickHarvestCrop = (plotIndex: number) => {
+    if (festivalProcess?.id !== "harvest" || festivalProcess.step !== 1 || harvestFestival.sortedCrops.includes(plotIndex)) return;
+    const plot = HARVEST_FESTIVAL_PLOTS[plotIndex];
+    setHarvestFestival((current) => ({ ...current, heldCrop: plotIndex }));
+    setFestivalDragging(true);
+    festivalDragReadyRef.current = true;
+    setMessage(`抱起了${plot.name}。看它的大小，把它拖到“大、中、小”对应木筐。`);
+  };
+
+  const sortHarvestCrop = (size: "大" | "中" | "小") => {
+    if (festivalProcess?.id !== "harvest" || festivalProcess.step !== 1) return;
+    const plotIndex = harvestFestival.heldCrop;
+    if (plotIndex === null) {
+      setMessage("先从左边收获堆抱起一件作物，再放进木筐。 ");
+      return;
+    }
+    festivalDragReadyRef.current = false;
+    setFestivalDragging(false);
+    const plot = HARVEST_FESTIVAL_PLOTS[plotIndex];
+    if (plot.size !== size) {
+      setHarvestFestival((current) => ({ ...current, heldCrop: null, mistakes: current.mistakes + 1 }));
+      setMessage(`${plot.name}不是“${size}号”，木筐装不稳，已经送回收获堆。`);
+      playTone(180);
+      return;
+    }
+    const sortedCrops = [...harvestFestival.sortedCrops, plotIndex];
+    setHarvestFestival((current) => ({ ...current, heldCrop: null, sortedCrops }));
+    setMessage(`${plot.name}稳稳放进“${size}号”木筐。还剩 ${4 - sortedCrops.length} 件。`);
+    playTone(710 + sortedCrops.length * 45);
+    performFestivalDetailAction();
+  };
+
+  const stopHarvestCart = () => {
+    if (harvestCartTimerRef.current !== null) window.clearInterval(harvestCartTimerRef.current);
+    harvestCartTimerRef.current = null;
+  };
+
+  const beginHarvestCart = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (festivalProcess?.id !== "harvest" || festivalProcess.step !== 2 || harvestCartTimerRef.current !== null) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const station = harvestFestival.weighStation;
+    const gate = HARVEST_CART_STOPS[Math.min(station, HARVEST_CART_STOPS.length - 1)];
+    if (station < 3 && harvestFestival.cartX >= gate - .2) {
+      setMessage(`推车已经停在第 ${station + 1} 座秤前。拖动秤砣到木筐标签写的公斤数，再锁定读数。`);
+      return;
+    }
+    setMessage(station < 3 ? `小禾正弯腰把三筐作物推向第 ${station + 1} 座秤，松手就会停。` : "三次称重都完成了，继续按住前进，把推车送到交接棚。 ");
+    harvestCartTimerRef.current = window.setInterval(() => {
+      setHarvestFestival((current) => {
+        const currentGate = HARVEST_CART_STOPS[Math.min(current.weighStation, HARVEST_CART_STOPS.length - 1)];
+        const cartX = Math.min(currentGate, current.cartX + .9);
+        if (cartX >= currentGate) {
+          window.setTimeout(stopHarvestCart, 0);
+          if (current.weighStation >= 3 && !harvestFinishLockRef.current) {
+            harvestFinishLockRef.current = true;
+            window.setTimeout(() => {
+              setMessage("小禾把称好的三筐作物送进交接棚，丰收接力真正跑完了！");
+              playTone(980);
+              performFestivalDetailAction();
+            }, 260);
+          } else if (current.weighStation < 3) {
+            window.setTimeout(() => setMessage(`到达第 ${current.weighStation + 1} 座秤。木牌要求 ${HARVEST_SCALE_TARGETS[current.weighStation]} 公斤，拖动秤砣校准。`), 0);
+          }
+        }
+        return { ...current, cartX };
+      });
+    }, 45);
+  };
+
+  const setHarvestScale = (value: number) => {
+    if (festivalProcess?.id !== "harvest" || festivalProcess.step !== 2 || harvestFestival.weighStation >= 3) return;
+    setHarvestFestival((current) => ({ ...current, scaleKg: value }));
+  };
+
+  const confirmHarvestWeight = () => {
+    if (festivalProcess?.id !== "harvest" || festivalProcess.step !== 2 || harvestFestival.weighStation >= 3) return;
+    const station = harvestFestival.weighStation;
+    const stop = HARVEST_CART_STOPS[station];
+    if (harvestFestival.cartX < stop - .4) {
+      setMessage("推车还没到秤上。按住前进，把车轮推到黄色停靠线。 ");
+      playTone(210);
+      return;
+    }
+    const target = HARVEST_SCALE_TARGETS[station];
+    if (harvestFestival.scaleKg !== target) {
+      setHarvestFestival((current) => ({ ...current, mistakes: current.mistakes + 1 }));
+      setMessage(`秤现在是 ${harvestFestival.scaleKg} 公斤，木牌要求 ${target} 公斤。继续拖动秤砣，不能估一个差不多。`);
+      playTone(180);
+      return;
+    }
+    const weighStation = station + 1;
+    setHarvestFestival((current) => ({ ...current, weighStation, scaleKg: 0 }));
+    setMessage(weighStation < 3 ? `第 ${weighStation} 筐读数锁定为 ${target} 公斤。继续推到下一座秤。` : `三筐都称准了。继续按住前进，把整车推到最右边的交接棚。`);
+    playTone(760 + weighStation * 55);
+    performFestivalDetailAction();
+  };
+
   const handleFestivalPointerRelease = (event: ReactPointerEvent<HTMLElement>) => {
     const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    const harvestSizeTarget = element?.closest<HTMLElement>("[data-harvest-size]");
+    if (harvestSizeTarget?.dataset.harvestSize) {
+      sortHarvestCrop(harvestSizeTarget.dataset.harvestSize as "大" | "中" | "小");
+      return;
+    }
     const waterPipeTarget = element?.closest<HTMLElement>("[data-water-pipe-slot]");
     if (waterPipeTarget?.dataset.waterPipeSlot !== undefined) {
       installWaterPipe(Number(waterPipeTarget.dataset.waterPipeSlot));
@@ -8353,9 +8506,12 @@ export default function FarmGame() {
     }
 
     if (festivalProcess.id === "harvest") {
-      if (festivalProcess.step === 0) return <div className="festival-story-workshop harvest-pick-workshop"><strong>从幼苗里找出四种真正成熟的作物并装筐</strong><div className="harvest-pick-field"><div className="mixed-harvest-crops"><i className="young" /><i className="ripe-pumpkin" /><i className="young" /><i className="ripe-corn" /><i className="ripe-berry" /><i className="young" /><i className="ripe-potato" /></div>{dragSource(["成熟南瓜","成熟玉米","成熟草莓","成熟土豆"][festivalActionCount] ?? "成熟作物","harvest-crop-source")}{dropTarget("丰收竹筐","harvest-main-basket")}</div><small>幼苗不会被拿走；成熟作物有完整果实、颜色和叶片。</small></div>;
-      if (festivalProcess.step === 1) return <div className="festival-story-workshop harvest-grade-workshop"><strong>按大小和完整度把五份作物放进对应木筐</strong><div className="harvest-grade-yard">{dragSource(["大果","中果","小果","带叶果","整筐"][festivalActionCount] ?? "作物","grade-crop-source")}<div className="harvest-grade-baskets"><i><b>大</b></i><i><b>中</b></i><i><b>小</b></i></div>{dropTarget("当前发光木筐","grade-basket-target")}</div><small>木筐会按当前作物亮起，放错大小会送回分拣桌。</small></div>;
-      return <div className="festival-story-workshop harvest-cart-workshop"><strong>推车上秤、校准重量，再跑到丰收交接点</strong><div className="harvest-cart-yard"><div className="real-harvest-cart" style={{ left: `${8 + festivalActionCount * 16}%` }}><i /><b /><em /></div><div className={`harvest-scale phase-${festivalActionCount}`}><i /><b /></div><div className="harvest-finish-flag"><i /><b /></div>{holdControl(["推向地秤","等待秤稳","继续推车","交给收货员"][festivalActionCount] ?? "完成交接","harvest-cart-hold")}</div><small>车轮、秤针和终点旗都会随四段过程移动，松手推车就停。</small></div>;
+      if (festivalProcess.step === 0) return <div className="festival-story-workshop harvest-walk-workshop"><strong>自己沿田垄走，观察成熟度后再挥镰刀</strong><div className="harvest-walk-field"><div className="harvest-farmland-lines"><i /><i /><i /></div>{HARVEST_FESTIVAL_PLOTS.map((plot,index)=><div key={`${plot.name}-${index}`} style={{ left: `${7 + index * 17}%` }} className={`harvest-real-plot crop-${plot.type} ${plot.ripe ? "ripe" : "young"} ${harvestFestival.reapedPlots.includes(index) ? "reaped" : ""} ${harvestFestival.playerPlot === index ? "current" : ""}`}><i /><b /><em /><span>{plot.name}</span></div>)}<div className="harvest-walking-player" style={{ left: `${7 + harvestFestival.playerPlot * 17}%` }}><i /><b /><em /></div><div className="harvest-follow-basket"><i /><b>{harvestFestival.reapedPlots.length}</b></div></div><div className="harvest-walk-controls"><button onClick={()=>moveHarvestPlayer(-1)} disabled={harvestFestival.playerPlot === 0}>← 沿田垄向左走</button><button className="harvest-sickle-action" onClick={reapHarvestPlot}><i />挥动镰刀</button><button onClick={()=>moveHarvestPlayer(1)} disabled={harvestFestival.playerPlot === HARVEST_FESTIVAL_PLOTS.length - 1}>沿田垄向右走 →</button></div><div className="harvest-status-strip"><span>已收割 {harvestFestival.reapedPlots.length}/4</span><span>判断错 {harvestFestival.mistakes} 次</span></div><small>未成熟的果实颜色淡、叶片挺直；成熟果实颜色饱满并向下低垂。必须走到它前面才能收割。</small></div>;
+      if (festivalProcess.step === 1) return <div className="festival-story-workshop harvest-sort-workshop"><strong>亲手抱起四件作物，按真实大小分进木筐</strong><div className="harvest-sort-room"><div className="harvest-crop-pile"><span>刚收下的作物</span>{harvestFestival.reapedPlots.filter((plotIndex)=>!harvestFestival.sortedCrops.includes(plotIndex)).map((plotIndex)=>{const plot=HARVEST_FESTIVAL_PLOTS[plotIndex];return <button key={`sort-${plotIndex}`} draggable className={`harvest-sort-crop crop-${plot.type} ${harvestFestival.heldCrop === plotIndex ? "held" : ""}`} onDragStart={()=>pickHarvestCrop(plotIndex)} onPointerDown={()=>pickHarvestCrop(plotIndex)} onClick={()=>pickHarvestCrop(plotIndex)}><i /><b /><span>{plot.name}</span></button>})}</div><div className="harvest-size-bins">{(["大","中","小"] as const).map((size)=><button key={size} data-harvest-size={size} className={`harvest-size-bin size-${size} ${harvestFestival.heldCrop !== null && HARVEST_FESTIVAL_PLOTS[harvestFestival.heldCrop].size === size ? "correct-glow" : ""}`} onDragOver={(event)=>event.preventDefault()} onDrop={(event)=>{event.preventDefault();sortHarvestCrop(size)}} onClick={()=>sortHarvestCrop(size)}><i /><b>{size}号筐</b><span>{harvestFestival.sortedCrops.filter((plotIndex)=>HARVEST_FESTIVAL_PLOTS[plotIndex].size === size).length} 件</span></button>)}</div></div><div className="harvest-status-strip"><span>分好 {harvestFestival.sortedCrops.length}/4</span><span>{harvestFestival.heldCrop === null ? "先抱起一件作物" : `正抱着：${HARVEST_FESTIVAL_PLOTS[harvestFestival.heldCrop].name}`}</span></div><small>电脑可拖动，平板可先按住作物再移动到木筐；分错的作物会退回左边，不会自动替你改正。</small></div>;
+      const station = Math.min(harvestFestival.weighStation, 3);
+      const stationStop = HARVEST_CART_STOPS[station];
+      const cartAtStop = harvestFestival.cartX >= stationStop - .4;
+      return <div className="festival-story-workshop harvest-delivery-workshop"><strong>按住推车到三座秤前，逐筐校准，再送进交接棚</strong><div className="harvest-delivery-track"><div className="harvest-track-road"><i /><i /><i /></div>{HARVEST_CART_STOPS.slice(0,3).map((stop,index)=><div key={`scale-${index}`} className={`harvest-real-scale ${index < station ? "done" : index === station ? "active" : ""}`} style={{ left: `${stop}%` }}><i /><b /><em>{HARVEST_SCALE_TARGETS[index]}kg</em></div>)}<div className="harvest-handoff-shed"><i /><b /><span>交接棚</span></div><div className="harvest-moving-cart" style={{ left: `${harvestFestival.cartX}%` }}><i /><b /><em /><u /><span>三筐</span></div></div><div className="harvest-delivery-controls"><button className="harvest-push-control" onPointerDown={beginHarvestCart} onPointerUp={stopHarvestCart} onPointerCancel={stopHarvestCart}><i>→</i><span>{station >= 3 ? "一直按住 · 推到交接棚" : `一直按住 · 推向第 ${station + 1} 座秤`}</span></button>{station < 3 && <div className={`harvest-scale-control ${cartAtStop ? "ready" : "locked"}`}><label htmlFor="harvest-scale-slider">秤砣读数 <b>{harvestFestival.scaleKg} kg</b> · 木牌要求 {HARVEST_SCALE_TARGETS[station]} kg</label><input id="harvest-scale-slider" type="range" min="0" max="15" step="1" value={harvestFestival.scaleKg} disabled={!cartAtStop} onChange={(event)=>setHarvestScale(Number(event.target.value))} /><button disabled={!cartAtStop} onClick={confirmHarvestWeight}>锁定这次读数</button></div>}</div><div className="harvest-status-strip"><span>称准 {Math.min(3,harvestFestival.weighStation)}/3 筐</span><span>总判断错 {harvestFestival.mistakes} 次</span></div><small>松手推车就停；到秤前必须拖动秤砣到准确读数，差一公斤也不能通过。三次称准后还要亲自推到终点。</small></div>;
     }
 
     if (festivalProcess.id === "leafMusic") {
@@ -8448,16 +8604,27 @@ export default function FarmGame() {
         tomatoSeeds: current.tomatoSeeds + 2, potatoSeeds: current.potatoSeeds + 2,
         pumpkinSeeds: current.pumpkinSeeds + 2, blueberrySeeds: current.blueberrySeeds + 2,
       } : {};
+      const harvestReward = festivalProcess.id === "harvest" ? {
+        inventory: {
+          ...current.inventory,
+          corn: current.inventory.corn + 1,
+          strawberry: current.inventory.strawberry + 1,
+          pumpkin: current.inventory.pumpkin + 1,
+          potato: current.inventory.potato + 1,
+        },
+        harvested: current.harvested + 4,
+      } : {};
       return {
         ...current,
         ...seedReward,
+        ...harvestReward,
         medicalTrained: festivalProcess.id === "medical" ? true : current.medicalTrained,
         coins: current.coins + 100,
         energy: Math.min(100, current.energy + 15),
         festivalActivitiesCompleted: [...current.festivalActivitiesCompleted, completionKey],
       };
     });
-    setMessage(alreadyCompleted ? `${process.title}的全部过程今天已经体验过了。` : festivalProcess.id === "medical" ? `${process.title}全部完成！取得基础医疗学习资格。现在可以在诊所逐种学习八种病症。` : `${process.title}全部完成！获得 100 金币和 15 点体力。`);
+    setMessage(alreadyCompleted ? `${process.title}的全部过程今天已经体验过了。` : festivalProcess.id === "medical" ? `${process.title}全部完成！取得基础医疗学习资格。现在可以在诊所逐种学习八种病症。` : festivalProcess.id === "harvest" ? `${process.title}全部完成！四件亲手收割的作物已进背包，还获得 100 金币和 15 点体力。` : `${process.title}全部完成！获得 100 金币和 15 点体力。`);
     setFestivalProcess(null);
     setFestivalActionCount(0);
     setFestivalDragging(false);
