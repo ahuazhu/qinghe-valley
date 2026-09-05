@@ -37,6 +37,8 @@ type AgeSkillId = "trail" | "shelter" | "hybrid" | "echo" | "clone";
 type AgeTrainingState = { skill: AgeSkillId; progress: number; mistakes: number };
 type TrailDirection = "up" | "down" | "left" | "right";
 type TrailExpeditionState = { routeIndex: number; step: number; mistakes: number };
+type HybridLabState = { parents: CropType[]; balance: number; pollination: number; mistakes: number };
+type EchoSurveyState = { hits: number; misses: number };
 type CloneWorkKind = "water" | "fertilize" | "plant" | "mineDiamond" | "chopWood" | "breakStone" | "gatherHerbs" | "fish" | "helpResident";
 type CloneMissionState = { kind: CloneWorkKind; label: string; destination: string; icon: string };
 type SeedField = "seeds" | "strawberrySeeds" | "cornSeeds" | "pineappleSeeds" | "watermelonSeeds" | "tomatoSeeds" | "potatoSeeds" | "pumpkinSeeds" | "blueberrySeeds";
@@ -108,6 +110,7 @@ type FarmTile = {
   watered: boolean;
   cropType?: CropType;
   care?: number;
+  hybrid?: boolean;
 };
 
 type GameState = {
@@ -116,6 +119,7 @@ type GameState = {
   birthdayGrowthYear: number;
   ageSkillsLearned: AgeSkillId[];
   lastAgeAbilityDays: Partial<Record<AgeSkillId, string>>;
+  hybridSeedCharges: number;
   day: number;
   season: number;
   hour: number;
@@ -944,6 +948,7 @@ const AGE_WORLD_TRAIL_ROUTES: readonly (readonly TrailDirection[])[] = [
   ["down", "left", "up", "left", "down"],
   ["up", "right", "down", "right", "up"],
 ];
+const HYBRID_WEATHER_BALANCE: Record<Weather, number> = { sunny: 67, cloudy: 54, rain: 42, thunder: 34 };
 const AGE_CAMP_PARTS = ["长木杆", "短木杆", "平整石块", "树脂接头", "防水布", "固定绳"] as const;
 const AGE_HYBRID_ROUNDS = [
   { weather: "春日细雨", answers: ["草莓种子", "南瓜种子", "玉米种子"], correct: "草莓种子" },
@@ -1106,6 +1111,7 @@ const makeNewGame = (): GameState => ({
   birthdayGrowthYear: 0,
   ageSkillsLearned: [],
   lastAgeAbilityDays: {},
+  hybridSeedCharges: 0,
   day: 1,
   season: 0,
   hour: 7,
@@ -1402,6 +1408,9 @@ export default function FarmGame() {
   const [ageTrainingHeldPart, setAgeTrainingHeldPart] = useState<string | null>(null);
   const [ageEchoPulse, setAgeEchoPulse] = useState(6);
   const [trailExpedition, setTrailExpedition] = useState<TrailExpeditionState | null>(null);
+  const [hybridLab, setHybridLab] = useState<HybridLabState | null>(null);
+  const [hybridHeldSeed, setHybridHeldSeed] = useState<CropType | null>(null);
+  const [echoSurvey, setEchoSurvey] = useState<EchoSurveyState | null>(null);
   const [cloneWorkOpen, setCloneWorkOpen] = useState(false);
   const [cloneMission, setCloneMission] = useState<CloneMissionState | null>(null);
   const [babyCare, setBabyCare] = useState<BabyCareState | null>(null);
@@ -1553,6 +1562,10 @@ export default function FarmGame() {
   const festivalDragReadyRef = useRef(false);
   const festivalRiddleCorrectRef = useRef<boolean | null>(null);
   const ageEchoDirectionRef = useRef(1);
+  const hybridBrushActiveRef = useRef(false);
+  const hybridBrushLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const hybridBrushDistanceRef = useRef(0);
+  const hybridBrushDoneRef = useRef(false);
   const ageCampDropLockRef = useRef(false);
   const wishWorkshopDropLockRef = useRef(false);
   const wishAssemblyActiveRef = useRef(false);
@@ -1599,7 +1612,7 @@ export default function FarmGame() {
   }, [festivalActionCount]);
 
   useEffect(() => {
-    if (ageTraining?.skill !== "echo") return;
+    if (ageTraining?.skill !== "echo" && !echoSurvey) return;
     const timer = window.setInterval(() => {
       setAgeEchoPulse((current) => {
         if (current >= 94) ageEchoDirectionRef.current = -1;
@@ -1608,7 +1621,7 @@ export default function FarmGame() {
       });
     }, 65);
     return () => window.clearInterval(timer);
-  }, [ageTraining?.skill]);
+  }, [ageTraining?.skill, echoSurvey]);
 
   useEffect(() => {
     if (!babyCare || (babyCare.stage !== 0 && babyCare.stage !== 3)) return;
@@ -2316,7 +2329,7 @@ export default function FarmGame() {
       setBedtimePhase(null);
       setMessage("小禾掀开被子下床，可以继续走路了。 ");
     } else if (bedtimePhase) return;
-    if (ananBeachTraveling || babyCare || careSession || bulkChestPrompt || bulkShippingPrompt || cloneWorkOpen || newsBroadcast || guideOpen || journalOpen || cookingGame || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || lanternRiddle !== null || festivalProcess || dragonBoatOpen || dragonBoatTraveling) return;
+    if (ananBeachTraveling || babyCare || careSession || hybridLab || echoSurvey || bulkChestPrompt || bulkShippingPrompt || cloneWorkOpen || newsBroadcast || guideOpen || journalOpen || cookingGame || drivingSchoolOpen || carTraveling || mallOpen || petShopOpen || petHospitalOpen || lanternRiddle !== null || festivalProcess || dragonBoatOpen || dragonBoatTraveling) return;
     if (ananBeachOpen) {
       showWalking(dx, dy);
       setBeachPlayer((current) => ({
@@ -2438,7 +2451,7 @@ export default function FarmGame() {
         setMessage(doctorIsResting ? "进入青禾诊所。白医生生病了，正在自己的家里休息，红衣助手今天代班。" : `进入${BUILDING_INFO[entrance].name}。`);
       }
     }
-  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, babyCare, bedtimePhase, bulkChestPrompt, bulkShippingPrompt, careSession, carTraveling, chestOpen, shippingBinOpen, cloneWorkOpen, cookingGame, craftingOpen, crossSceneBoundary, divingAtSea, dragonBoatOpen, dragonBoatTraveling, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, farmEdgeTraveling, farmGateOpen, farmInterior, festivalProcess, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, guideOpen, journalOpen, lanternRiddle, mallOpen, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, trailExpedition, worldVillage]);
+  }, [activeBuilding, advanceOrdinaryDream, ananBeachOpen, ananBeachTraveling, babyCare, bedtimePhase, bulkChestPrompt, bulkShippingPrompt, careSession, carTraveling, chestOpen, shippingBinOpen, cloneWorkOpen, cookingGame, craftingOpen, crossSceneBoundary, divingAtSea, dragonBoatOpen, dragonBoatTraveling, dreamOddity, dreamOdditySteps, dreamPhase, dreamPlayer, dreamScene, dreamSurreal, drivingSchoolOpen, echoSurvey, farmEdgeTraveling, farmGateOpen, farmInterior, festivalProcess, friendHomeOpen, game.day, game.npcHealedDays, game.placedCrafts, guideOpen, hybridLab, journalOpen, lanternRiddle, mallOpen, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, player, ranchOpen, residentHome, scene, showWalking, trailExpedition, worldVillage]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -2475,6 +2488,18 @@ export default function FarmGame() {
       if (key === "escape" && trailExpedition) {
         setTrailExpedition(null);
         setMessage("暂时停止林间循迹。今天还可以从第一枚脚印重新开始。 ");
+        return;
+      }
+      if (key === "escape" && hybridLab) {
+        hybridBrushActiveRef.current = false;
+        setHybridHeldSeed(null);
+        setHybridLab(null);
+        setMessage("收起四季育种台，种子没有消耗。 ");
+        return;
+      }
+      if (key === "escape" && echoSurvey) {
+        setEchoSurvey(null);
+        setMessage("停止听石寻晶，本次没有消耗每日机会。 ");
         return;
       }
       if (key === "escape" && schoolLesson) {
@@ -2626,7 +2651,7 @@ export default function FarmGame() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, babyCare, birthdayCeremony, builderOpen, bulkChestPrompt, bulkShippingPrompt, careSession, chestOpen, shippingBinOpen, cloneMission, cloneWorkOpen, cookingGame, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, guideOpen, journalOpen, move, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, ranchOpen, residentHome, schoolLesson, splitScreen, townhallCalendarOpen, trailExpedition]);
+  }, [activeBuilding, ananBeachOpen, ananBeachTraveling, babyCare, birthdayCeremony, builderOpen, bulkChestPrompt, bulkShippingPrompt, careSession, chestOpen, shippingBinOpen, cloneMission, cloneWorkOpen, cookingGame, craftingOpen, dragonBoatOpen, dragonBoatTraveling, dreamScene, echoSurvey, embeddedMode, farmInterior, festivalProcess, friendHomeOpen, guideOpen, hybridLab, journalOpen, move, neighborInterior, newsBroadcast, petHospitalOpen, petShopOpen, ranchOpen, residentHome, schoolLesson, splitScreen, townhallCalendarOpen, trailExpedition]);
 
   useEffect(() => {
     if (!embeddedMode) return;
@@ -5748,6 +5773,7 @@ export default function FarmGame() {
           target.stage = 0;
           target.watered = false;
           target.care = 0;
+          target.hybrid = false;
           target.cropType = undefined;
           next[cropDetails.seedField] += 1;
           next.energy = Math.max(0, current.energy - staminaCost(current, 2));
@@ -5775,9 +5801,12 @@ export default function FarmGame() {
         target.state = "crop";
         target.stage = 0;
         target.watered = false;
-        target.care = 0;
+        const usesHybridSeed = current.ageSkillsLearned.includes("hybrid") && current.hybridSeedCharges > 0;
+        target.care = usesHybridSeed ? 2 : 0;
+        target.hybrid = usesHybridSeed;
         target.cropType = selectedCrop;
         next[cropDetails.seedField] -= 1;
+        if (usesHybridSeed) next.hybridSeedCharges = Math.max(0, current.hybridSeedCharges - 1);
         next.energy = Math.max(0, current.energy - staminaCost(current, 2));
         next.planted += 1;
         next.wishPlantingRecords = {
@@ -5786,7 +5815,9 @@ export default function FarmGame() {
           [`season:${current.season}:${selectedCrop}`]: (current.wishPlantingRecords[`season:${current.season}:${selectedCrop}`] ?? 0) + 1,
         };
         next.daily = { ...current.daily, planted: current.daily.planted + 1 };
-        feedback = `${cropDetails.name}种子睡进土里了。记得浇水！`;
+        feedback = usesHybridSeed
+          ? `把四季育种粉裹在${cropDetails.name}种子外面，再亲手播进土里。它已经有 2 点育种照料，更容易长成金星品质；育种粉还剩 ${Math.max(0, current.hybridSeedCharges - 1)} 份。`
+          : `${cropDetails.name}种子睡进土里了。记得浇水！`;
         tone = 480;
       } else if (selected === "water") {
         if (current.water <= 0) {
@@ -5817,6 +5848,7 @@ export default function FarmGame() {
         target.state = "soil";
         target.stage = 0;
         target.watered = false;
+        target.hybrid = false;
         const cropType = tile.cropType ?? "radish";
         const cropDetails = CROP_INFO[cropType];
         const effectiveCare = (tile.care ?? 0) + (current.ageSkillsLearned.includes("hybrid") ? 1 : 0);
@@ -6674,6 +6706,186 @@ export default function FarmGame() {
     playTone(820);
   };
 
+  const startWorldHybridLab = () => {
+    if (!game.ageSkillsLearned.includes("hybrid")) {
+      setMessage("先在四岁成长手册里完成四季育种观察训练。 ");
+      return;
+    }
+    const abilityDay = `${game.year}-${game.season}-${game.day}`;
+    if (game.lastAgeAbilityDays.hybrid === abilityDay) {
+      setMessage(`今天的育种粉已经调好了，背包里还剩 ${game.hybridSeedCharges} 份。明天可以再做一批。`);
+      playTone(330);
+      return;
+    }
+    const available = CROP_TYPES.filter((crop) => game[CROP_INFO[crop].seedField] > 0);
+    if (available.length < 2) {
+      setMessage("四季育种需要两种不同的种子各 1 颗。先去超市买齐至少两种种子。 ");
+      playTone(220);
+      return;
+    }
+    hybridBrushDistanceRef.current = 0;
+    hybridBrushDoneRef.current = false;
+    setHybridHeldSeed(null);
+    setHybridLab({ parents: [], balance: 50, pollination: 0, mistakes: 0 });
+    setAgeBookOpen(false);
+    setAgeTraining(null);
+    setMessage("育种台摆好了：先把两种不同的种子分别放进亲本盆，再按当前天气调温，最后亲手来回授粉。 ");
+    playTone(720);
+  };
+
+  const addHybridParent = (crop: CropType) => {
+    if (!hybridLab) return;
+    if (game[CROP_INFO[crop].seedField] <= 0) {
+      setMessage(`${CROP_INFO[crop].name}种子已经没有了。`);
+      return;
+    }
+    if (hybridLab.parents.includes(crop)) {
+      setMessage("两个亲本必须是不同种子，才能产生新的育种粉。 ");
+      setHybridLab({ ...hybridLab, mistakes: hybridLab.mistakes + 1 });
+      playTone(210);
+      return;
+    }
+    if (hybridLab.parents.length >= 2) {
+      setMessage("两个亲本盆已经放满了。可以点盆里的种子取回，再重新选择。 ");
+      return;
+    }
+    const nextParents = [...hybridLab.parents, crop];
+    setHybridLab({ ...hybridLab, parents: nextParents });
+    setHybridHeldSeed(null);
+    setMessage(`把${CROP_INFO[crop].name}种子放进第 ${nextParents.length} 个亲本盆。${nextParents.length === 2 ? "现在根据天气调节温度刻度。" : "还需要另一种不同种子。"}`);
+    playTone(560 + nextParents.length * 80);
+  };
+
+  const removeHybridParent = (crop: CropType) => {
+    if (!hybridLab) return;
+    setHybridLab({ ...hybridLab, parents: hybridLab.parents.filter((parent) => parent !== crop), pollination: 0 });
+    hybridBrushDistanceRef.current = 0;
+    setMessage(`把${CROP_INFO[crop].name}种子从亲本盆取回，没有消耗。`);
+  };
+
+  const beginHybridPollination = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!hybridLab || hybridLab.parents.length < 2) {
+      setMessage("先把两种不同的种子放进两个亲本盆。 ");
+      playTone(210);
+      return;
+    }
+    const target = HYBRID_WEATHER_BALANCE[game.weather];
+    if (Math.abs(hybridLab.balance - target) > 6) {
+      setHybridLab({ ...hybridLab, mistakes: hybridLab.mistakes + 1, pollination: 0 });
+      setMessage(`温度不合适，花粉没有黏住。观察${WEATHER_INFO[game.weather].name}天气，把刻度调到发亮区域再试。`);
+      playTone(190);
+      return;
+    }
+    hybridBrushActiveRef.current = true;
+    hybridBrushLastPointRef.current = { x: event.clientX, y: event.clientY };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setMessage("按住授粉刷，在两朵花之间来回移动；移动距离不够不会自动完成。 ");
+  };
+
+  const moveHybridPollination = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!hybridLab || !hybridBrushActiveRef.current || !hybridBrushLastPointRef.current || hybridBrushDoneRef.current) return;
+    const previous = hybridBrushLastPointRef.current;
+    const distance = Math.hypot(event.clientX - previous.x, event.clientY - previous.y);
+    hybridBrushLastPointRef.current = { x: event.clientX, y: event.clientY };
+    if (distance > 70) return;
+    hybridBrushDistanceRef.current += distance;
+    const progress = Math.min(100, Math.round(hybridBrushDistanceRef.current / 2.4));
+    setHybridLab({ ...hybridLab, pollination: progress });
+    if (progress < 100) return;
+    hybridBrushDoneRef.current = true;
+    hybridBrushActiveRef.current = false;
+    const [first, second] = hybridLab.parents;
+    setHybridLab(null);
+    setHybridHeldSeed(null);
+    setGame((current) => {
+      const firstField = CROP_INFO[first].seedField;
+      const secondField = CROP_INFO[second].seedField;
+      if (current[firstField] <= 0 || current[secondField] <= 0) return current;
+      const abilityDay = `${current.year}-${current.season}-${current.day}`;
+      return {
+        ...current,
+        [firstField]: current[firstField] - 1,
+        [secondField]: current[secondField] - 1,
+        hybridSeedCharges: current.hybridSeedCharges + 3,
+        lastAgeAbilityDays: { ...current.lastAgeAbilityDays, hybrid: abilityDay },
+        journalEntries: [`${SEASONS[current.season]}第${current.day}天：把${CROP_INFO[first].name}和${CROP_INFO[second].name}完成温度配比与往返授粉，制成3份四季育种粉。`, ...current.journalEntries].slice(0, 40),
+      };
+    });
+    setMessage(`授粉完成！消耗 1 颗${CROP_INFO[first].name}种子和 1 颗${CROP_INFO[second].name}种子，制成 3 份四季育种粉。以后亲手播种时会自动给前三株作物使用。`);
+    playTone(980);
+  };
+
+  const endHybridPollination = () => {
+    hybridBrushActiveRef.current = false;
+    hybridBrushLastPointRef.current = null;
+  };
+
+  const startWorldEchoSurvey = () => {
+    if (!game.ageSkillsLearned.includes("echo")) {
+      setMessage("先在五岁成长手册里完成听石寻晶训练。 ");
+      return;
+    }
+    if (farmInterior !== "cave") {
+      setMessage("听石寻晶要在真正的青禾山洞里使用。走进山洞并点亮火把后，再点击山洞下方的“听石寻晶”。 ");
+      playTone(240);
+      return;
+    }
+    if (!interiorFireLit) {
+      setMessage("山洞太暗，先用火柴点亮火把，才能一边听回声一边确认岩壁位置。 ");
+      playTone(220);
+      return;
+    }
+    const abilityDay = `${game.year}-${game.season}-${game.day}`;
+    if (game.lastAgeAbilityDays.echo === abilityDay) {
+      setMessage("今天已经听出一条隐藏矿脉了。岩壁的回声要到明天才会重新变化。 ");
+      playTone(330);
+      return;
+    }
+    setAgeEchoPulse(6);
+    ageEchoDirectionRef.current = 1;
+    setEchoSurvey({ hits: 0, misses: 0 });
+    setAgeBookOpen(false);
+    setMessage("山洞安静下来。看光点来回移动，进入绿色回声区时亲手敲击；连续听准三处才能定位真正的隐藏矿脉。 ");
+    playTone(680);
+  };
+
+  const strikeWorldEcho = () => {
+    if (!echoSurvey) return;
+    if (ageEchoPulse < 43 || ageEchoPulse > 57) {
+      setEchoSurvey({ ...echoSurvey, misses: echoSurvey.misses + 1 });
+      setMessage("只听见沉闷的石声——敲早了或敲晚了。等移动光点进入绿色回声区。 ");
+      playTone(180);
+      return;
+    }
+    const nextHits = echoSurvey.hits + 1;
+    setAgeEchoPulse(6);
+    ageEchoDirectionRef.current = 1;
+    if (nextHits < 3) {
+      setEchoSurvey({ ...echoSurvey, hits: nextHits });
+      setMessage(`听准了第 ${nextHits}/3 层回声！岩壁深处还有一层更细的晶石声。`);
+      playTone(620 + nextHits * 70);
+      return;
+    }
+    setEchoSurvey(null);
+    setSelected("pickaxe");
+    setGame((current) => {
+      const hiddenSpots = CAVE_DIAMOND_SPOTS.map((spot, index) => spot.hidden ? index : -1).filter((index) => index >= 0);
+      const veinIndex = current.caveDiamondStates.findIndex((standing) => !standing);
+      const targetVein = veinIndex >= 0 ? veinIndex : (current.year + current.day) % current.caveDiamondStates.length;
+      const spotIndex = hiddenSpots[((current.year - 1) * 112 + current.season * 28 + current.day + current.diamonds) % hiddenSpots.length];
+      return {
+        ...current,
+        energy: Math.max(0, current.energy - staminaCost(current, 5)),
+        caveDiamondStates: current.caveDiamondStates.map((standing, index) => index === targetVein ? true : standing),
+        caveDiamondSpots: current.caveDiamondSpots.map((spot, index) => index === targetVein ? spotIndex : spot),
+        lastAgeAbilityDays: { ...current.lastAgeAbilityDays, echo: `${current.year}-${current.season}-${current.day}` },
+        journalEntries: [`${SEASONS[current.season]}第${current.day}天：在山洞亲手听准三层回声，定位出一条藏在岩石后的钻石矿脉。`, ...current.journalEntries].slice(0, 40),
+      };
+    });
+    setMessage("第三层清脆回声连成一条线：一处隐藏钻石矿已经在岩石后显出蓝色尖角！镐子已经拿好，要亲自走近矿脉再挖。 ");
+    playTone(1020);
+  };
+
   const beginAgeTraining = (skillId: AgeSkillId) => {
     const skill = AGE_SKILLS.find((item) => item.id === skillId)!;
     if (game.playerAge < skill.age) {
@@ -6688,6 +6900,14 @@ export default function FarmGame() {
       }
       if (skillId === "shelter") {
         deployLearnedShelter();
+        return;
+      }
+      if (skillId === "hybrid") {
+        startWorldHybridLab();
+        return;
+      }
+      if (skillId === "echo") {
+        startWorldEchoSurvey();
         return;
       }
       if (skillId === "clone") {
@@ -8744,7 +8964,7 @@ export default function FarmGame() {
         <div className="pond dream-copy-pond"><i /><i /><i /><span className="pond-label">钓鱼池</span></div>
         <div className={`house ${game.upgrades.house ? "expanded-house" : ""} house-level-${game.upgrades.house}`}><span className="roof" /><span className="chimney" /><span className="wall" /><span className="door" /><span className="window" /><span className="sign">{displayName}的农舍</span></div>
         <div className="tree tree-a" /><div className="tree tree-b" /><div className="tree tree-c" /><div className="tree tree-d" />
-        <div className={`field dream-copy-field ${game.tiles.length > 32 ? "expanded-field" : ""}`}>{game.tiles.map((tile, index) => <i key={`dream-tile-${index}`} className={`farm-tile ${tile.state} ${tile.cropType ?? "radish"} ${tile.watered ? "watered" : ""}`}>{tile.state === "crop" && <span className={`crop-stage stage-${tile.stage}`}><i /><i /><b /></span>}</i>)}</div>
+        <div className={`field dream-copy-field ${game.tiles.length > 32 ? "expanded-field" : ""}`}>{game.tiles.map((tile, index) => <i key={`dream-tile-${index}`} className={`farm-tile ${tile.state} ${tile.cropType ?? "radish"} ${tile.watered ? "watered" : ""} ${tile.hybrid ? "hybrid-crop" : ""}`}>{tile.state === "crop" && <span className={`crop-stage stage-${tile.stage}`}><i /><i /><b /></span>}</i>)}</div>
         <div className="flowers flowers-a">✿ · ✿</div><div className="flowers flowers-b">· ✿ ·</div>
         <i className="dream-tiny-difference dream-water-difference" aria-hidden="true" /><i className="dream-tiny-difference dream-tree-difference" aria-hidden="true" /><i className="dream-tiny-difference dream-sky-difference" aria-hidden="true" />
       </div>
@@ -8767,6 +8987,8 @@ export default function FarmGame() {
   return (
     <main className={`game-shell ${embeddedMode ? "embedded-game" : ""} ${dreamScene !== null ? `dream-reality-active dream-reality-${dreamOddity} dream-variant-${dreamScene % 16}` : ""}`}>
       {trailExpedition && (() => { const route = AGE_WORLD_TRAIL_ROUTES[trailExpedition.routeIndex]; const directionLabel: Record<TrailDirection, string> = { up: "↑", down: "↓", left: "←", right: "→" }; return <div className="world-trail-hud" role="status" aria-label={`林间循迹，已完成${trailExpedition.step}段`}><div><i>迹</i><span><small>主世界本领正在使用</small><strong>沿脚印亲自走 · {trailExpedition.step}/5</strong></span><button onClick={() => { setTrailExpedition(null); setMessage("暂时停止林间循迹。今天还可以从第一枚脚印重新开始。 "); }} aria-label="停止林间循迹">×</button></div><section>{route.map((direction, index) => <i key={`${direction}-${index}`} className={index < trailExpedition.step ? "done" : index === trailExpedition.step ? "active" : ""}><b>{index < trailExpedition.step ? "✓" : directionLabel[direction]}</b><span>{index === trailExpedition.step ? "下一步" : index < trailExpedition.step ? "走过" : "脚印"}</span></i>)}</section><small>方向键、WASD 和平板方向键都会真实推进；走错只会走到旁边，不会自动完成。错 {trailExpedition.mistakes} 次</small></div>; })()}
+      {hybridLab && <div className="world-ability-overlay hybrid-world-overlay" role="presentation"><section className="hybrid-world-lab" role="dialog" aria-modal="true" aria-label="主世界四季育种台"><header><div><span>四岁永久本领 · 主世界实际操作</span><h2>四季育种台</h2></div><button onClick={() => { endHybridPollination(); setHybridHeldSeed(null); setHybridLab(null); setMessage("收起四季育种台，种子没有消耗。 "); }} aria-label="收起育种台">×</button></header><div className="hybrid-world-scene"><aside className="hybrid-seed-tray"><strong>第一步 · 选择两个亲本</strong><small>拖进亲本盆；平板上也可以先点种子，再点空盆</small><div>{CROP_TYPES.filter((crop) => game[CROP_INFO[crop].seedField] > 0).map((crop) => <button key={`hybrid-parent-${crop}`} draggable className={hybridHeldSeed === crop ? "held" : ""} onDragStart={() => setHybridHeldSeed(crop)} onClick={() => { setHybridHeldSeed(crop); if (hybridLab.parents.length < 2) addHybridParent(crop); }}><i className={`${crop}-icon`}>{CROP_INFO[crop].short}</i><span>{CROP_INFO[crop].name}<small>种子 {game[CROP_INFO[crop].seedField]}</small></span></button>)}</div></aside><div className="hybrid-workbench"><div className="hybrid-parent-pots">{[0, 1].map((slot) => { const parent = hybridLab.parents[slot]; return <button key={`hybrid-pot-${slot}`} data-hybrid-parent-slot onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (hybridHeldSeed) addHybridParent(hybridHeldSeed); }} onClick={() => parent ? removeHybridParent(parent) : hybridHeldSeed ? addHybridParent(hybridHeldSeed) : setMessage("先从左边拿起一种种子，再放进这个亲本盆。 ")} className={parent ? "filled" : ""}><i /><b>{parent ? CROP_INFO[parent].short : "+"}</b><span>{parent ? `${CROP_INFO[parent].name}亲本` : `亲本盆 ${slot + 1}`}<small>{parent ? "点击可以取回" : "放入一种种子"}</small></span></button>; })}</div><label className="hybrid-temperature"><span><strong>第二步 · 按天气调节培养温度</strong><small>今天是{WEATHER_INFO[game.weather].name}，把滑块移进发亮刻度</small></span><div><i className="hybrid-target-zone" style={{ left: `${HYBRID_WEATHER_BALANCE[game.weather] - 6}%`, width: "12%" }} /><input aria-label="育种培养温度" type="range" min="0" max="100" value={hybridLab.balance} onChange={(event) => setHybridLab({ ...hybridLab, balance: Number(event.target.value), pollination: 0 })} /><b style={{ left: `${hybridLab.balance}%` }}>{hybridLab.balance}</b></div></label><button className={`hybrid-pollination-board ${hybridLab.parents.length === 2 ? "ready" : ""}`} onPointerDown={beginHybridPollination} onPointerMove={moveHybridPollination} onPointerUp={endHybridPollination} onPointerCancel={endHybridPollination}><i className="hybrid-flower flower-one" /><i className="hybrid-flower flower-two" /><b className="hybrid-brush" style={{ left: `${12 + hybridLab.pollination * .7}%` }} /><span><strong>第三步 · 按住授粉刷来回移动</strong><small>往返距离 {hybridLab.pollination}% · 不能只点一下</small></span></button></div></div><footer><span>育种粉库存 {game.hybridSeedCharges} 份 · 配错 {hybridLab.mistakes} 次</span><button onClick={() => { endHybridPollination(); setHybridHeldSeed(null); setHybridLab(null); }}>暂时收起</button></footer></section></div>}
+      {echoSurvey && <div className="world-ability-overlay echo-world-overlay" role="presentation"><section className="echo-world-panel" role="dialog" aria-modal="true" aria-label="主世界听石寻晶"><header><div><span>五岁永久本领 · 青禾山洞实地探矿</span><h2>听石寻晶</h2></div><button onClick={() => { setEchoSurvey(null); setMessage("停止听石寻晶，本次没有消耗每日机会。 "); }} aria-label="停止听石寻晶">×</button></header><div className="echo-world-cave"><div className={`echo-world-rocks echo-hit-${echoSurvey.hits}`}><i /><i /><i /><b /></div><strong>听准三层岩壁回声</strong><small>不是直接送钻石；定位后还要自己走到矿旁用镐子挖</small><div className="echo-world-timing"><i /><em /><b style={{ left: `${ageEchoPulse}%` }} /></div><button onClick={strikeWorldEcho}><i>⚒</i><span>光点进入绿色区域时敲击</span></button><div className="echo-world-results">{[0, 1, 2].map((index) => <i key={`world-echo-${index}`} className={index < echoSurvey.hits ? "found" : ""}>{index < echoSurvey.hits ? "◆" : "?"}</i>)}</div></div><footer><span>听准 {echoSurvey.hits}/3 · 敲空 {echoSurvey.misses} 次</span><button onClick={() => setEchoSurvey(null)}>停止探矿</button></footer></section></div>}
       {festivalPreview && <button className="festival-preview-exit" onClick={exitFestivalPreview} aria-label="退出节日体验并回到原来的日期"><b>×</b><span><strong>退出节日体验</strong><small>回到{SEASONS[festivalPreview.returnGame.season]}第 {festivalPreview.returnGame.day} 天</small></span></button>}
       {newsBroadcast && <div className={`tv-broadcast-overlay tv-channel-${newsBroadcast.channel} news-kind-${newsBroadcast.news.kind}`} role="dialog" aria-modal="true" aria-label="青禾电视节目">
         <section className="tv-broadcast-frame">
@@ -9047,6 +9269,8 @@ export default function FarmGame() {
           {game.ageSkillsLearned.includes("clone") && <button className={`clone-work-card ${cloneMission ? "clone-busy" : ""}`} onClick={() => { setCloneWorkOpen(true); setMessage(cloneMission ? `分身正在${cloneMission.destination}${cloneMission.label}。` : "打开七岁分身工作台，安排另一个小禾去做一件真实工作。 "); }}><i>双</i><span><small>七岁永久本领</small><strong>分身穿墙瞬移</strong><em>{cloneMission ? `正在${cloneMission.label}` : "点击安排农活、采集或帮居民"}</em></span><b>›</b></button>}
           {game.ageSkillsLearned.includes("trail") && <button className={`clone-work-card age-world-ability-card trail-ability-card ${trailExpedition ? "clone-busy" : ""}`} onClick={startWorldTrailExpedition}><i>迹</i><span><small>两岁永久本领 · 主游戏</small><strong>林间循迹</strong><em>{trailExpedition ? `正在追踪第 ${trailExpedition.step + 1}/5 枚脚印` : game.lastAgeAbilityDays.trail === `${game.year}-${game.season}-${game.day}` ? "今天已经找到踪迹" : "亲自在主世界追踪隐藏补给"}</em></span><b>›</b></button>}
           {game.ageSkillsLearned.includes("shelter") && <button className="clone-work-card age-world-ability-card shelter-ability-card" onClick={deployLearnedShelter}><i>篷</i><span><small>三岁永久本领 · 主游戏</small><strong>独立搭营</strong><em>在普通户外展开帐篷并住到明早</em></span><b>›</b></button>}
+          {game.ageSkillsLearned.includes("hybrid") && <button className="clone-work-card age-world-ability-card hybrid-ability-card" onClick={startWorldHybridLab}><i>育</i><span><small>四岁永久本领 · 主游戏</small><strong>四季育种</strong><em>{game.lastAgeAbilityDays.hybrid === `${game.year}-${game.season}-${game.day}` ? `今天已制成 · 剩 ${game.hybridSeedCharges} 份` : `调温授粉 · 库存 ${game.hybridSeedCharges} 份`}</em></span><b>›</b></button>}
+          {game.ageSkillsLearned.includes("echo") && <button className="clone-work-card age-world-ability-card echo-ability-card" onClick={startWorldEchoSurvey}><i>晶</i><span><small>五岁永久本领 · 山洞实地使用</small><strong>听石寻晶</strong><em>{game.lastAgeAbilityDays.echo === `${game.year}-${game.season}-${game.day}` ? "今天已定位隐藏矿脉" : farmInterior === "cave" ? "听准三层回声定位矿脉" : "进入山洞点火后使用"}</em></span><b>›</b></button>}
           {isBirthday && <button className="birthday-card" onClick={() => { setDismissedBirthdayPartyKey(null); setScene("farm"); setActiveBuilding("farmhouse"); setIndoorPlayer({ x: 34, y: 70 }); setMessage(`今天是${displayName}的生日！大家已经来到农舍，点击生日蛋糕可以一起分享。`); }}><span>二月十九日 · 今日活动</span><strong>{displayName}的生日派对</strong><small>{showBirthdayParty ? "大家都在农舍 · 点击回家庆祝" : "生日会已收起 · 点击重新打开"}</small></button>}
           <button className={`festival-card ${currentFestival ? "festival-open" : ""}`} onClick={() => { if (currentFestival) goToFestival(); else setMessage(`下一场是${nextFestival.name}，${SEASONS[nextFestival.season]}第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]}在${nextFestival.place}举行，还有 ${daysUntilFestival} 天。`); }}><span>{currentFestival ? "今日活动" : "下一场活动"}</span><strong>{(currentFestival ?? nextFestival).name}</strong><small>{currentFestival ? `正在${currentFestival.place}举行 · 点击前往` : `${SEASONS[nextFestival.season]}第 ${nextFestival.day} 天${WEEKDAYS[(nextFestival.day - 1) % 7]} · 还有 ${daysUntilFestival} 天`}</small></button>
           <div className="meter-block">
@@ -9171,9 +9395,9 @@ export default function FarmGame() {
                   {game.tiles.map((tile, index) => (
                     <button
                       key={index}
-                      className={`farm-tile ${tile.state} ${tile.cropType ?? "radish"} ${tile.watered ? "watered" : ""}`}
+                      className={`farm-tile ${tile.state} ${tile.cropType ?? "radish"} ${tile.watered ? "watered" : ""} ${tile.hybrid ? "hybrid-crop" : ""}`}
                       onClick={(event) => actOnTile(index, event)}
-                      aria-label={`农田 ${index + 1}，${tile.state === "grass" ? "未开垦" : tile.state === "soil" ? "已松土" : `作物第 ${tile.stage} 阶段`}`}
+                      aria-label={`农田 ${index + 1}，${tile.state === "grass" ? "未开垦" : tile.state === "soil" ? "已松土" : `${tile.hybrid ? "四季育种" : ""}作物第 ${tile.stage} 阶段`}`}
                     >
                       {tile.state === "crop" && <span className={`crop-stage stage-${tile.stage}`}><i /><i /><b /></span>}
                     </button>
@@ -9468,7 +9692,7 @@ export default function FarmGame() {
                     <div className={`player indoor-player farm-special-player facing-${facing} ${isWalking ? "walking" : ""}`} style={{ left: `${indoorPlayer.x}%`, top: `${indoorPlayer.y}%` }}><span className="player-shadow" /><span className="walking-feet"><i /><i /></span><PlayerSprite facing={facing} sick={game.sick} /></div>
                     {!interiorFireLit && <div className="special-darkness"><span>{farmInterior === "cave" ? "山洞里很暗" : "帐篷里还没点灯"}</span></div>}
                   </div>
-                  <div className="farm-special-actions"><button onClick={igniteWithMatches} disabled={interiorFireLit}>{interiorFireLit ? "火光已经点亮" : `使用火柴照明 · 剩 ${game.crafted.matches}`}</button>{farmInterior === "cave" && <button className={selected === "pickaxe" ? "active-special-tool" : ""} onClick={() => { setSelected("pickaxe"); setMessage(game.toolUpgrades.pickaxe ? "拿出了金铁镐子。每处矿脉能挖到 3 颗钻石。 " : "拿出了镐子。点击地面走到钻石矿旁，再点击钻石矿挖掘。 "); }}>{game.toolUpgrades.pickaxe ? `拿出金铁镐子 · 剩 ${game.toolUpgradeDays.pickaxe} 天` : "拿出镐子"} · 已有 {game.diamonds} 钻石</button>}{farmInterior === "camp" && <button className="camp-sleep-action" onClick={() => { nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进睡袋，盖好毯子睡了一夜。第二天早上仍在帐篷里醒来。 "); }}>钻进睡袋 · 睡到明早</button>}<button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); setMessage(farmInterior === "cave" ? "从山洞回到大农场。" : "从帐篷出来，回到刚才搭营的户外地点。 "); }}>从入口出去</button></div>
+                  <div className="farm-special-actions"><button onClick={igniteWithMatches} disabled={interiorFireLit}>{interiorFireLit ? "火光已经点亮" : `使用火柴照明 · 剩 ${game.crafted.matches}`}</button>{farmInterior === "cave" && <button className={selected === "pickaxe" ? "active-special-tool" : ""} onClick={() => { setSelected("pickaxe"); setMessage(game.toolUpgrades.pickaxe ? "拿出了金铁镐子。每处矿脉能挖到 3 颗钻石。 " : "拿出了镐子。点击地面走到钻石矿旁，再点击钻石矿挖掘。 "); }}>{game.toolUpgrades.pickaxe ? `拿出金铁镐子 · 剩 ${game.toolUpgradeDays.pickaxe} 天` : "拿出镐子"} · 已有 {game.diamonds} 钻石</button>}{farmInterior === "cave" && game.ageSkillsLearned.includes("echo") && <button className="cave-echo-action" onClick={startWorldEchoSurvey}>{game.lastAgeAbilityDays.echo === `${game.year}-${game.season}-${game.day}` ? "今天已定位矿脉" : "听石寻晶 · 定位隐藏矿脉"}</button>}{farmInterior === "camp" && <button className="camp-sleep-action" onClick={() => { nextDay(); setFarmInterior("camp"); setIndoorPlayer({ x: 32, y: 72 }); setMessage("小禾钻进睡袋，盖好毯子睡了一夜。第二天早上仍在帐篷里醒来。 "); }}>钻进睡袋 · 睡到明早</button>}<button onClick={() => { setFarmInterior(null); setInteriorFireLit(false); setMessage(farmInterior === "cave" ? "从山洞回到大农场。" : "从帐篷出来，回到刚才搭营的户外地点。 "); }}>从入口出去</button></div>
                 </section>
               </div>
             )}
