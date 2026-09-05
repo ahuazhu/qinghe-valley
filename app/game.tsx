@@ -34,6 +34,7 @@ type WorkshopSeason = "春" | "夏" | "秋" | "冬";
 type SnowBuildState = { playerX: number; bodyX: number; bodySize: number; bodyPlaced: boolean; headX: number; headSize: number; headRolled: boolean; headStacked: boolean };
 type WaterFestivalState = { installedPipes: boolean[]; heldPipe: number | null; bucketFill: number[]; playerX: number; hits: number; soaked: number };
 type HarvestFestivalState = { playerPlot: number; reapedPlots: number[]; mistakes: number; heldCrop: number | null; sortedCrops: number[]; cartX: number; weighStation: number; scaleKg: number };
+type HotSoupFestivalState = { selectedIngredients: number[]; heldIngredient: number | null; prepIndex: number; washProgress: number; cutProgress: number; mistakes: number; heat: number; steadyHeat: number; heldBowl: number | null; servedBowls: number[] };
 type BirthdayCeremonyState = { person: string; own: boolean; step: 0 | 1 | 2; songTaps: number; blowTaps: number; cutProgress: number };
 type AgeSkillId = "trail" | "shelter" | "hybrid" | "echo" | "clone" | "teleport";
 type AgeTrainingState = { skill: AgeSkillId; progress: number; mistakes: number };
@@ -939,6 +940,15 @@ const HARVEST_FESTIVAL_PLOTS: { name: string; type: CropType; ripe: boolean; siz
 ];
 const HARVEST_CART_STOPS = [30, 56, 80, 93];
 const HARVEST_SCALE_TARGETS = [8, 11, 9];
+const HOT_SOUP_INGREDIENTS = [
+  { name: "白玉蘑菇", fresh: true, color: "mushroom" },
+  { name: "蔫黄青菜", fresh: false, color: "wilted" },
+  { name: "脆嫩青菜", fresh: true, color: "greens" },
+  { name: "发芽土豆", fresh: false, color: "sprouted" },
+  { name: "黄心土豆", fresh: true, color: "potato" },
+  { name: "山谷香草", fresh: true, color: "herb" },
+];
+const HOT_SOUP_GUESTS = ["安安", "阿麦", "林婶", "白医生", "小玲"];
 
 const WORKSHOP_SEEDS: Array<{ id: WorkshopSeedId; name: string; season: WorkshopSeason; hint: string }> = [
   { id: "strawberry", name: "草莓种子", season: "春", hint: "粉红小籽，适合春天" },
@@ -1536,6 +1546,7 @@ export default function FarmGame() {
   const [snowBuild, setSnowBuild] = useState<SnowBuildState>({ playerX: 5, bodyX: 14, bodySize: 24, bodyPlaced: false, headX: 14, headSize: 19, headRolled: false, headStacked: false });
   const [waterFestival, setWaterFestival] = useState<WaterFestivalState>({ installedPipes: [false, false, false, false], heldPipe: null, bucketFill: [0, 0, 0, 0], playerX: 10, hits: 0, soaked: 0 });
   const [harvestFestival, setHarvestFestival] = useState<HarvestFestivalState>({ playerPlot: 0, reapedPlots: [], mistakes: 0, heldCrop: null, sortedCrops: [], cartX: 6, weighStation: 0, scaleKg: 0 });
+  const [hotSoupFestival, setHotSoupFestival] = useState<HotSoupFestivalState>({ selectedIngredients: [], heldIngredient: null, prepIndex: 0, washProgress: 0, cutProgress: 0, mistakes: 0, heat: 22, steadyHeat: 0, heldBowl: null, servedBowls: [] });
   const [craftWoodChoice, setCraftWoodChoice] = useState<number | null>(null);
   const [craftCarveProgress, setCraftCarveProgress] = useState(0);
   const [craftWrongCarves, setCraftWrongCarves] = useState(0);
@@ -1675,6 +1686,12 @@ export default function FarmGame() {
   const waterPipeDropLockRef = useRef(false);
   const harvestCartTimerRef = useRef<number | null>(null);
   const harvestFinishLockRef = useRef(false);
+  const soupPrepGestureRef = useRef<"wash" | "cut" | null>(null);
+  const soupPrepLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const soupPrepDistanceRef = useRef(0);
+  const soupHeatActiveRef = useRef(false);
+  const soupHeatTimerRef = useRef<number | null>(null);
+  const soupHeatFinishedRef = useRef(false);
   const careGestureActiveRef = useRef(false);
   const careGestureLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const careGestureDistanceRef = useRef(0);
@@ -1751,7 +1768,9 @@ export default function FarmGame() {
   useEffect(() => {
     if (!petContest || petContest.finished || petContest.round !== 3) return;
     const rivalPet = residentPetProfile(petContest.rival);
-    const delay = rivalPet.id === "chick" || rivalPet.id === "rabbit" ? 310 : rivalPet.id === "cat" ? 350 : 390;
+    // Give touch-screen players enough time to alternate the two foot buttons.
+    // Agile rivals still feel faster, but no longer finish in under four seconds.
+    const delay = rivalPet.id === "chick" || rivalPet.id === "rabbit" ? 620 : rivalPet.id === "cat" ? 690 : 760;
     const timer = window.setInterval(() => setPetContestRivalSteps((current) => Math.min(12, current + 1)), delay);
     return () => window.clearInterval(timer);
   }, [petContest?.round, petContest?.finished, petContest?.rival]);
@@ -7761,6 +7780,16 @@ export default function FarmGame() {
       harvestFinishLockRef.current = false;
       setHarvestFestival({ playerPlot: 0, reapedPlots: [], mistakes: 0, heldCrop: null, sortedCrops: [], cartX: 6, weighStation: 0, scaleKg: 0 });
     }
+    if (festivalId === "hotSoup") {
+      if (soupHeatTimerRef.current !== null) window.clearInterval(soupHeatTimerRef.current);
+      soupHeatTimerRef.current = null;
+      soupHeatActiveRef.current = false;
+      soupHeatFinishedRef.current = false;
+      soupPrepGestureRef.current = null;
+      soupPrepLastPointRef.current = null;
+      soupPrepDistanceRef.current = 0;
+      setHotSoupFestival({ selectedIngredients: [], heldIngredient: null, prepIndex: 0, washProgress: 0, cutProgress: 0, mistakes: 0, heat: 22, steadyHeat: 0, heldBowl: null, servedBowls: [] });
+    }
     festivalActionCountRef.current = 0;
     festivalRiddleCorrectRef.current = null;
     setFestivalActionCount(0);
@@ -9646,7 +9675,7 @@ export default function FarmGame() {
         const sprintOwnInfo = PET_CATALOG.find((pet) => pet.id === sprintOwnPet?.type);
         const sprintRival = residentPetProfile(petContest.rival);
         const rivalFinished = petContestRivalSteps >= 12;
-        return <div className="pet-sprint-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="宠物比赛决胜冲刺"><header><span>第 4/4 轮 · 最终决胜</span><strong>左右脚交替冲刺</strong><small>当前总比分 {petContest.playerScore}:{petContest.rivalScore}</small></header><div className="pet-sprint-crowd" aria-hidden="true">{[0,1,2,3,4,5,6,7,8,9].map((spectator) => <i key={`sprint-fan-${spectator}`} />)}</div><div className="pet-sprint-track"><i className="sprint-finish-line" /><div className={`sprint-runner own pet-${sprintOwnPet?.type ?? "cat"}`} style={{ left: `${7 + petContestSprintSteps * 6.6}%` }}><i /><b /><span>{sprintOwnInfo?.name ?? "小宠物"}</span></div><div className={`sprint-runner rival pet-${sprintRival.id}`} style={{ left: `${7 + petContestRivalSteps * 6.6}%` }}><i /><b /><span>{sprintRival.nickname}</span></div><div className="sprint-dust own-dust" style={{ left: `${5 + petContestSprintSteps * 6.6}%` }} /><div className="sprint-dust rival-dust" style={{ left: `${5 + petContestRivalSteps * 6.6}%` }} /></div><div className="pet-sprint-bars"><span><b>小禾队</b><i><em style={{ width: `${petContestSprintSteps / 12 * 100}%` }} /></i><strong>{petContestSprintSteps}/12</strong></span><span className={rivalFinished ? "rival-finished" : ""}><b>{petContest.rival}队</b><i><em style={{ width: `${petContestRivalSteps / 12 * 100}%` }} /></i><strong>{petContestRivalSteps}/12</strong></span></div><div className="pet-sprint-controls"><strong>{rivalFinished ? "对手已经撞线，仍要跑完自己的十二步！" : petContestSprintExpected === "left" ? "下一步：左脚！" : "下一步：右脚！"}</strong><div><button className={petContestSprintExpected === "left" ? "expected" : ""} onClick={() => runPetContestSprint("left")}>← 左脚</button><button className={petContestSprintExpected === "right" ? "expected" : ""} onClick={() => runPetContestSprint("right")}>右脚 →</button></div><small>必须左右交替；按错会退一步。对手不会等你，快追上去反超！</small></div><footer>{message}</footer></section></div>;
+        return <div className="pet-sprint-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="宠物比赛决胜冲刺"><header><span>第 4/4 轮 · 最终决胜</span><strong>左右脚交替冲刺</strong><small>当前总比分 {petContest.playerScore}:{petContest.rivalScore}</small></header><div className="pet-sprint-crowd" aria-hidden="true">{[0,1,2,3,4,5,6,7,8,9].map((spectator) => <i key={`sprint-fan-${spectator}`} />)}</div><div className="pet-sprint-track"><i className="sprint-finish-line" /><div className={`sprint-runner own pet-${sprintOwnPet?.type ?? "cat"}`} style={{ left: `${7 + petContestSprintSteps * 6.6}%` }}><i /><b /><span>{sprintOwnInfo?.name ?? "小宠物"}</span></div><div className={`sprint-runner rival pet-${sprintRival.id}`} style={{ left: `${7 + petContestRivalSteps * 6.6}%` }}><i /><b /><span>{sprintRival.nickname}</span></div><div className="sprint-dust own-dust" style={{ left: `${5 + petContestSprintSteps * 6.6}%` }} /><div className="sprint-dust rival-dust" style={{ left: `${5 + petContestRivalSteps * 6.6}%` }} /></div><div className="pet-sprint-bars"><span><b>小禾队</b><i><em style={{ width: `${petContestSprintSteps / 12 * 100}%` }} /></i><strong>{petContestSprintSteps}/12</strong></span><span className={rivalFinished ? "rival-finished" : ""}><b>{petContest.rival}队</b><i><em style={{ width: `${petContestRivalSteps / 12 * 100}%` }} /></i><strong>{petContestRivalSteps}/12</strong></span></div><div className="pet-sprint-controls"><strong>{rivalFinished ? "对手已经撞线，仍要跑完自己的十二步！" : petContestSprintExpected === "left" ? "下一步：左脚！" : "下一步：右脚！"}</strong><div><button className={petContestSprintExpected === "left" ? "expected" : ""} onClick={() => runPetContestSprint("left")}>← 左脚</button><button className={petContestSprintExpected === "right" ? "expected" : ""} onClick={() => runPetContestSprint("right")}>右脚 →</button></div><small>必须左右交替；按错会退一步。对手现在会以较慢但稳定的速度前进，平板也来得及反应。</small></div><footer>{message}</footer></section></div>;
       })()}
 
       {petContestOpen && (() => {
