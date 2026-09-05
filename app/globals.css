@@ -25,6 +25,7 @@
 @import "./village-map.css";
 @import "./resident-quests.css";
 @import "./pet-contest.css";
+@import "./pet-contest-intense.css";
 
 :root {
   --ink: #263d31;

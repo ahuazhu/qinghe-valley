@@ -53,7 +53,7 @@ type PetType = "cat" | "dog" | "chick" | "duck" | "rabbit" | "hamster";
 type PetRecord = { id: string; type: PetType; sex: "男生" | "女生"; bornDay: number; bornSeason: number; bornYear: number };
 type BabyCareState = { petId: string; stage: 0 | 1 | 2 | 3; feedHits: number; brushProgress: number; mistakes: number };
 type PetContestCue = "left" | "right" | "rush";
-type PetContestState = { ownPetId: string; rival: string; round: 0 | 1 | 2; playerScore: number; rivalScore: number; exchanges: number; boutWins: number; boutLosses: number; cue: PetContestCue; finished: boolean };
+type PetContestState = { ownPetId: string; rival: string; round: 0 | 1 | 2 | 3; playerScore: number; rivalScore: number; exchanges: number; boutWins: number; boutLosses: number; cue: PetContestCue; finished: boolean };
 type CarriedItem = { kind: "resource"; id: StorableResource } | { kind: "material"; id: "wood" | "stone" } | { kind: "forest"; id: ForestItem } | { kind: "seed"; id: CropType } | { kind: "herb" } | { kind: "resin" } | { kind: "matches" } | { kind: "product"; id: "egg" | "milk" | "wool" } | { kind: "petGift"; id: "feather" | "softFur" | "bone" } | { kind: "book"; id: number } | { kind: "artifact"; id: number };
 type ShippingItemGroup = "resource" | "seed" | "craft" | "single";
 type ShippingSingleField = "wood" | "stone" | "diamonds" | "herbs" | "pinecones" | "pineNuts" | "resin" | "eggs" | "milk" | "wool" | "feathers" | "softFur" | "petBones" | "cookies" | "crabs" | "shrimp" | "cookedCrabs" | "cookedShrimp" | "drinks" | "oldSocks" | "puddleHoes";
@@ -1294,6 +1294,21 @@ const reconcilePetFamilies = (records: PetRecord[] | undefined, savedBirthYears:
     pets.push({ id: `${kind.id}-baby-${currentYear}-restored-${index}`, type: kind.id, sex: (currentYear + index) % 2 ? "女生" : "男生", bornDay: currentDay, bornSeason: currentSeason, bornYear: currentYear });
     lastPetBirthYears[kind.id] = currentYear;
   });
+  const adultPets = pets.filter((pet) => !pet.id.includes("-baby-"));
+  const firstMale = adultPets.find((pet) => pet.sex === "男生");
+  const firstFemale = adultPets.find((pet) => pet.sex === "女生");
+  const alreadyRecordedBirth = pets.some((pet) => pet.id.includes("-baby-")) || Object.values(lastPetBirthYears).some((year) => Boolean(year));
+  if (currentYear >= 5 && firstMale && firstFemale && !alreadyRecordedBirth) {
+    pets.push({
+      id: `${firstFemale.type}-baby-${currentYear}-family-restored`,
+      type: firstFemale.type,
+      sex: currentDay % 2 ? "女生" : "男生",
+      bornDay: currentDay,
+      bornSeason: currentSeason,
+      bornYear: currentYear,
+    });
+    lastPetBirthYears[firstFemale.type] = currentYear;
+  }
   return { pets, lastPetBirthYears };
 };
 
@@ -1532,6 +1547,9 @@ export default function FarmGame() {
   const [petContest, setPetContest] = useState<PetContestState | null>(null);
   const [petContestAim, setPetContestAim] = useState(7);
   const [petContestPower, setPetContestPower] = useState(0);
+  const [petContestSprintSteps, setPetContestSprintSteps] = useState(0);
+  const [petContestRivalSteps, setPetContestRivalSteps] = useState(0);
+  const [petContestSprintExpected, setPetContestSprintExpected] = useState<"left" | "right">("left");
   const [bedtimePhase, setBedtimePhase] = useState<"walkingHome" | "tuckedIn" | "waking" | null>(null);
   const [houseFloor, setHouseFloor] = useState<1 | 2>(1);
   const [stairTravel, setStairTravel] = useState<"up" | "down" | null>(null);
@@ -1697,6 +1715,14 @@ export default function FarmGame() {
     }, 48);
     return () => window.clearInterval(timer);
   }, [petContest?.round, petContest?.finished]);
+
+  useEffect(() => {
+    if (!petContest || petContest.finished || petContest.round !== 3) return;
+    const rivalPet = residentPetProfile(petContest.rival);
+    const delay = rivalPet.id === "chick" || rivalPet.id === "rabbit" ? 310 : rivalPet.id === "cat" ? 350 : 390;
+    const timer = window.setInterval(() => setPetContestRivalSteps((current) => Math.min(12, current + 1)), delay);
+    return () => window.clearInterval(timer);
+  }, [petContest?.round, petContest?.finished, petContest?.rival]);
 
   useEffect(() => {
     const splitVillage = new URLSearchParams(window.location.search).get("splitVillage");
@@ -8859,8 +8885,11 @@ export default function FarmGame() {
     setPetContest({ ownPetId: ownPet.id, rival: selectedContestRival, round: 0, playerScore: 0, rivalScore: 0, exchanges: 0, boutWins: 0, boutLosses: 0, cue: contestCueFor(selectedContestRival, 0), finished: false });
     setPetContestAim(7);
     setPetContestPower(0);
+    setPetContestSprintSteps(0);
+    setPetContestRivalSteps(0);
+    setPetContestSprintExpected("left");
     petContestAimDirectionRef.current = 1;
-    setMessage("第一轮开始：彩带正在场中来回飘，看准它进入绿色区域时再让宠物扑过去！");
+    setMessage("第一轮开始！两边观众已经在喊加油，彩带飞得很快，看准它进入绿色区域时再扑过去！");
     playTone(760);
   };
 
@@ -8877,7 +8906,7 @@ export default function FarmGame() {
       coins: current.coins + reward,
       petContestWins: current.petContestWins + (won ? 1 : 0),
       petBonds: { ...current.petBonds, [result.ownPetId]: Math.min(100, (current.petBonds[result.ownPetId] ?? 0) + bond) },
-      journalEntries: [`${SEASONS[current.season]}第${current.day}天：${ownName}和${result.rival}的${rivalPet.nickname}完成三轮宠物友谊赛，比分 ${result.playerScore}:${result.rivalScore}。`, ...current.journalEntries].slice(0, 40),
+      journalEntries: [`${SEASONS[current.season]}第${current.day}天：${ownName}和${result.rival}的${rivalPet.nickname}完成四轮宠物友谊赛，比分 ${result.playerScore}:${result.rivalScore}。`, ...current.journalEntries].slice(0, 40),
     }, result.rival, won ? 4 : 2));
     setPetContest({ ...result, finished: true });
     setMessage(won ? `${ownName}赢下了友谊赛！获得 ${reward} 金币，宠物默契 +${bond}，和${result.rival}的好感也提高了。` : tied ? `双方打成平手！各自认真完成了比赛，获得 ${reward} 金币和 ${bond} 点宠物默契。` : `${ownName}这次没有赢，但完整比赛并学会了新动作，获得 ${reward} 金币和 ${bond} 点宠物默契。`);
@@ -8914,7 +8943,7 @@ export default function FarmGame() {
     const rivalCode = [...petContest.rival].reduce((total, letter) => total + (letter.codePointAt(0) ?? 0), game.year + game.day);
     const rivalHit = rivalCode % 3 !== 0;
     setPetContest({ ...petContest, round: 2, playerScore: petContest.playerScore + (hit ? 1 : 0), rivalScore: petContest.rivalScore + (rivalHit ? 1 : 0), cue: contestCueFor(petContest.rival, 0) });
-    setMessage(hit ? "软球稳稳推进终点！最后是三回合软垫对抗，先看对方动作，再选择正确的闪避或绕后轻推。" : "力气太小或太大，软球偏出了跑道。最后还有三回合软垫对抗，可以追回比分！");
+    setMessage(hit ? "软球撞线得分！第三轮是三次快速软垫对抗，双方会连续扑抢；看清方向再闪避或绕后轻推。" : "软球偏出了跑道。第三轮还有三次快速扑抢，后面更有最终冲刺，比分仍然能追回来！");
     playTone(hit ? 880 : 360);
   };
 
@@ -8927,13 +8956,39 @@ export default function FarmGame() {
     const nextBoutLosses = petContest.boutLosses + (correct ? 0 : 1);
     if (nextExchange < 3) {
       setPetContest({ ...petContest, exchanges: nextExchange, boutWins: nextBoutWins, boutLosses: nextBoutLosses, cue: contestCueFor(petContest.rival, nextExchange) });
-      setMessage(correct ? `躲开后轻轻碰到了对方的肩垫！还剩 ${3 - nextExchange} 回合，继续观察动作。` : `方向判断错了，对方先碰到你的肩垫。还剩 ${3 - nextExchange} 回合，可以追回来。`);
+      setMessage(correct ? `漂亮反超！躲开后碰到了对方肩垫。还剩 ${3 - nextExchange} 次扑抢，观众正在倒数。` : `砰！对方先碰到你的肩垫。还剩 ${3 - nextExchange} 次扑抢，下一次还能抢回来。`);
       playTone(correct ? 820 : 310);
       return;
     }
     const playerRoundPoint = nextBoutWins > nextBoutLosses ? 1 : 0;
     const rivalRoundPoint = nextBoutWins > nextBoutLosses ? 0 : 1;
-    finishPetContest({ ...petContest, exchanges: nextExchange, boutWins: nextBoutWins, boutLosses: nextBoutLosses, playerScore: petContest.playerScore + playerRoundPoint, rivalScore: petContest.rivalScore + rivalRoundPoint, finished: true });
+    setPetContest({ ...petContest, round: 3, exchanges: nextExchange, boutWins: nextBoutWins, boutLosses: nextBoutLosses, playerScore: petContest.playerScore + playerRoundPoint, rivalScore: petContest.rivalScore + rivalRoundPoint });
+    setPetContestSprintSteps(0);
+    setPetContestRivalSteps(0);
+    setPetContestSprintExpected("left");
+    setMessage("决胜冲刺开始！对手会自己向终点追赶，左右脚必须交替快速点击；按错会退一步。 ");
+    playTone(920);
+  };
+
+  const runPetContestSprint = (foot: "left" | "right") => {
+    if (!petContest || petContest.finished || petContest.round !== 3) return;
+    if (foot !== petContestSprintExpected) {
+      setPetContestSprintSteps((current) => Math.max(0, current - 1));
+      setMessage(`脚步乱了！现在应该点${petContestSprintExpected === "left" ? "左脚" : "右脚"}，落后的一步还能追回来。`);
+      playTone(260);
+      return;
+    }
+    const nextSteps = Math.min(12, petContestSprintSteps + 1);
+    setPetContestSprintSteps(nextSteps);
+    setPetContestSprintExpected(foot === "left" ? "right" : "left");
+    if (nextSteps < 12) {
+      const gap = nextSteps - petContestRivalSteps;
+      setMessage(gap >= 2 ? "正在领先！继续左右交替，不要在终点前放慢。" : gap < 0 ? "对手暂时领先，快交替点击追上去！" : "两只宠物几乎并排，下一步就可能反超！");
+      playTone(640 + nextSteps * 18);
+      return;
+    }
+    const playerWonSprint = petContestRivalSteps < 12;
+    finishPetContest({ ...petContest, playerScore: petContest.playerScore + (playerWonSprint ? 1 : 0), rivalScore: petContest.rivalScore + (playerWonSprint ? 0 : 1), finished: true });
   };
 
   const sellPetToShop = (petRecord: PetRecord) => {
@@ -9380,11 +9435,19 @@ export default function FarmGame() {
 
       {cloneWorkOpen && <div className="clone-work-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="分身穿墙瞬移工作台"><header><div><span>七岁永久本领 · 主游戏可用</span><h2>分身穿墙瞬移工作台</h2></div><button onClick={() => { setCloneWorkOpen(false); setMessage(cloneMission ? "收起工作台；分身继续工作，小禾可以照常行动。 " : "收起分身工作台，回到游戏。 "); }} aria-label="关闭分身工作台">×</button></header><div className={`clone-live-route ${cloneMission ? "mission-running" : "mission-idle"}`}><div className="clone-original"><i /><b /><span>正在游玩的你</span></div><div className="clone-wall"><i /><i /><i /><strong>可穿越障碍</strong></div><div className="clone-worker"><i /><b /><span>{cloneMission ? cloneMission.label : "等待安排"}</span></div><div className="clone-portal" /><p>{cloneMission ? `分身已经穿墙瞬移到${cloneMission.destination}，成果完成后会自动加入游戏记录。` : "选择一件工作后，另一个小禾会出现并自动前往目标；原来的你仍能继续玩。"}</p></div><div className="clone-job-scroll"><section><h3>农田工作</h3><div className="clone-job-grid"><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("water")}><i>水</i><span>给作物浇水<small>最多 8 株</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("fertilize")}><i>肥</i><span>给作物施肥<small>提高照料值</small></span></button>{CROP_TYPES.map((crop) => <button key={`clone-${crop}`} disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("plant", crop)}><i>{CROP_INFO[crop].short}</i><span>播种{CROP_INFO[crop].name}<small>最多 4 格</small></span></button>)}</div></section><section><h3>山野与资源</h3><div className="clone-job-grid"><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("mineDiamond")}><i>◆</i><span>进山洞挖钻石<small>金铁镐会增产</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("chopWood")}><i>木</i><span>砍树<small>木头、树脂、松果</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("breakStone")}><i>石</i><span>敲碎石头<small>收集石材</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("gatherHerbs")}><i>药</i><span>采集药材<small>加入资源记录</small></span></button><button disabled={Boolean(cloneMission)} onClick={() => dispatchCloneWork("fish")}><i>鱼</i><span>池塘钓鱼<small>鱼钩会落进水里</small></span></button></div></section><section><h3>帮助居民</h3><div className="clone-resident-grid">{CLONE_HELP_RESIDENTS.map((person) => <button key={`clone-help-${person}`} disabled={Boolean(cloneMission)} style={personClothesStyle(person)} onClick={() => dispatchCloneWork("helpResident", undefined, person)}><i /><b /><span>帮助{person}<small>完成委托 · 好感 +15</small></span></button>)}</div></section></div><footer><span>{message}</span><button onClick={() => setCloneWorkOpen(false)}>回到主游戏</button></footer></section></div>}
 
+      {petContestOpen && petContest && !petContest.finished && petContest.round === 3 && (() => {
+        const sprintOwnPet = game.pets.find((pet) => pet.id === petContest.ownPetId);
+        const sprintOwnInfo = PET_CATALOG.find((pet) => pet.id === sprintOwnPet?.type);
+        const sprintRival = residentPetProfile(petContest.rival);
+        const rivalFinished = petContestRivalSteps >= 12;
+        return <div className="pet-sprint-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="宠物比赛决胜冲刺"><header><span>第 4/4 轮 · 最终决胜</span><strong>左右脚交替冲刺</strong><small>当前总比分 {petContest.playerScore}:{petContest.rivalScore}</small></header><div className="pet-sprint-crowd" aria-hidden="true">{[0,1,2,3,4,5,6,7,8,9].map((spectator) => <i key={`sprint-fan-${spectator}`} />)}</div><div className="pet-sprint-track"><i className="sprint-finish-line" /><div className={`sprint-runner own pet-${sprintOwnPet?.type ?? "cat"}`} style={{ left: `${7 + petContestSprintSteps * 6.6}%` }}><i /><b /><span>{sprintOwnInfo?.name ?? "小宠物"}</span></div><div className={`sprint-runner rival pet-${sprintRival.id}`} style={{ left: `${7 + petContestRivalSteps * 6.6}%` }}><i /><b /><span>{sprintRival.nickname}</span></div><div className="sprint-dust own-dust" style={{ left: `${5 + petContestSprintSteps * 6.6}%` }} /><div className="sprint-dust rival-dust" style={{ left: `${5 + petContestRivalSteps * 6.6}%` }} /></div><div className="pet-sprint-bars"><span><b>小禾队</b><i><em style={{ width: `${petContestSprintSteps / 12 * 100}%` }} /></i><strong>{petContestSprintSteps}/12</strong></span><span className={rivalFinished ? "rival-finished" : ""}><b>{petContest.rival}队</b><i><em style={{ width: `${petContestRivalSteps / 12 * 100}%` }} /></i><strong>{petContestRivalSteps}/12</strong></span></div><div className="pet-sprint-controls"><strong>{rivalFinished ? "对手已经撞线，仍要跑完自己的十二步！" : petContestSprintExpected === "left" ? "下一步：左脚！" : "下一步：右脚！"}</strong><div><button className={petContestSprintExpected === "left" ? "expected" : ""} onClick={() => runPetContestSprint("left")}>← 左脚</button><button className={petContestSprintExpected === "right" ? "expected" : ""} onClick={() => runPetContestSprint("right")}>右脚 →</button></div><small>必须左右交替；按错会退一步。对手不会等你，快追上去反超！</small></div><footer>{message}</footer></section></div>;
+      })()}
+
       {petContestOpen && (() => {
         const ownPet = game.pets.find((pet) => pet.id === petContest?.ownPetId);
         const ownPetInfo = PET_CATALOG.find((pet) => pet.id === ownPet?.type);
         const rivalPet = residentPetProfile(petContest?.rival ?? selectedContestRival);
-        const closeContest = () => { if (petContestPowerTimerRef.current !== null) window.clearInterval(petContestPowerTimerRef.current); petContestPowerTimerRef.current = null; setPetContestOpen(false); setPetContest(null); };
+        const closeContest = () => { if (petContestPowerTimerRef.current !== null) window.clearInterval(petContestPowerTimerRef.current); petContestPowerTimerRef.current = null; setPetContestOpen(false); setPetContest(null); setPetContestSprintSteps(0); setPetContestRivalSteps(0); };
         const cueText = petContest?.cue === "left" ? `${rivalPet.nickname}从左边扑向肩垫！` : petContest?.cue === "right" ? `${rivalPet.nickname}从右边扑向肩垫！` : `${rivalPet.nickname}低下身体向前冲！`;
         return <div className="pet-contest-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="宠物友谊比赛"><header><div><span>中心广场 · 居民宠物友谊赛</span><h2>两只宠物真正上场比赛</h2><small>{petContest ? petContest.finished ? "比赛完成" : `第 ${petContest.round + 1}/3 轮 · 比分 ${petContest.playerScore}:${petContest.rivalScore}` : `累计胜场 ${game.petContestWins}`}</small></div><button onClick={closeContest} aria-label="离开宠物友谊赛场">×</button></header>{!petContest ? <div className="pet-contest-registration"><section><h3>1. 选择小禾的参赛宠物</h3><div className="contest-own-pets">{game.pets.filter((pet) => !isNurseryPet(pet) && pet.id !== game.missingPetId).map((pet) => { const info = PET_CATALOG.find((entry) => entry.id === pet.type)!; return <button key={`contest-own-${pet.id}`} className={`${selectedContestPet === pet.id ? "selected" : ""} pet-${pet.type}`} onClick={() => setSelectedContestPet(pet.id)}><span className="contest-pet-art"><i /><b /></span><strong>{pet.sex}{info.name}</strong><small>默契 {game.petBonds[pet.id] ?? 0}/100</small></button>; })}{!game.pets.some((pet) => !isNurseryPet(pet) && pet.id !== game.missingPetId) && <p>还没有能上场的成年宠物。宝宝长大以后也可以参赛。</p>}</div></section><section><h3>2. 选择居民和她/他的宠物</h3><div className="contest-rival-pets">{relationshipPeople.map((name) => { const profile = residentPetProfile(name); return <button key={`contest-rival-${name}`} className={`${selectedContestRival === name ? "selected" : ""} pet-${profile.id}`} onClick={() => setSelectedContestRival(name)}><span className="contest-pet-art"><i /><b /></span><span><strong>{name}和{profile.nickname}</strong><small>{profile.name} · {profile.strength}</small></span></button>; })}</div></section><button className="start-pet-contest" disabled={!selectedContestPet} onClick={startPetContest}>一起走进赛场，开始三轮比赛</button></div> : <div className={`pet-contest-stage contest-round-${petContest.round} ${petContest.finished ? "contest-finished" : ""}`}><div className="contest-scoreboard"><span><b>小禾队</b><strong>{petContest.playerScore}</strong></span><em>VS</em><span><b>{petContest.rival}队</b><strong>{petContest.rivalScore}</strong></span></div><div className="contest-pet-duo"><div className={`contest-live-pet own pet-${ownPet?.type ?? "cat"}`}><i /><b /><span>{ownPetInfo?.name ?? "小宠物"}</span></div><div className="contest-field-mark" /><div className={`contest-live-pet rival pet-${rivalPet.id} variant-${rivalPet.variant}`}><i /><b /><span>{rivalPet.nickname}</span></div></div>{!petContest.finished && petContest.round === 0 && <div className="contest-ribbon-game"><strong>抢彩带：看准飘动位置</strong><div className="contest-timing-track"><i /><b style={{ left: `${petContestAim}%` }}><em /></b></div><button onClick={catchContestRibbon}>现在扑向彩带</button><small>{ownPet && ["rabbit", "chick", "cat"].includes(ownPet.type) ? "这只宠物动作灵巧，绿色成功区更宽" : "彩带进入绿色区域才抓得到"}</small></div>}{!petContest.finished && petContest.round === 1 && <div className="contest-ball-game"><strong>推软球：按住蓄力，松手出发</strong><div className="contest-power-track"><i /><b style={{ width: `${petContestPower}%` }} /><em style={{ left: `${petContestPower}%` }} /></div><button onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); startContestPush(); }} onPointerUp={releaseContestPush} onPointerCancel={releaseContestPush}>按住推球 · 绿色时松手</button><small>当前力量 {petContestPower}% · 力量过小或过大都会让球偏出跑道</small></div>}{!petContest.finished && petContest.round === 2 && <div className="contest-soft-bout"><strong>软垫友谊对抗 · 第 {petContest.exchanges + 1}/3 回合</strong><div className={`contest-cue cue-${petContest.cue}`}><i /><span>{cueText}</span></div><div className="contest-counter-moves"><button onClick={() => answerPetContestCue("dodgeLeft")}>← 向左闪</button><button onClick={() => answerPetContestCue("circle")}>绕后轻推</button><button onClick={() => answerPetContestCue("dodgeRight")}>向右闪 →</button></div><small>观察对方从哪边来：躲开后再轻碰肩垫，不咬、不抓，也不会受伤</small></div>}{petContest.finished && <div className="contest-result"><i>{petContest.playerScore > petContest.rivalScore ? "🏆" : petContest.playerScore === petContest.rivalScore ? "🤝" : "★"}</i><strong>{petContest.playerScore > petContest.rivalScore ? "小禾队赢得友谊赛！" : petContest.playerScore === petContest.rivalScore ? "双方打成平手！" : "完整比赛，学会了新动作！"}</strong><p>{message}</p><div><button onClick={() => { setPetContest(null); setPetContestAim(7); setPetContestPower(0); }}>换对手再比一次</button><button onClick={closeContest}>带宠物离开赛场</button></div></div>}</div>}<footer><span>{message}</span><small>所有居民都有自己的宠物 · 比赛只用彩带、软球和厚软垫</small></footer></section></div>;
       })()}
