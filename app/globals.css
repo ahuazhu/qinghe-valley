@@ -1233,24 +1233,37 @@ button { font: inherit; }
 @keyframes evolvedPetGlow{to{box-shadow:0 0 0 3px #f2d76d,0 0 20px rgba(255,235,137,.95)}}
 @keyframes evolvedPetStar{to{translate:0 -3px;scale:1.2}}
 
-/* Keep the nursery mat on the opposite side of upgraded rooms so the automatic
-   water tank remains visible and tappable. */
+/* Keep the nursery in the upper-left wall gap: below neither the staircase nor
+   the bed, and safely away from the automatic water tank. */
 .farmhouse-level-2 .home-baby-pets,
 .farmhouse-level-3 .home-baby-pets{
-  left:2%;
+  left:18%;
   right:auto;
-  top:43%;
+  top:5%;
   bottom:auto;
   translate:0 0;
+  width:118px;
+  min-width:118px;
+  grid-template-columns:repeat(2,46px);
+  gap:4px;
+}
+
+.farmhouse-level-2 .empty-baby-nursery,
+.farmhouse-level-3 .empty-baby-nursery{
+  grid-column:1 / -1;
 }
 
 @media(max-width:760px){
   .farmhouse-level-2 .home-baby-pets,
   .farmhouse-level-3 .home-baby-pets{
-    left:2%;
+    left:18%;
     right:auto;
-    top:43%;
+    top:4%;
     bottom:auto;
     translate:0 0;
+    width:106px;
+    min-width:106px;
+    grid-template-columns:repeat(2,40px);
+    gap:4px;
   }
 }
