@@ -1232,3 +1232,25 @@ button { font: inherit; }
 .following-pet.evolved-pet{filter:drop-shadow(0 0 5px rgba(255,224,101,.8))}.following-pet.evolved-pet::after{content:"✦";position:absolute;right:-5px;top:-8px;color:#ffe36f;font-size:11px;text-shadow:0 1px #76542f;animation:evolvedPetStar .9s ease-in-out infinite alternate}
 @keyframes evolvedPetGlow{to{box-shadow:0 0 0 3px #f2d76d,0 0 20px rgba(255,235,137,.95)}}
 @keyframes evolvedPetStar{to{translate:0 -3px;scale:1.2}}
+
+/* Keep the nursery mat on the opposite side of upgraded rooms so the automatic
+   water tank remains visible and tappable. */
+.farmhouse-level-2 .home-baby-pets,
+.farmhouse-level-3 .home-baby-pets{
+  left:2%;
+  right:auto;
+  top:43%;
+  bottom:auto;
+  translate:0 0;
+}
+
+@media(max-width:760px){
+  .farmhouse-level-2 .home-baby-pets,
+  .farmhouse-level-3 .home-baby-pets{
+    left:2%;
+    right:auto;
+    top:43%;
+    bottom:auto;
+    translate:0 0;
+  }
+}
