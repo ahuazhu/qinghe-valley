@@ -1221,3 +1221,14 @@ button { font: inherit; }
 .baby-water-meter>b{left:4px!important;right:4px!important;top:auto!important;bottom:0!important;width:auto!important}
 
 @media(max-width:760px){.baby-care-overlay>section{width:calc(100vw - 12px)!important;max-width:calc(100vw - 12px)!important}.baby-care-stage{min-height:330px;padding:10px 12px!important;gap:7px!important}.baby-pet-art{flex-basis:92px!important;width:118px!important;height:96px!important;scale:.72!important}.baby-feed-game,.baby-water-game,.baby-brush-game,.baby-play-game{width:min(460px,100%)!important;padding:0!important}.baby-brush-surface{height:105px}.baby-care-progress>i{min-width:0}.baby-care-progress>i span{font-size:6px}}
+
+/* Pet growth: care and bond visibly develop every baby; ten-year-olds become adults. */
+.home-baby-pet.growth-0{filter:saturate(.86)}
+.home-baby-pet.growth-1{background:rgba(255,239,174,.72);box-shadow:inset 0 0 0 2px #d5a75d}
+.home-baby-pet.growth-1>i{width:32px;height:21px}.home-baby-pet.growth-1>b{width:20px;height:22px}
+.home-baby-pet.growth-2{background:linear-gradient(145deg,#fff3b4,#d7f2d1);box-shadow:0 0 0 3px #e7c760,0 0 12px rgba(255,225,105,.9);animation:babyPetWiggle .8s ease-in-out infinite alternate,evolvedPetGlow 1.4s ease-in-out infinite alternate}
+.home-baby-pet.growth-2>i{width:34px;height:23px}.home-baby-pet.growth-2>b{width:22px;height:24px}.home-baby-pet.growth-2>em{color:#684c24;background:#ffe36f}
+.home-baby-pet>span small{margin-top:2px;color:#76614b;font-size:5px}
+.following-pet.evolved-pet{filter:drop-shadow(0 0 5px rgba(255,224,101,.8))}.following-pet.evolved-pet::after{content:"✦";position:absolute;right:-5px;top:-8px;color:#ffe36f;font-size:11px;text-shadow:0 1px #76542f;animation:evolvedPetStar .9s ease-in-out infinite alternate}
+@keyframes evolvedPetGlow{to{box-shadow:0 0 0 3px #f2d76d,0 0 20px rgba(255,235,137,.95)}}
+@keyframes evolvedPetStar{to{translate:0 -3px;scale:1.2}}
