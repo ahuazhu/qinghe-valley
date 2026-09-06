@@ -1212,6 +1212,7 @@ button { font: inherit; }
 /* v146: keep every newborn-care control in the visible center of the screen. */
 .baby-care-overlay>section{width:min(680px,calc(100vw - 24px))!important}
 .baby-care-stage{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:10px!important;min-height:370px;padding:14px 22px!important;overflow-y:auto!important}
+.baby-care-stage.pet-cat,.baby-care-stage.pet-dog,.baby-care-stage.pet-chick,.baby-care-stage.pet-duck,.baby-care-stage.pet-rabbit,.baby-care-stage.pet-hamster{left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;transform:none!important;translate:none!important;scale:1!important}
 .baby-pet-art{grid-column:auto!important;flex:0 0 118px!important;justify-self:auto!important;left:auto!important;bottom:auto!important;margin:0 auto!important;transform-origin:center center!important}
 .baby-feed-game,.baby-water-game,.baby-brush-game,.baby-play-game{grid-column:auto!important;flex:0 0 auto!important;width:min(510px,100%)!important;min-width:0!important;margin:0 auto!important;padding:0!important;justify-self:auto!important;align-self:center!important}
 .baby-water-game{position:relative!important;grid-template-columns:1fr!important}
