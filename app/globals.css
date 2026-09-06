@@ -1195,3 +1195,16 @@ button { font: inherit; }
 .player.facing-right .worn-outfit::after,.player.facing-left .worn-outfit::after{left:10px;top:8px;box-shadow:0 5px #f2cd78}
 .worn-blueOutfit::after{width:6px;height:6px;left:11px;top:8px;border-width:2px}.worn-pajamas::after{background:#f7dc76;box-shadow:8px 5px 0 -1px #f7f2c9}
 @media(max-width:760px){.home-baby-pets{right:1%;left:auto;top:4px;bottom:auto;width:132px;transform:scale(.84);transform-origin:top right}.worn-outfit{transform:none}.player.facing-left .worn-outfit{transform:scaleX(-1)}}
+
+/* Final newborn layout: the old compact rules above used negative margins and
+   made the rabbit, chick and their badges stack on top of one another. */
+.home-baby-pets{z-index:35;left:50%;right:auto;top:7px;bottom:auto;translate:-50% 0;width:236px;min-width:236px;min-height:82px;display:grid;grid-template-columns:repeat(4,46px);align-items:end;align-content:end;justify-content:center;gap:8px;padding:26px 8px 7px;border-width:3px;border-radius:10px;box-shadow:0 3px rgba(73,50,37,.22)}
+.home-baby-pets>strong{left:8px;right:8px;top:5px;display:flex;justify-content:space-between;gap:8px;font-size:7px;white-space:nowrap}.home-baby-pets>strong small{margin:0;font-size:6px}
+.home-baby-pet{width:46px;height:48px;scale:1;transform:none;transform-origin:center bottom;margin:0}.home-baby-pet>i{left:2px;top:21px;width:29px;height:19px;border-width:3px}.home-baby-pet>b{right:0;top:12px;width:18px;height:20px;border-width:3px}.home-baby-pet>b::before{left:3px;top:5px;width:3px;height:3px;box-shadow:7px 0 #252524}.home-baby-pet>em{right:0;top:0;width:16px;height:16px;font-size:8px}.home-baby-pet>span{bottom:-20px}
+
+/* The care game is portaled to the document body and occupies the real device
+   viewport. It can no longer inherit the farmhouse panel's right-side layout. */
+.baby-care-overlay{position:fixed!important;inset:0!important;z-index:10000!important;width:auto!important;height:auto!important;min-width:100vw;min-height:100dvh;margin:0!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:10px!important;overflow-y:auto;background:rgba(28,33,45,.8)}
+.baby-care-overlay>section{position:relative!important;inset:auto!important;margin:auto!important;width:min(860px,calc(100vw - 20px))!important;max-width:calc(100vw - 20px)!important;max-height:calc(100dvh - 20px)!important;transform:none!important}
+
+@media(max-width:760px){.home-baby-pets{left:50%;right:auto;top:4px;bottom:auto;translate:-50% 0;width:188px;min-width:188px;grid-template-columns:repeat(4,40px);gap:4px;padding:24px 6px 5px;transform:none}.home-baby-pet{width:40px;height:43px;scale:.88;transform-origin:center bottom}.baby-care-overlay{padding:3px!important}.baby-care-overlay>section{width:calc(100vw - 6px)!important;max-width:calc(100vw - 6px)!important;max-height:calc(100dvh - 6px)!important}}
