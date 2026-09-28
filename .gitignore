@@ -6,3 +6,4 @@ dist/
 node_modules/
 offline-dist/
 青禾谷-离线版*.zip
+.DS_Store

@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "game-dev",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": [
+        "-c",
+        "export PATH=/Users/yang/.local/node/bin:$PATH && exec npm run dev"
+      ],
+      "port": 3000
+    }
+  ]
+}
